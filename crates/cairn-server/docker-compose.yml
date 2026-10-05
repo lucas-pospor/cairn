@@ -1,0 +1,28 @@
+# Cairn sync server behind Caddy (automatic HTTPS).
+#   1. Point a DNS name at this machine and put it in Caddyfile.
+#   2. Create .env with CAIRN_TOKENS=<a long random secret>.
+#   3. docker compose up -d
+services:
+  cairn:
+    build:
+      context: ../..
+      dockerfile: crates/cairn-server/Dockerfile
+    image: cairn-server
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - cairn-data:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - cairn
+volumes:
+  cairn-data:
+  caddy-data:

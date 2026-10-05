@@ -1,0 +1,32 @@
+[package]
+name = "cairn-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Self-hosted sync server for Cairn. Stores only encrypted blobs."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "cairn-server"
+path = "src/main.rs"
+
+[dependencies]
+cairn-sync = { path = "../cairn-sync", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+env_logger = "0.11"
+axum = "0.8"
+# Served through hyper directly (not axum::serve) to get read timeouts.
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["http1", "tokio", "service", "server-graceful"] }
+tower-http = { version = "0.6", features = ["timeout", "add-extension"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "time"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+subtle = "2"
+
+[dev-dependencies]
+tempfile = "3"

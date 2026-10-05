@@ -1,0 +1,11 @@
+target/
+node_modules/
+dist/
+app/src-tauri/gen/schemas/
+*.log
+.DS_Store
+/scratch/
+/e2e/.tmp/
+.env
+__pycache__/
+*.pyc

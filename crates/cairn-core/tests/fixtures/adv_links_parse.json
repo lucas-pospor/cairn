@@ -1,0 +1,816 @@
+{
+  "cases": [
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "tag/sub",
+        "日本語",
+        "a-b",
+        "_x",
+        "ünï",
+        "ǆemal"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "#123 #tag/sub #日本語 #a-b. #_x #ünï #Ǆemal",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "`#code` and\n\n```\n#fenced [[Fenced]]\n```\n",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "real"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "http://x.com/#anchor and http://x.com #real",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "inheading"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "## Heading #inheading",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "comma",
+        "semi"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "(#paren) a,#comma a;#semi word#no **b**#no",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "\\#escaped and \\[[Escaped]]",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "\\\\[[Twice]] \\![[Bang]] !\\[[NotEmbed]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Twice"
+        },
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Bang"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "[[A]] `[[B]]` <span>[[C]]</span>",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "A"
+        },
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "C"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "<div>\n[[HtmlBlock]] #htmltag\n</div>\n\nafter",
+      "wiki": []
+    },
+    {
+      "bodyStart": 30,
+      "bodyStartUtf16": 30,
+      "bodyTags": [
+        "gamma"
+      ],
+      "fmTags": [
+        "alpha",
+        "beta/x"
+      ],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\ntags: [Alpha, beta/x]\n---\nbody #gamma",
+      "wiki": []
+    },
+    {
+      "bodyStart": 23,
+      "bodyStartUtf16": 23,
+      "bodyTags": [],
+      "fmTags": [
+        "one",
+        "two"
+      ],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\ntags: one, two\n---\n",
+      "wiki": []
+    },
+    {
+      "bodyStart": 25,
+      "bodyStartUtf16": 25,
+      "bodyTags": [
+        "body"
+      ],
+      "fmTags": [
+        "listed"
+      ],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\ntags:\n  - listed\n---\n#body",
+      "wiki": []
+    },
+    {
+      "bodyStart": 20,
+      "bodyStartUtf16": 20,
+      "bodyTags": [
+        "afterbad"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\n: bad\n  - [\n---\n[[AfterBad]] #afterbad",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "AfterBad"
+        }
+      ]
+    },
+    {
+      "bodyStart": 8,
+      "bodyStartUtf16": 8,
+      "bodyTags": [
+        "t"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\n---\nbody #t [[E]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "E"
+        }
+      ]
+    },
+    {
+      "bodyStart": 19,
+      "bodyStartUtf16": 19,
+      "bodyTags": [
+        "afterfm"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\ntitle: x\n---  \n#afterfm [[AfterFm]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "AfterFm"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [
+        {
+          "embed": false,
+          "target": "Note.md"
+        },
+        {
+          "embed": true,
+          "target": "a.png"
+        }
+      ],
+      "src": "[![img](a.png)](Note.md)",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [
+        {
+          "embed": false,
+          "target": "x.md"
+        }
+      ],
+      "src": "[[A]](x.md)",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "qtag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "> quote [[Q]] #qtag",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Q"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "ttag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "- [ ] task [[T]] #ttag",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "T"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "celltag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "| a | [[X\\|y]] |\n|---|---|\n| #celltag | b |",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "X"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "Text with [[Unclosed and [[Closed]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Closed"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "[[A|B|C]] [[A#B#C]] [[#Local]] [[ ]] [[|x]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "A"
+        },
+        {
+          "embed": false,
+          "subpath": "B#C",
+          "target": "A"
+        },
+        {
+          "embed": false,
+          "subpath": "Local",
+          "target": ""
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "tag",
+        "tag2",
+        "tag3"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "#tag, #tag2. #tag3! #🎉",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "$$\n[[Math]]\n$$",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Math"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "%% [[Comment]] %%",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Comment"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "s"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "Setext #s\n===\n",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "    [[IndentedCode]] #indented",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "1. [[Ordered]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Ordered"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "[[Ref]]\n\n[Ref]: http://x",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Ref"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [
+        {
+          "embed": false,
+          "target": "x.md"
+        }
+      ],
+      "src": "[see #inlink [[InLink]]](x.md)",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "![[Embed]] ![[pic.png|200]] ![[Note#Sec]]",
+      "wiki": [
+        {
+          "embed": true,
+          "subpath": null,
+          "target": "Embed"
+        },
+        {
+          "embed": true,
+          "subpath": null,
+          "target": "pic.png"
+        },
+        {
+          "embed": true,
+          "subpath": "Sec",
+          "target": "Note"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "start-of-line",
+        "indented-tag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "line one\n#start-of-line\n  #indented-tag",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "~~~\n[[Tilde]]\n~~~\n````\n```\n[[InsideQuad]]\n````\n",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "* list\n\n      [[ListCode]]\n",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "<!-- [[InComment]] -->",
+      "wiki": []
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "[[a\nb]] [[ Nbsp ]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Nbsp"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "Inline `code [[x]]` then [[Y]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Y"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "`unclosed [[Z]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Z"
+        }
+      ]
+    },
+    {
+      "bodyStart": 23,
+      "bodyStartUtf16": 21,
+      "bodyTags": [
+        "afterbom"
+      ],
+      "fmTags": [
+        "bom"
+      ],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "﻿---\ntags: [bom]\n---\n#afterbom",
+      "wiki": []
+    },
+    {
+      "bodyStart": 3,
+      "bodyStartUtf16": 1,
+      "bodyTags": [
+        "bomtag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "﻿# Bom heading #bomtag [[BomLink]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "BomLink"
+        }
+      ]
+    },
+    {
+      "bodyStart": 8,
+      "bodyStartUtf16": 8,
+      "bodyTags": [
+        "introtag"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\n---\nIntro [[Intro]] #introtag\n\n---\n\nRest",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "Intro"
+        }
+      ]
+    },
+    {
+      "bodyStart": 17,
+      "bodyStartUtf16": 17,
+      "bodyTags": [
+        "afterdots"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": true,
+      "md": [],
+      "src": "---\r\nk: v\r\n...\t\r\n#afterdots [[AfterDots]]",
+      "wiki": [
+        {
+          "embed": false,
+          "subpath": null,
+          "target": "AfterDots"
+        }
+      ]
+    },
+    {
+      "bodyStart": 0,
+      "bodyStartUtf16": 0,
+      "bodyTags": [
+        "notfm"
+      ],
+      "fmTags": [],
+      "hasFrontmatter": false,
+      "md": [],
+      "src": "--- \nk: v\n---\n#notfm",
+      "wiki": []
+    }
+  ],
+  "generator": "crates/cairn-core/tests/adv_links_fixture.rs",
+  "headings": [
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "Plain"
+        }
+      ],
+      "src": "# Plain\ntext\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 2,
+          "line": 0,
+          "text": "Bold title"
+        }
+      ],
+      "src": "## **Bold** title\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 2,
+          "line": 0,
+          "text": "C#"
+        }
+      ],
+      "src": "## C#\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 3,
+          "line": 0,
+          "text": "Closing"
+        }
+      ],
+      "src": "### Closing ###\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "Setext"
+        }
+      ],
+      "src": "Setext\n===\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "With [[Link|alias]]"
+        }
+      ],
+      "src": "# With [[Link|alias]]\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "code head"
+        }
+      ],
+      "src": "# `code` head\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "Spaced"
+        }
+      ],
+      "src": "#   Spaced   \nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 3,
+          "text": "Real"
+        }
+      ],
+      "src": "```\n# not a heading\n```\n# Real\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 4,
+          "text": "After"
+        }
+      ],
+      "src": "---\n# yaml comment\nk: v\n---\n# After\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 1,
+          "text": "Ok"
+        }
+      ],
+      "src": "    # indented code\n# Ok\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "quoted heading"
+        }
+      ],
+      "src": "> # quoted heading\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 1,
+          "line": 0,
+          "text": "Line one line two"
+        }
+      ],
+      "src": "Line one\nline two\n===\nx\n"
+    },
+    {
+      "headings": [
+        {
+          "level": 2,
+          "line": 0,
+          "text": "In a list"
+        },
+        {
+          "level": 2,
+          "line": 2,
+          "text": "A & B alt em html"
+        }
+      ],
+      "src": "- ## In a list\n\n## A &amp; B ![alt *em*](p.png) <b>html</b>\nx\n"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+[package]
+name = "cairn-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Vault, parsing, index and search logic for Cairn. No UI dependencies."
+
+[features]
+default = ["system-trash"]
+# Move deleted files to the OS trash (desktop). Off on Android.
+system-trash = ["dep:trash"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+log.workspace = true
+serde_yaml = "0.9"
+regex = "1"
+pulldown-cmark = { version = "0.13", default-features = false }
+blake3 = "1"
+rayon = "1"
+unicode-normalization = "0.1"
+percent-encoding = "2"
+trash = { version = "5", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

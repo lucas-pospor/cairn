@@ -1,0 +1,140 @@
+/* Rendered Markdown: preview pane, embeds and live-preview widgets. */
+.md-render {
+  font-family: var(--font-text);
+  font-size: var(--text-size);
+  line-height: 1.65;
+  overflow-wrap: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.md-render h1,
+  .md-render h2,
+  .md-render h3,
+  .md-render h4 {
+    line-height: 1.3;
+    margin: 1.4em 0 0.5em;
+    font-weight: 650;
+  }
+  .md-render h1 {
+    font-size: 1.6em;
+  }
+  .md-render h2 {
+    font-size: 1.35em;
+  }
+  .md-render h3 {
+    font-size: 1.15em;
+  }
+  .md-render > :first-child {
+    margin-top: 0;
+  }
+  .md-render a {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--link) 40%, transparent);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .md-render a.is-unresolved {
+    color: var(--unresolved);
+    text-decoration-style: dashed;
+  }
+  .md-render a.tag {
+    text-decoration: none;
+    background: var(--accent-soft);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 0.9em;
+  }
+  .md-render code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--bg-code);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  .md-render pre {
+    background: var(--bg-code);
+    padding: 12px 14px;
+    border-radius: 8px;
+    overflow: auto;
+  }
+  .md-render pre code {
+    background: none;
+    padding: 0;
+  }
+  .md-render blockquote {
+    margin: 1em 0;
+    padding: 2px 16px;
+    border-left: 3px solid var(--accent);
+    color: var(--text-muted);
+  }
+  .md-render table {
+    border-collapse: collapse;
+    margin: 1em 0;
+  }
+  .md-render th,
+  .md-render td {
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+  }
+  .md-render img {
+    max-width: 100%;
+  }
+  .md-render hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2em 0;
+  }
+  .md-render li.task-item {
+    list-style: none;
+    margin-left: -1.3em;
+  }
+  .md-render input.task {
+    margin-right: 6px;
+    accent-color: var(--accent);
+  }
+
+
+.md-render .embed {
+  display: block;
+  margin: 0.8em 0;
+  padding: 4px 16px 8px;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--bg-side) 70%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+.md-render .embed-title {
+  display: inline-block;
+  font-size: 0.82em;
+  font-weight: 600;
+  margin: 4px 0;
+  text-decoration: none;
+  color: var(--text-muted);
+}
+.md-render .embed-body > :first-child {
+  margin-top: 0.3em;
+}
+.md-render .embed-missing {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.md-render .embed-file {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+.md-render .embed-image {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.md-render .embed-media {
+  max-width: 100%;
+  display: block;
+}
+.md-render .frontmatter {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 1.2em;
+}

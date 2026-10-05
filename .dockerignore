@@ -1,0 +1,7 @@
+target
+**/node_modules
+app
+e2e
+scratch
+.git
+**/.env

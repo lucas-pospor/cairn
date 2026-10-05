@@ -1,0 +1,10 @@
+# Replace with your domain.
+notes.example.com {
+	reverse_proxy cairn:8787 {
+		# The server closes a connection that sits idle for 10 seconds, so
+		# Caddy must not reuse one that has been idle for longer than that.
+		transport http {
+			keepalive 5s
+		}
+	}
+}

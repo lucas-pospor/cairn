@@ -1,0 +1,37 @@
+[package]
+name = "cairn"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cairn: local-first Markdown notes"
+default-run = "cairn"
+
+[lib]
+name = "cairn_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+cairn-core = { path = "../../crates/cairn-core", default-features = false }
+cairn-sync = { path = "../../crates/cairn-sync" }
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+log.workspace = true
+env_logger = "0.11"
+percent-encoding = "2"
+base64 = "0.22"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+cairn-core = { path = "../../crates/cairn-core", features = ["system-trash"] }
+notify = "8.2"
+notify-debouncer-full = "0.7"
+
+# Turns SIGTERM into a window close (lib.rs). Tauri already runs on tokio.
+[target.'cfg(all(unix, not(any(target_os = "android", target_os = "ios"))))'.dependencies]
+tokio = { version = "1", features = ["signal"] }

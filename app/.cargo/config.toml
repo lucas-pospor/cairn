@@ -1,0 +1,12 @@
+[env]
+# wry's build script writes the Android Kotlin glue (src-tauri/gen/android/app/
+# src/main/.../generated) and puts WRY_<CLASS>_CLASS_EXTENSION in the body of
+# that class; it reads these variables only when building for Android.
+# Without an onRenderProcessGone override, a crash or low-memory kill of the
+# web view's renderer ends the whole app; MainActivity recovers instead.
+#
+# This file sits in app/ because an Android build runs cargo twice: tauri
+# android build/dev runs it in src-tauri/, Gradle's rustBuild task (through
+# npm) in app/. Both must see the same value, or each build writes the class
+# once without the override and Kotlin may compile that copy.
+WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION = "override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean = (view.context as? MainActivity)?.onRenderProcessGone(view) ?: false"
