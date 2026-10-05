@@ -1,8 +1,26 @@
-# Cairn
+<p align="center">
+  <img src="app/src-tauri/icons/icon.svg" width="112" alt="Cairn logo: a stack of stones">
+</p>
+
+<h1 align="center">Cairn</h1>
 
 Cairn is a local-first Markdown notes app in the style of Obsidian. A vault is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. The search index and link graph live in memory, and Cairn rebuilds them from the files.
 
 [docs/PLAN.md](docs/PLAN.md) has the design, the stack decisions and the status of each version. [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) describes each release. Section 9 of [docs/PLAN.md](docs/PLAN.md#9-known-limits) lists the known limits.
+
+## Screenshots
+
+![Cairn on Linux: a note in Live Preview, with the file tree on the left and the note's backlinks on the right](docs/images/editor.png)
+
+| Graph view (dark theme) | Full-text search |
+|:---:|:---:|
+| ![The graph view in the dark theme, with one note and its links highlighted](docs/images/graph.png) | ![Search results for "tomato" next to the open note](docs/images/search.png) |
+
+<p align="center">
+  <img src="docs/images/android-editor.png" width="270" alt="A note on Android, with the formatting toolbar">
+  &nbsp;&nbsp;
+  <img src="docs/images/android-files.png" width="270" alt="The file tree on Android">
+</p>
 
 ## Features
 
@@ -269,6 +287,7 @@ e2e/                 end-to-end tests against the built app (WebDriver on the de
 scripts/             build, test and benchmark helpers
 docs/PLAN.md         plan, decisions, status, known limits
 docs/RELEASE_NOTES.md  what is in each release
+docs/images/         screenshots used in this README
 LICENSE              MIT license
 ```
 
