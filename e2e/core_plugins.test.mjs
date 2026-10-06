@@ -75,9 +75,10 @@ test("lists each core plugin with its switch", async () => {
     `return [...document.querySelectorAll('[data-testid=core-plugin-row]')].map((r) => [r.dataset.id, r.querySelector('b').textContent, r.querySelector('[data-testid=core-plugin-toggle]').checked])`,
   );
   assert.deepEqual(rows, [
+    // Off by default: the wrong values in settings.json read as the default.
     ["daily-notes", "Daily notes", true],
+    ["random-note", "Random note", false],
     ["templates", "Templates", true],
-    // Off by default; the wrong value in settings.json reads as the default.
     ["unique-note", "Unique note creator", false],
   ]);
   await app.closeSettings();

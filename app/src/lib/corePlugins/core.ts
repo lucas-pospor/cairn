@@ -51,6 +51,8 @@ export interface CoreHost {
   uniquePath(dir: string, base: string): Promise<string>;
   toast(message: string, kind?: "info" | "error"): void;
   now(): Date;
+  /** A number from 0 up to (not including) 1, as Math.random. */
+  random(): number;
 }
 
 export interface CoreOption {

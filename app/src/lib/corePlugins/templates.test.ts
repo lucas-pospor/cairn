@@ -75,6 +75,7 @@ function fakeHost(files: string[], opts: { open?: string | null; choose?: string
     },
     toast: (m) => void toasts.push(m),
     now: () => NOW,
+    random: () => 0,
   };
   return { host, inserted, toasts, choices };
 }

@@ -2,7 +2,8 @@
 
 import type { CorePlugin } from "./core";
 import { dailyNotes } from "./dailyNotes";
+import { randomNote } from "./randomNote";
 import { templates } from "./templates";
 import { uniqueNote } from "./uniqueNote";
 
-export const CORE_PLUGINS: CorePlugin[] = [dailyNotes, templates, uniqueNote];
+export const CORE_PLUGINS: CorePlugin[] = [dailyNotes, randomNote, templates, uniqueNote];

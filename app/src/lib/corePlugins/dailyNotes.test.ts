@@ -44,6 +44,7 @@ function fakeHost(files: Record<string, string>) {
     },
     toast: (m) => void toasts.push(m),
     now: () => NOW,
+    random: () => 0,
   };
   return { host, files, created, opened, toasts };
 }

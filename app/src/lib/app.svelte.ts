@@ -175,6 +175,7 @@ class App {
     uniquePath: (dir, base) => backend.uniquePath(dir, base, "md"),
     toast: (m, kind) => this.toast(m, kind),
     now: () => new Date(),
+    random: () => Math.random(),
   };
 
   view: EditorView | null = null;
