@@ -222,15 +222,15 @@ fn run(seed: u64, faults: Faults, steps: u64, anchor: bool, pull: Pull) -> Outco
                 if let Some(e) = devs[d].engine.as_ref() {
                     let mut seen = std::collections::HashMap::new();
                     for (fid, t) in &e.state().files {
-                        if !t.deleted {
-                            if let Some(other) = seen.insert(t.path.clone(), fid.clone()) {
-                                let msg = format!("{} after step {step}: {other} and {fid} both track {}", devs[d].name, t.path);
-                                if trace {
-                                    eprintln!("    INVARIANT BROKEN on {msg}");
-                                }
-                                if invariant.len() < 3 {
-                                    invariant.push(msg);
-                                }
+                        if !t.deleted
+                            && let Some(other) = seen.insert(t.path.clone(), fid.clone())
+                        {
+                            let msg = format!("{} after step {step}: {other} and {fid} both track {}", devs[d].name, t.path);
+                            if trace {
+                                eprintln!("    INVARIANT BROKEN on {msg}");
+                            }
+                            if invariant.len() < 3 {
+                                invariant.push(msg);
                             }
                         }
                     }
@@ -350,10 +350,10 @@ fn sweep(faults: Faults, check_converge: bool, pull: Pull) {
         if !o.invariant.is_empty() {
             invariant_seeds.push(format!("seed {seed}: {}", o.invariant[0]));
         }
-        if check_converge {
-            if let Some(d) = o.diverged {
-                bad.push(format!("seed {seed}: {d}"));
-            }
+        if check_converge
+            && let Some(d) = o.diverged
+        {
+            bad.push(format!("seed {seed}: {d}"));
         }
     }
     eprintln!(

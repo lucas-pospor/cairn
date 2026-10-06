@@ -245,10 +245,10 @@ fn fs23_private_note_temp_file_is_not_world_readable() {
         let mut modes = std::collections::BTreeSet::new();
         while !s2.load(Ordering::Relaxed) {
             for e in fs::read_dir(&root).into_iter().flatten().flatten() {
-                if e.file_name().to_string_lossy().contains("cairn-tmp") {
-                    if let Ok(m) = e.metadata() {
-                        modes.insert(m.mode() & 0o777);
-                    }
+                if e.file_name().to_string_lossy().contains("cairn-tmp")
+                    && let Ok(m) = e.metadata()
+                {
+                    modes.insert(m.mode() & 0o777);
                 }
             }
         }

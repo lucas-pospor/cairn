@@ -21,6 +21,8 @@ fn fs18_file_named_backslash_does_not_break_sync() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("ok.md", "ok\n")]);
     a.sync();
+    // On Linux a backslash is an ordinary name character: a file named `\`.
+    #[allow(clippy::join_absolute_paths)]
     std::fs::write(a.root.join("\\"), "stray file\n").unwrap();
     let r = a.try_sync();
     println!("sync with a file named '\\\\': {:?}", r.as_ref().map(|r| r.pushed).map_err(|e| e.to_string()));

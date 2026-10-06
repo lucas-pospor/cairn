@@ -8,6 +8,7 @@
 //!   - links and tags on every line (the case from the finding)
 //!   - links only
 //!   - tags only
+//!
 //! A links x tags term would make only the first case grow faster than
 //! linearly.
 //!

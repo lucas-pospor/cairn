@@ -155,14 +155,14 @@ fn scan_survives_files_appearing_and_vanishing() {
         while !s2.load(Ordering::Relaxed) {
             let dir = root.join(format!("d{}", i % 10));
             let f = dir.join(format!("churn{}.md", i % 37));
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 let _ = fs::write(&f, format!("c{i}"));
             } else {
                 let _ = fs::remove_file(&f);
             }
             // whole folders appearing and disappearing
             let tmpdir = root.join(format!("burst{}", i % 3));
-            if i % 5 == 0 {
+            if i.is_multiple_of(5) {
                 let _ = fs::create_dir(&tmpdir);
                 let _ = fs::write(tmpdir.join("x.md"), "x");
             } else if i % 5 == 3 {

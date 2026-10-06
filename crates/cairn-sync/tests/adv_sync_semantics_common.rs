@@ -109,6 +109,9 @@ impl Transport for Hooked {
         }
         Ok(out)
     }
+    // fetch_update is deprecated since Rust 1.99 in favour of try_update,
+    // which is stable only since 1.95; the README supports 1.90.
+    #[allow(deprecated)]
     fn history(&self, v: &str, f: &str) -> Result<Vec<HistoryEntry>, SyncError> {
         if self.hooks.fail_history.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
             return Err(SyncError::Server("HTTP 500".into()));
@@ -395,6 +398,8 @@ pub struct CaseInsensitiveFs {
 }
 
 impl CaseInsensitiveFs {
+    // Passed to Device::with_fs, which takes the file system as a trait object.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(root: &Path) -> Arc<dyn VaultFs> {
         Arc::new(CaseInsensitiveFs { inner: StdFs::new(root, TrashMode::Vault).unwrap(), root: root.to_path_buf() })
     }
@@ -471,6 +476,8 @@ pub struct FatNamesFs {
 }
 
 impl FatNamesFs {
+    // Passed to Device::with_fs, which takes the file system as a trait object.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(root: &Path) -> Arc<dyn VaultFs> {
         Arc::new(FatNamesFs { inner: StdFs::new(root, TrashMode::Vault).unwrap() })
     }
@@ -531,6 +538,8 @@ impl Rng {
     pub fn new(seed: u64) -> Rng {
         Rng(seed.max(1))
     }
+    // A random-number generator, not an iterator.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;

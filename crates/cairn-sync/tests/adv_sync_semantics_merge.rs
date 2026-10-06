@@ -107,10 +107,10 @@ fn diffy_clean_merges_never_lose_or_duplicate_lines() {
         match diffy::merge(&join(&base), &join(&ours), &join(&theirs)) {
             Ok(m) => {
                 clean += 1;
-                if let Err(e) = check(&base, &ours, &theirs, &m) {
-                    if bad.len() < 5 {
-                        bad.push(format!("case {case}: {e}\nbase {base:?}\nours {ours:?}\ntheirs {theirs:?}\nmerged {m:?}"));
-                    }
+                if let Err(e) = check(&base, &ours, &theirs, &m)
+                    && bad.len() < 5
+                {
+                    bad.push(format!("case {case}: {e}\nbase {base:?}\nours {ours:?}\ntheirs {theirs:?}\nmerged {m:?}"));
                 }
             }
             Err(_) => conflicts += 1,
@@ -153,10 +153,10 @@ fn diffy_clean_merges_with_repeated_lines_never_lose_or_duplicate_unique_lines()
                 err = Some(format!("inserted line {l:?} appears {} times", cnt(l)));
             }
         }
-        if let Some(e) = err {
-            if bad.len() < 5 {
-                bad.push(format!("case {case}: {e}\nbase {base:?}\nours {ours:?}\ntheirs {theirs:?}\nmerged {m:?}"));
-            }
+        if let Some(e) = err
+            && bad.len() < 5
+        {
+            bad.push(format!("case {case}: {e}\nbase {base:?}\nours {ours:?}\ntheirs {theirs:?}\nmerged {m:?}"));
         }
     }
     eprintln!("{cases} cases with repeated lines: {clean} clean");

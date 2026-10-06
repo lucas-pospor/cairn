@@ -23,6 +23,8 @@ use cairn_core::path as vpath;
 use serde_json::{json, Value};
 use unicode_normalization::UnicodeNormalization;
 
+// Grouped to read as words.
+#[allow(clippy::unusual_byte_groupings)]
 const SEED: u64 = 0x5eed_1ced_c0ffee;
 const VAULTS: usize = 100;
 const CASES_PER_VAULT: usize = 20;
@@ -292,14 +294,15 @@ pub fn plan_resolve(files: &[String], target: &str, source: &str) -> Option<Stri
     }
     // 2. relative to the source folder (with . and ..). A bare name is
     //    covered by the "linking note's folder" tie-break below.
-    if !rooted && t.contains('/') {
-        if let Some(rel) = vpath::resolve_relative(src_dir, &t) {
-            let rl = rel.to_lowercase();
-            let rw = strip_note_suffix(&rl).to_string();
-            let c: Vec<&String> = files.iter().filter(|f| noext(f) == rw).collect();
-            if !c.is_empty() {
-                return best(c, "\u{0}");
-            }
+    if !rooted
+        && t.contains('/')
+        && let Some(rel) = vpath::resolve_relative(src_dir, &t)
+    {
+        let rl = rel.to_lowercase();
+        let rw = strip_note_suffix(&rl).to_string();
+        let c: Vec<&String> = files.iter().filter(|f| noext(f) == rw).collect();
+        if !c.is_empty() {
+            return best(c, "\u{0}");
         }
     }
     // 3. basename (folder part, minus ./ and ../ segments, must match the end)
@@ -337,10 +340,10 @@ fn classify_plan_diff(files: &[String], target: &str, rust: &Option<String>, pla
     if t.contains('\\') {
         return "backslash".into();
     }
-    if let (Some(a), Some(b)) = (rust, plan) {
-        if a.len().cmp(&b.len()) != a.chars().count().cmp(&b.chars().count()) {
-            return "length-in-bytes".into();
-        }
+    if let (Some(a), Some(b)) = (rust, plan)
+        && a.len().cmp(&b.len()) != a.chars().count().cmp(&b.chars().count())
+    {
+        return "length-in-bytes".into();
     }
     let _ = files;
     "other".into()
@@ -437,10 +440,9 @@ fn generate() -> Generated {
                     && idx.resolve(t, "").as_deref() == Some(f.as_str())
             };
             let text = texts.into_iter().find(reads_back).map(str::to_string);
-            for src in ["notes/daily/Source.md"] {
-                let rust = text.as_ref().and_then(|t| idx.resolve(t, src));
-                roundtrip.push(json!({ "path": f, "text": opt(&text), "source": src, "rust": opt(&rust) }));
-            }
+            let src = "notes/daily/Source.md";
+            let rust = text.as_ref().and_then(|t| idx.resolve(t, src));
+            roundtrip.push(json!({ "path": f, "text": opt(&text), "source": src, "rust": opt(&rust) }));
         }
         vaults.push(json!({ "files": files, "dirs": dirs, "cases": cases, "linkText": roundtrip }));
     }

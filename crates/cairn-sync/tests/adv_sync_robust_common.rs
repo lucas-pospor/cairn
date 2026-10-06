@@ -603,6 +603,8 @@ pub fn conflict_copies(files: &[(String, String)]) -> Vec<String> {
 pub struct Rng(pub u64);
 
 impl Rng {
+    // A random-number generator, not an iterator.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;

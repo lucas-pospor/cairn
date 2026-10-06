@@ -89,10 +89,10 @@ fn read_resp(s: &mut TcpStream, timeout: Duration) -> Resp {
                 if let Some(end) = find(&buf, b"\r\n\r\n") {
                     let head = String::from_utf8_lossy(&buf[..end]).to_ascii_lowercase();
                     let cl = head.lines().find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)));
-                    if let Some(cl) = cl {
-                        if buf.len() >= end + 4 + cl {
-                            return parse(buf, false);
-                        }
+                    if let Some(cl) = cl
+                        && buf.len() >= end + 4 + cl
+                    {
+                        return parse(buf, false);
                     }
                 }
             }
@@ -486,7 +486,7 @@ fn authorization_variants() {
         format!("Bearer  {TOKEN}"),
         format!("Bearer\t{TOKEN}"),
         format!("Basic {TOKEN}"),
-        format!("{TOKEN}"),
+        TOKEN.to_string(),
         format!("Bearer {}", &TOKEN[..TOKEN.len() - 1]),
         format!("Bearer {TOKEN}x"),
         format!("Bearer {TOKEN},{TOKEN}"),

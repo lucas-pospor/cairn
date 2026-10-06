@@ -49,10 +49,13 @@ fn synced_pair(files: &[(&str, &str)]) -> (Server, Device, Device) {
     (srv, a, b)
 }
 
+/// (path, content) pairs.
+type Files = Vec<(String, String)>;
+
 /// B creates Meeting.md; A syncs while an external program creates its own
 /// Meeting.md right after A's scan. Returns (A files, A trash, does the
 /// user's text survive anywhere on A or B after convergence).
-fn race(rtt: Duration, watcher: bool) -> (Vec<(String, String)>, Vec<(String, String)>, bool) {
+fn race(rtt: Duration, watcher: bool) -> (Files, Files, bool) {
     let (_srv, mut a, mut b) = synced_pair(&[("x.md", "x\n")]);
     b.write("Meeting.md", "phone agenda\n");
     b.sync_ok();

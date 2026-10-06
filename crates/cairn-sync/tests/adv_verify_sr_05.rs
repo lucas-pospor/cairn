@@ -50,10 +50,10 @@ fn on_first_changes(d: &mut Device, f: impl FnOnce(&Arc<Vault>) + Send + 'static
     let t = Arc::new(FaultTransport::passthrough(http(&d.url)));
     let mut f = Some(f);
     *t.before.lock() = Some(Box::new(move |op, _| {
-        if op == "changes" {
-            if let Some(f) = f.take() {
-                f(&vault);
-            }
+        if op == "changes"
+            && let Some(f) = f.take()
+        {
+            f(&vault);
         }
     }));
     d.set_transport(Box::new(SharedTransport(t)));

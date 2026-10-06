@@ -55,10 +55,10 @@ fn during_pull(d: &mut Device, f: impl FnOnce(&Arc<cairn_core::Vault>, &std::pat
     let t = Arc::new(FaultTransport::passthrough(http(&d.url)));
     let mut f = Some(f);
     *t.before.lock() = Some(Box::new(move |op, _| {
-        if op == "changes" {
-            if let Some(f) = f.take() {
-                f(&vault, &root);
-            }
+        if op == "changes"
+            && let Some(f) = f.take()
+        {
+            f(&vault, &root);
         }
     }));
     d.set_transport(Box::new(SharedTransport(t)));

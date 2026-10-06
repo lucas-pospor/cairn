@@ -29,7 +29,6 @@ const PASS: &str = "correct horse battery";
 struct Server {
     url: String,
     _rt: tokio::runtime::Runtime,
-    db_path: PathBuf,
     _dir: tempfile::TempDir,
 }
 
@@ -42,7 +41,7 @@ fn server() -> Server {
     let listener = rt.block_on(tokio::net::TcpListener::bind("127.0.0.1:0")).unwrap();
     let addr = listener.local_addr().unwrap();
     rt.spawn(async move { cairn_server::serve(listener, st).await });
-    Server { url: format!("http://{addr}"), _rt: rt, db_path, _dir: dir }
+    Server { url: format!("http://{addr}"), _rt: rt, _dir: dir }
 }
 
 /// A raw client that holds the vault key: the "malicious or buggy other
@@ -83,7 +82,6 @@ impl RawClient {
 /// An honest device unlocking the same vault with the passphrase.
 struct Honest {
     root: PathBuf,
-    vault: Arc<Vault>,
     engine: SyncEngine,
     _dirs: (tempfile::TempDir, tempfile::TempDir),
 }
@@ -100,34 +98,12 @@ impl Honest {
         let vault = Arc::new(Vault::open(Arc::new(StdFs::new(vd.path(), TrashMode::Vault).unwrap())).unwrap());
         let settings = SyncSettings { server: srv.url.clone(), token: TOKEN.into(), vault_id: vault_id.into(), device: name.into() };
         let engine =
-            SyncEngine::connect_with(vault.clone(), sd.path(), settings, PASS, Box::new(HttpTransport::new(&srv.url, TOKEN)), FAST_KDF).unwrap();
-        Honest { root: vd.path().to_path_buf(), vault, engine, _dirs: (vd, sd) }
+            SyncEngine::connect_with(vault, sd.path(), settings, PASS, Box::new(HttpTransport::new(&srv.url, TOKEN)), FAST_KDF).unwrap();
+        Honest { root: vd.path().to_path_buf(), engine, _dirs: (vd, sd) }
     }
 
-    fn files(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        walk(&self.root, &self.root, &mut out);
-        out.sort();
-        out
-    }
     fn exists(&self, p: &str) -> bool {
         self.root.join(p).exists()
-    }
-}
-
-fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
-    for e in fs::read_dir(dir).unwrap() {
-        let e = e.unwrap();
-        let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-        let p = e.path();
-        if p.is_dir() {
-            walk(root, &p, out);
-        } else {
-            out.push(p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
-        }
     }
 }
 

@@ -1108,11 +1108,11 @@ fn during_pull(d: &mut Device, f: impl FnOnce(&Device) + Send + 'static) {
     let mut f = Some(f);
     // the closure needs a Device-like view: give it a throwaway handle
     *t.before.lock() = Some(Box::new(move |op, _| {
-        if op == "changes" {
-            if let Some(f) = f.take() {
-                let view = DeviceView { root: root.clone(), vault: vault.clone(), name: name.clone() };
-                f(&view.as_device_stub());
-            }
+        if op == "changes"
+            && let Some(f) = f.take()
+        {
+            let view = DeviceView { root: root.clone(), vault: vault.clone(), name: name.clone() };
+            f(&view.as_device_stub());
         }
     }));
     d.set_transport(Box::new(SharedTransport(t)));

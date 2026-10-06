@@ -105,10 +105,10 @@ fn dup_paths(d: &Device) -> Vec<String> {
     if let Some(e) = d.engine.as_ref() {
         let mut seen = std::collections::HashMap::new();
         for (fid, t) in &e.state().files {
-            if !t.deleted {
-                if let Some(other) = seen.insert(t.path.clone(), fid.clone()) {
-                    out.push(format!("{}: {other} and {fid} both track {}", d.name, t.path));
-                }
+            if !t.deleted
+                && let Some(other) = seen.insert(t.path.clone(), fid.clone())
+            {
+                out.push(format!("{}: {other} and {fid} both track {}", d.name, t.path));
             }
         }
     }
@@ -121,7 +121,7 @@ fn replay_seed_1423_with_head_log() {
     let log = std::env::var("SR14_LOG").is_ok();
     let on = Arc::new(AtomicBool::new(log));
     let srv = server();
-    let mut devs = vec![Device::new(&srv, "laptop", &[]), Device::new(&srv, "phone", &[]), Device::new(&srv, "tablet", &[])];
+    let mut devs = [Device::new(&srv, "laptop", &[]), Device::new(&srv, "phone", &[]), Device::new(&srv, "tablet", &[])];
     for d in devs.iter_mut() {
         install_log(d, on.clone());
     }

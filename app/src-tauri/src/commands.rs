@@ -55,10 +55,10 @@ fn emit(app: &AppHandle, changes: &[Change]) {
         let _ = app.emit("vault-changed", changes);
         // Local change: let sync know.
         use tauri::Manager;
-        if let Some(st) = app.try_state::<AppState>() {
-            if let Some(s) = st.sync.lock().as_ref() {
-                s.poke();
-            }
+        if let Some(st) = app.try_state::<AppState>()
+            && let Some(s) = st.sync.lock().as_ref()
+        {
+            s.poke();
         }
     }
 }

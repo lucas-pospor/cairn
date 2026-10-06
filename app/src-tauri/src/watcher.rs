@@ -54,10 +54,10 @@ pub fn start(app: AppHandle, vault: Arc<Vault>, root: std::path::PathBuf) -> not
                 log::debug!("external changes: {changes:?}");
                 let _ = app.emit("vault-changed", &changes);
                 use tauri::Manager;
-                if let Some(st) = app.try_state::<crate::AppState>() {
-                    if let Some(s) = st.sync.lock().as_ref() {
-                        s.poke();
-                    }
+                if let Some(st) = app.try_state::<crate::AppState>()
+                    && let Some(s) = st.sync.lock().as_ref()
+                {
+                    s.poke();
                 }
             }
             Ok(_) => {}

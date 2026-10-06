@@ -273,10 +273,10 @@ impl SyncManager {
                 inner.engine = engine;
             }
         }
-        if let Ok(r) = &result {
-            if !r.changes.is_empty() {
-                self.emit("sync-changed", SyncChanges { root: &self.root, changes: &r.changes });
-            }
+        if let Ok(r) = &result
+            && !r.changes.is_empty()
+        {
+            self.emit("sync-changed", SyncChanges { root: &self.root, changes: &r.changes });
         }
         self.emit_status();
         self.status()

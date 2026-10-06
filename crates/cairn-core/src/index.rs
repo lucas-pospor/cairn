@@ -210,14 +210,14 @@ impl Index {
     pub fn remove(&mut self, path: &str) {
         self.unlink_note(path);
         self.hashes.remove(path);
-        if let Some(e) = self.entries.remove(path) {
-            if e.kind == EntryKind::File {
-                let key = vpath::link_key_for_file(path);
-                if let Some(set) = self.by_key.get_mut(&key) {
-                    set.remove(path);
-                    if set.is_empty() {
-                        self.by_key.remove(&key);
-                    }
+        if let Some(e) = self.entries.remove(path)
+            && e.kind == EntryKind::File
+        {
+            let key = vpath::link_key_for_file(path);
+            if let Some(set) = self.by_key.get_mut(&key) {
+                set.remove(path);
+                if set.is_empty() {
+                    self.by_key.remove(&key);
                 }
             }
         }
@@ -242,10 +242,10 @@ impl Index {
             let hash = self.hashes.get(&old).copied();
             self.remove(&old);
             e.path = new;
-            if old == from {
-                if let Some(m) = mtime {
-                    e.mtime = m;
-                }
+            if old == from
+                && let Some(m) = mtime
+            {
+                e.mtime = m;
             }
             match (note, hash) {
                 (Some(content), Some(h)) if vpath::is_markdown(&e.path) => self.put_note(e, content, h),

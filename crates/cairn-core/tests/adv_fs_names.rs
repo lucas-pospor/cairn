@@ -184,6 +184,8 @@ fn precomposed_emoji_and_zero_width_names_round_trip() {
 fn fs18_backslash_names_do_not_map_to_wrong_paths() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("back\\slash.md"), "b").unwrap();
+    // On Linux a backslash is an ordinary name character: a file named `\`.
+    #[allow(clippy::join_absolute_paths)]
     fs::write(d.path().join("\\"), "root?").unwrap();
     fs::write(d.path().join("ok.md"), "ok").unwrap();
     let v = open(d.path());

@@ -36,6 +36,8 @@ struct NewNameCiFs {
 }
 
 impl NewNameCiFs {
+    // Passed to Device::with_fs, which takes the file system as a trait object.
+    #[allow(clippy::new_ret_no_self)]
     fn new(root: &Path) -> Arc<dyn VaultFs> {
         Arc::new(NewNameCiFs { inner: StdFs::new(root, TrashMode::Vault).unwrap(), root: root.to_path_buf() })
     }
