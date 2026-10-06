@@ -20,6 +20,14 @@ import type {
   WriteResult,
 } from "./types";
 import type { PluginApproval } from "./plugins";
+import { isAndroid } from "./platform";
+
+/** Base64 of `bytes`, in pieces so a large file does not overflow the call stack. */
+function base64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
 
 /** URL under which the web view can load a vault file (images, media). */
 export function vaultUrl(path: string): string {
@@ -71,8 +79,10 @@ export const backend = {
   /** What openExternally would do with the file, without opening it. */
   openExternallyCheck: (path: string) => invoke<"opens" | "type" | "linktype" | "executable" | "notfile">("open_externally_check", { path }),
   revealInFileManager: (path: string) => invoke<void>("reveal_in_file_manager", { path }),
+  /** Store pasted or dropped bytes as a new file in `dir`; returns its vault path. */
   saveAttachment: (dir: string, name: string, bytes: Uint8Array) =>
-    invoke<string>("save_attachment", bytes, {
+    // Tauri cannot send raw bytes to a command on Android: base64 there.
+    invoke<string>("save_attachment", isAndroid ? { data: base64(bytes) } : bytes, {
       headers: { "x-dir": encodeURIComponent(dir), "x-name": encodeURIComponent(name) },
     }),
   syncStatus: () => invoke<SyncStatus>("sync_status"),

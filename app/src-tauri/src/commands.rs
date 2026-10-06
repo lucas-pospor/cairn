@@ -434,14 +434,29 @@ pub async fn read_text_file(state: State<'_, AppState>, path: String) -> CmdResu
     Ok(String::from_utf8(bytes).ok())
 }
 
-/// Store pasted or dropped bytes as a new file. The body is the raw bytes;
-/// the `x-dir` and `x-name` headers (percent-encoded) say where. A free name
-/// is chosen if the file exists. Returns the vault path.
+/// The bytes of a `save_attachment` body. The desktop sends them raw.
+/// Android cannot: Tauri always delivers a JSON body there, so the app sends
+/// `{ "data": "..." }` instead, with the bytes in base64.
+fn attachment_bytes(body: &tauri::ipc::InvokeBody) -> CmdResult<std::borrow::Cow<'_, [u8]>> {
+    use base64::Engine;
+    match body {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok(bytes.into()),
+        tauri::ipc::InvokeBody::Json(json) => json
+            .get("data")
+            .and_then(|s| s.as_str())
+            .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
+            .map(Into::into)
+            .ok_or_else(|| CoreError::InvalidPath("expected the file's bytes, raw or as base64".into())),
+    }
+}
+
+/// Store pasted or dropped bytes as a new file. The body holds the bytes
+/// (see `attachment_bytes`); the `x-dir` and `x-name` headers
+/// (percent-encoded) say where. A free name is chosen if the file exists.
+/// Returns the vault path.
 #[tauri::command]
 pub async fn save_attachment(app: AppHandle, state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err(CoreError::InvalidPath("expected raw bytes".into()));
-    };
+    let bytes = attachment_bytes(request.body())?;
     let header = |k: &str| -> String {
         request
             .headers()
@@ -458,7 +473,7 @@ pub async fn save_attachment(app: AppHandle, state: State<'_, AppState>, request
         _ => (name.clone(), String::new()),
     };
     let path = v.unique_path(&dir, &stem, &ext)?;
-    let r = v.create_file(&path, bytes)?;
+    let r = v.create_file(&path, &bytes)?;
     emit(&app, &r.changes);
     Ok(path)
 }
@@ -799,5 +814,21 @@ mod tests {
         symlink(&pdf, d.join("other.pdf")).unwrap();
         assert_eq!(open_check(&d.join("other.pdf")).unwrap(), OpenCheck::Opens);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn attachment_bytes_come_raw_or_as_base64() {
+        use base64::Engine;
+        use serde_json::json;
+        use tauri::ipc::InvokeBody;
+        let all: Vec<u8> = (0..=255).collect();
+        assert_eq!(&*attachment_bytes(&InvokeBody::Raw(all.clone())).unwrap(), &all[..]);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&all);
+        assert_eq!(&*attachment_bytes(&InvokeBody::Json(json!({ "data": b64 }))).unwrap(), &all[..]);
+        assert_eq!(&*attachment_bytes(&InvokeBody::Json(json!({ "data": "" }))).unwrap(), b"");
+        // What Tauri makes of a Uint8Array on Android, and broken input: refused.
+        assert!(attachment_bytes(&InvokeBody::Json(json!([1, 2, 3]))).is_err());
+        assert!(attachment_bytes(&InvokeBody::Json(json!({ "data": "not base64!" }))).is_err());
+        assert!(attachment_bytes(&InvokeBody::Json(json!({ "data": 3 }))).is_err());
     }
 }

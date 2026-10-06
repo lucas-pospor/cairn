@@ -10,6 +10,7 @@ Cairn now calls the folder of notes a notebook. Before, it said vault. Only the 
 
 - On Android, the card of an embedded file that does not show as text, such as a PDF, said that the file opens in another app. Cairn cannot do that on Android yet, and the card now says so, as a tap on its name already did.
 - On the desktop, the card of an embedded file that Cairn does not open in another app (a program, a script, a file of an unknown type or with no extension, a link to such a file, or a text file marked as executable) said that the file opens in another app. The card now says that Cairn does not open it, as a click on its name already did.
+- On Android, pasting or dropping a file into a note, such as an image, did not save it. Cairn showed "Could not save" with the error "Invalid path: expected raw bytes". The file is now saved in the attachment folder and linked in the note, as on the desktop.
 
 ## 1.2.0 (2026-10-06)
 
