@@ -201,12 +201,28 @@ fn fs18_backslash_names_do_not_map_to_wrong_paths() {
     assert!(problems.is_empty(), "listed {listed:?}; problems {problems:?}");
 }
 
+/// `a`, then `bad`, then `b`, as a name that is not Unicode: `bad` is a byte
+/// that is not UTF-8 on Unix, and an unpaired surrogate on Windows, where
+/// names are UTF-16.
+fn not_unicode(a: &str, bad: u8, b: &str) -> std::ffi::OsString {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec([a.as_bytes(), &[bad], b.as_bytes()].concat())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        let wide: Vec<u16> = a.encode_utf16().chain([0xd800 | u16::from(bad)]).chain(b.encode_utf16()).collect();
+        std::ffi::OsString::from_wide(&wide)
+    }
+}
+
 #[test]
 fn non_utf8_file_names_are_skipped_without_breaking_open() {
-    use std::os::unix::ffi::OsStrExt;
     let d = tempfile::tempdir().unwrap();
-    fs::write(d.path().join(std::ffi::OsStr::from_bytes(b"bad\xffname.md")), "x").unwrap();
-    fs::create_dir(d.path().join(std::ffi::OsStr::from_bytes(b"dir\xfe"))).unwrap();
+    fs::write(d.path().join(not_unicode("bad", 0xff, "name.md")), "x").unwrap();
+    fs::create_dir(d.path().join(not_unicode("dir", 0xfe, ""))).unwrap();
     fs::write(d.path().join("good.md"), "g").unwrap();
     let v = open(d.path());
     assert_eq!(entries(&v), vec!["good.md"]);
