@@ -40,6 +40,9 @@ impl Rng {
 }
 
 const FOLDERS: &[&str] = &["", "", "a", "a/b", "notes", "Notes", "my folder", "ééé", "日本"];
+/// False on a file system that ignores case (Windows, macOS): there
+/// "Notes" is the folder "notes", and "Note.md" the file "note.md".
+const CASE_SENSITIVE: bool = !cfg!(any(windows, target_os = "macos"));
 const NAMES: &[&str] = &["Note", "note", "Alpha", "Beta", "Gamma", "Café", "Daily 2024", "x.y", "Leaf", "Ünï"];
 const WORDS: &[&str] = &[
     "garden", "gardening", "river", "stone", "harvest", "programming", "program", "café", "naïve", "straße", "日本語",
@@ -184,6 +187,21 @@ impl Run {
         }
     }
 
+    /// True if new path `p`, or a folder on its way, differs only in case
+    /// from an entry of the vault, on a file system that takes it for that
+    /// entry. Ops that would make such a path are skipped there.
+    fn clashes(&self, p: &str) -> bool {
+        if CASE_SENSITIVE {
+            return false;
+        }
+        let have: Vec<String> = self.v.entries().into_iter().map(|e| e.path).collect();
+        let parts: Vec<&str> = p.split('/').collect();
+        (1..=parts.len()).any(|n| {
+            let q = parts[..n].join("/");
+            have.iter().any(|h| *h != q && h.to_lowercase() == q.to_lowercase())
+        })
+    }
+
     fn rand_new_note_path(&mut self) -> String {
         let folder = *self.r.pick(FOLDERS);
         let name = format!("{}{}.md", self.r.pick(NAMES), if self.r.pct(30) { format!(" {}", self.r.below(5)) } else { String::new() });
@@ -197,6 +215,9 @@ impl Run {
         match op {
             0 | 1 => {
                 let p = self.rand_new_note_path();
+                if self.clashes(&p) {
+                    return;
+                }
                 let c = gen_content(&mut self.r);
                 self.log.push(format!("create_note {p:?}"));
                 let _ = self.v.create_note(&p, &c);
@@ -210,6 +231,9 @@ impl Run {
             4 if !notes.is_empty() => {
                 let from = self.r.pick(&notes).clone();
                 let to = self.rand_new_note_path();
+                if self.clashes(&to) {
+                    return;
+                }
                 let parent = cairn_core::path::parent(&to).to_string();
                 let _ = self.v.ensure_folder(&parent);
                 self.log.push(format!("rename {from:?} -> {to:?}"));
@@ -218,6 +242,9 @@ impl Run {
             5 if !dirs.is_empty() => {
                 let from = self.r.pick(&dirs).clone();
                 let to = cairn_core::path::join(cairn_core::path::parent(&from), &format!("{} {}", self.r.pick(NAMES), self.r.below(9)));
+                if self.clashes(&to) {
+                    return;
+                }
                 self.log.push(format!("rename folder {from:?} -> {to:?}"));
                 let _ = self.v.rename(&from, &to);
             }
@@ -234,12 +261,18 @@ impl Run {
             8 => {
                 let folder = *self.r.pick(FOLDERS);
                 let p = cairn_core::path::join(folder, if self.r.pct(50) { "pic.png" } else { "doc.pdf" });
+                if self.clashes(&p) {
+                    return;
+                }
                 self.log.push(format!("create_file {p:?}"));
                 let _ = self.v.create_file(&p, &[1, 2, 3, self.r.below(200) as u8]);
             }
             9 | 10 => {
                 // external create or edit
                 let p = if !notes.is_empty() && self.r.pct(60) { self.r.pick(&notes).clone() } else { self.rand_new_note_path() };
+                if self.clashes(&p) {
+                    return;
+                }
                 let c = gen_content(&mut self.r);
                 self.log.push(format!("external write {p:?}"));
                 fs::create_dir_all(self.abs(cairn_core::path::parent(&p))).unwrap();
@@ -251,7 +284,7 @@ impl Run {
                 // external rename (sometimes with an edit)
                 let from = self.r.pick(&notes).clone();
                 let to = self.rand_new_note_path();
-                if self.abs(&to).exists() {
+                if self.abs(&to).exists() || self.clashes(&to) {
                     return;
                 }
                 fs::create_dir_all(self.abs(cairn_core::path::parent(&to))).unwrap();
@@ -269,7 +302,7 @@ impl Run {
                 // external folder rename
                 let from = self.r.pick(&dirs).clone();
                 let to = cairn_core::path::join(cairn_core::path::parent(&from), &format!("{} x{}", self.r.pick(NAMES), self.r.below(9)));
-                if self.abs(&to).exists() {
+                if self.abs(&to).exists() || self.clashes(&to) {
                     return;
                 }
                 self.log.push(format!("external folder rename {from:?} -> {to:?}"));
@@ -301,6 +334,9 @@ impl Run {
                     return;
                 }
                 let sub = format!("{top}/{}", self.r.pick(NAMES));
+                if self.clashes(&top) {
+                    return;
+                }
                 fs::create_dir_all(self.abs(&sub)).unwrap();
                 for (i, dir) in [top.clone(), sub.clone()].iter().enumerate() {
                     let p = format!("{dir}/{}{i}.md", self.r.pick(NAMES));
@@ -316,7 +352,7 @@ impl Run {
                 // external rename seen as two separate watcher batches
                 let from = self.r.pick(&notes).clone();
                 let to = self.rand_new_note_path();
-                if self.abs(&to).exists() {
+                if self.abs(&to).exists() || self.clashes(&to) {
                     return;
                 }
                 fs::create_dir_all(self.abs(cairn_core::path::parent(&to))).unwrap();
