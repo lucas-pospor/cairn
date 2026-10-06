@@ -296,10 +296,12 @@ fn paths_beyond_path_max_are_skipped_without_failing_open() {
     fs::write(d.path().join("top.md"), "top").unwrap();
     let seg = "s".repeat(250);
     // 18 levels of 250-byte names (> 4096 bytes in total), built with relative cd.
-    let mk = format!("cd '{}' && for i in $(seq 1 18); do mkdir {seg} && cd {seg} || exit 1; done && echo deep > deep.md", d.path().display());
+    // cd -P because a logical cd in dash (/bin/sh on Debian and Ubuntu) chdirs to
+    // the joined absolute path, which fails beyond PATH_MAX.
+    let mk = format!("cd '{}' && for i in $(seq 1 18); do mkdir {seg} && cd -P {seg} || exit 1; done && echo deep > deep.md", d.path().display());
     assert!(std::process::Command::new("sh").arg("-c").arg(&mk).status().unwrap().success());
     let r = try_open(d.path());
-    let rm = format!("cd '{}' && for i in $(seq 1 18); do cd {seg}; done; rm deep.md; for i in $(seq 1 18); do cd .. && rmdir {seg}; done", d.path().display());
+    let rm = format!("cd '{}' && for i in $(seq 1 18); do cd -P {seg}; done; rm deep.md; for i in $(seq 1 18); do cd -P .. && rmdir {seg}; done", d.path().display());
     let _ = std::process::Command::new("sh").arg("-c").arg(&rm).status();
     let v = r.unwrap();
     assert!(v.index().note("top.md").is_some());
