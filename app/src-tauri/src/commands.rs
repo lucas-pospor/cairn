@@ -101,9 +101,18 @@ fn vault_fs(app: &AppHandle, path: &str) -> CmdResult<(Arc<dyn cairn_core::Vault
         return Ok((Arc::new(fs), path.to_string(), name));
     }
     let fs = StdFs::new(path, TrashMode::System)?;
-    let root = fs.root().to_path_buf();
+    let (root, name) = folder_root(&fs);
+    Ok((Arc::new(fs), root, name))
+}
+
+/// The root of a folder vault as the app shows and stores it (recent
+/// vaults, sync state, plugin approvals), and the vault's name. On Windows
+/// the canonical root starts with `\\?\`, which is left out of a drive path
+/// (`C:\...`) that means the same without it; `fs` keeps the canonical root.
+fn folder_root(fs: &StdFs) -> (String, String) {
+    let root = dunce::simplified(fs.root());
     let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root.to_string_lossy().into_owned());
-    Ok((Arc::new(fs), root.to_string_lossy().into_owned(), name))
+    (root.to_string_lossy().into_owned(), name)
 }
 
 /// A typed "~/Notes" means Notes in the home folder, as in a shell.
@@ -494,6 +503,8 @@ pub async fn note_info(state: State<'_, AppState>, path: String) -> CmdResult<Op
 }
 
 /// Absolute OS path of a vault entry (desktop only; vaults there are folders).
+/// On Windows it starts with `\\?\`, which the shell and many programs
+/// refuse: give it to them through `dunce::simplified`.
 fn os_path(state: &State<'_, AppState>, path: &str) -> CmdResult<PathBuf> {
     let v = vault(state)?;
     let rel = cairn_core::path::normalize(path)?;
@@ -593,7 +604,7 @@ pub async fn open_externally(state: State<'_, AppState>, path: String) -> CmdRes
     if let Some(why) = refusal {
         return Err(CoreError::Io(why.into()));
     }
-    tauri_plugin_opener::open_path(&p, None::<&str>).map_err(|e| CoreError::Io(e.to_string()))
+    tauri_plugin_opener::open_path(dunce::simplified(&p), None::<&str>).map_err(|e| CoreError::Io(e.to_string()))
 }
 
 /// What `open_externally` would do with a file, without opening it. The card
@@ -619,7 +630,7 @@ fn is_executable(_: &std::fs::Metadata) -> bool {
 #[tauri::command]
 pub async fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> CmdResult<()> {
     let p = os_path(&state, &path)?;
-    tauri_plugin_opener::reveal_item_in_dir(&p).map_err(|e| CoreError::Io(e.to_string()))
+    tauri_plugin_opener::reveal_item_in_dir(dunce::simplified(&p)).map_err(|e| CoreError::Io(e.to_string()))
 }
 
 // ---------- sync ----------
@@ -825,5 +836,17 @@ mod tests {
         assert!(attachment_bytes(&InvokeBody::Json(json!([1, 2, 3]))).is_err());
         assert!(attachment_bytes(&InvokeBody::Json(json!({ "data": "not base64!" }))).is_err());
         assert!(attachment_bytes(&InvokeBody::Json(json!({ "data": 3 }))).is_err());
+    }
+
+    #[test]
+    fn folder_root_has_no_verbatim_prefix() {
+        let d = temp("root");
+        let fs = StdFs::new(&d, TrashMode::Permanent).unwrap();
+        let (root, name) = folder_root(&fs);
+        assert!(!root.starts_with(r"\\?\"), "{root}");
+        assert_eq!(name, d.file_name().unwrap().to_string_lossy());
+        // The root the app keeps opens the same folder again.
+        assert_eq!(StdFs::new(&root, TrashMode::Permanent).unwrap().root(), fs.root());
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

@@ -18,6 +18,10 @@ const FULL_RESCAN_THRESHOLD: usize = 500;
 
 pub fn start(app: AppHandle, vault: Arc<Vault>, root: std::path::PathBuf) -> notify::Result<Watcher> {
     let mapper = StdFs::new(&root, Default::default()).map_err(|e| notify::Error::generic(&e.to_string()))?;
+    // notify reports paths under the folder it watches, and `mapper` strips
+    // its canonical root from them: watch that root. On Windows it starts
+    // with `\\?\` and `root`, as the app shows it, does not.
+    let watched = mapper.root().to_path_buf();
     let v = vault.clone();
     let mut debouncer = new_debouncer(Duration::from_millis(250), None, move |res: DebounceEventResult| {
         let result = match res {
@@ -64,6 +68,6 @@ pub fn start(app: AppHandle, vault: Arc<Vault>, root: std::path::PathBuf) -> not
             Err(e) => log::warn!("rescan failed: {e}"),
         }
     })?;
-    debouncer.watch(&root, RecursiveMode::Recursive)?;
+    debouncer.watch(&watched, RecursiveMode::Recursive)?;
     Ok(Watcher { _debouncer: debouncer })
 }

@@ -514,6 +514,7 @@ dependencies = [
  "base64 0.22.1",
  "cairn-core",
  "cairn-sync",
+ "dunce",
  "env_logger",
  "log",
  "notify",
