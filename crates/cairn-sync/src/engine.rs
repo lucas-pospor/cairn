@@ -431,7 +431,8 @@ pub fn rename(vault: &Vault, dir: &Path, from: &str, to: &str) -> cairn_core::Re
     // Locked across the rename: the scan lists the vault either before the
     // rename or with it recorded (see `take_renames`).
     let path = dir.join("renames");
-    let journal = std::fs::OpenOptions::new().create(true).append(true).open(&path);
+    // Read access too: Windows cannot lock a file opened only for append.
+    let journal = std::fs::OpenOptions::new().create(true).read(true).append(true).open(&path);
     if let Ok(f) = &journal {
         lock_file(f, &path);
     }
