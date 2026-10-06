@@ -133,7 +133,12 @@ fn fs04_scan_survives_folder_replaced_by_file() {
     let mut errors = Vec::new();
     let t = Instant::now();
     while t.elapsed() < Duration::from_secs(3) && errors.len() < 5 {
-        if let Err(e) = fsx.list("") {
+        // Windows reports a folder that is being deleted as "access denied",
+        // which the strict listing cannot tell from a folder it may not read.
+        // The vault's own listing (rescan) skips it for that scan.
+        if !cfg!(windows)
+            && let Err(e) = fsx.list("")
+        {
             errors.push(format!("list: {e}"));
         }
         if let Err(e) = v.rescan() {
