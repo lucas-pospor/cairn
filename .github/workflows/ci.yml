@@ -13,7 +13,10 @@ env:
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    # A fixed image rather than ubuntu-latest, which moves to 26.04 in
+    # October-November 2026. 26.04 has a size-limited tmpfs /tmp, and many tests
+    # write there, so the move to 26.04 is made on purpose after a trial run.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -62,7 +65,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
