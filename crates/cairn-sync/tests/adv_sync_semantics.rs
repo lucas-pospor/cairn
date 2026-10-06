@@ -1363,6 +1363,7 @@ fn case_only_rename_received_on_case_insensitive_device() {
 /// conflict copy name, as PLAN section 6 says ("sync gives a pulled case
 /// twin a conflict copy name on macOS and Windows"). Both notes survive on
 /// both devices.
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn two_files_differing_only_in_case_survive_a_case_insensitive_device() {
     let srv = server();
@@ -1403,6 +1404,7 @@ fn remote_file_differing_in_case_does_not_overwrite_local_unsynced_note() {
 /// `Vault::rename` refuses a case-only rename when the target is a
 /// different file (Linux): `Note.md` -> `note.md` must not replace the
 /// existing `note.md`, which would leave no trace (no trash).
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn case_only_rename_onto_another_existing_file_is_refused() {
     let d = tempfile::tempdir().unwrap();

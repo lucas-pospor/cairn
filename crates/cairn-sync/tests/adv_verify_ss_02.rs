@@ -6,6 +6,9 @@
 //! Run with:
 //!   cargo test -p cairn-sync --test adv_verify_ss_02 -- --nocapture
 
+// Case twins need a case-sensitive file system.
+#![cfg(target_os = "linux")]
+
 #[path = "adv_sync_semantics_common.rs"]
 mod common;
 

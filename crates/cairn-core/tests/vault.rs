@@ -146,7 +146,8 @@ fn create_refuses_names_that_differ_only_in_case() {
     // A different name, and the same name in another folder, are fine.
     v.create_file("Dir/sub/über.png", b"x").unwrap();
     v.create_note("Dir/untitled.md", "").unwrap();
-    assert!(!d.path().join("dir").exists());
+    // The listing, as exists() ignores case on Windows and macOS.
+    assert!(!fs::read_dir(d.path()).unwrap().any(|e| e.unwrap().file_name() == "dir"));
 }
 
 #[test]
@@ -168,13 +169,16 @@ fn renames_in_the_app_refuse_names_that_differ_only_in_case() {
     // unless another entry has the name too.
     v.check_rename("Note.md", "note.md").unwrap();
     v.check_rename("Projects", "projects").unwrap();
-    let r = v.check_rename("Twins/NOTE.md", "Twins/Note.md");
-    assert_eq!(r, Err(CoreError::AlreadyExists("Twins/note.md".into())));
     v.check_rename("Untitled.md", "Dir/b.md").unwrap();
-    // Vault::rename does not check: sync applies renames from other devices
-    // with it.
-    v.rename("Untitled.md", "note.md").unwrap();
-    assert!(d.path().join("Note.md").exists() && d.path().join("note.md").exists());
+    // Case twins need a case-sensitive file system.
+    if cfg!(target_os = "linux") {
+        let r = v.check_rename("Twins/NOTE.md", "Twins/Note.md");
+        assert_eq!(r, Err(CoreError::AlreadyExists("Twins/note.md".into())));
+        // Vault::rename does not check: sync applies renames from other
+        // devices with it.
+        v.rename("Untitled.md", "note.md").unwrap();
+        assert!(d.path().join("Note.md").exists() && d.path().join("note.md").exists());
+    }
 }
 
 #[test]

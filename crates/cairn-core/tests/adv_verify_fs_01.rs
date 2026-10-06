@@ -8,7 +8,9 @@
 //!   cargo test -p cairn-core --test adv_verify_fs_01
 
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::os::unix::fs::MetadataExt;
+#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::sync::Arc;
 
@@ -26,6 +28,7 @@ fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Vault) {
 }
 
 /// Every file under `dir` (hidden ones too) whose content contains `needle`.
+#[cfg(target_os = "linux")]
 fn find_content(dir: &Path, root: &Path, needle: &str, out: &mut Vec<String>) {
     for e in fs::read_dir(dir).unwrap() {
         let e = e.unwrap();
@@ -38,6 +41,7 @@ fn find_content(dir: &Path, root: &Path, needle: &str, out: &mut Vec<String>) {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn report(d: &tempfile::TempDir, needle: &str) -> String {
     let mut hits = Vec::new();
     find_content(d.path(), d.path(), needle, &mut hits);
@@ -48,6 +52,7 @@ fn report(d: &tempfile::TempDir, needle: &str) -> String {
     )
 }
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn case_only_rename_onto_other_file_is_refused_and_nothing_is_lost() {
     let (d, v) = vault_with(&[("a.md", "lower\n"), ("A.md", "UPPER precious\n")]);
@@ -63,6 +68,7 @@ fn case_only_rename_onto_other_file_is_refused_and_nothing_is_lost() {
     assert_eq!(fs::read_to_string(d.path().join("a.md")).unwrap(), "lower\n");
 }
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn move_into_case_twin_folder_is_refused_and_nothing_is_lost() {
     let (d, v) = vault_with(&[("Projects/todo.md", "upper folder\n"), ("projects/todo.md", "lower folder PRECIOUS\n")]);
@@ -81,7 +87,9 @@ fn control_true_case_only_rename_of_a_single_file_still_works() {
     let (d, v) = vault_with(&[("note.md", "x\n")]);
     v.rename("note.md", "Note.md").unwrap();
     assert_eq!(fs::read_to_string(d.path().join("Note.md")).unwrap(), "x\n");
-    assert!(!d.path().join("note.md").exists());
+    // The listing, as exists() ignores case on Windows and macOS.
+    let names: Vec<_> = fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, ["Note.md"]);
 }
 
 /// Control: a plain (non case-only) rename onto an existing file is refused

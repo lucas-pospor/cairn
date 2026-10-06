@@ -121,6 +121,7 @@ fn server_text(d: &Device) -> String {
     out
 }
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn two_notes_differing_only_in_case_new_name_wins() {
     let srv = server();

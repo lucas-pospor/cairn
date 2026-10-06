@@ -13,6 +13,9 @@
 //!
 //!   cargo test -p cairn-core --test adv_verify_fs_01_s2 -- --include-ignored --nocapture
 
+// Case twins need a case-sensitive file system.
+#![cfg(target_os = "linux")]
+
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;

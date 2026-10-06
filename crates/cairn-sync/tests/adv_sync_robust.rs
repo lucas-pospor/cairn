@@ -2322,6 +2322,7 @@ fn case_insensitive() -> Option<FsMaker> {
     Some(Arc::new(|root: &std::path::Path| Arc::new(CaseInsensitiveFs::new(root)) as Arc<dyn cairn_core::VaultFs>))
 }
 
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn notes_differing_only_in_case_survive_a_case_insensitive_device() {
     let srv = server();
@@ -2345,6 +2346,7 @@ fn notes_differing_only_in_case_survive_a_case_insensitive_device() {
 }
 
 /// A case-sensitive device keeps both names as they are.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn notes_differing_only_in_case_stay_apart_on_a_case_sensitive_device() {
     let srv = server();
@@ -2372,6 +2374,7 @@ fn owned(files: &[(&str, &str)]) -> Vec<(String, String)> {
 /// from a case-sensitive device and lists the other as not synced. No device
 /// renames either one: a conflict copy name there would be pushed and
 /// rename the desktop's note on every device.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn case_twins_from_a_case_sensitive_device_are_listed_not_renamed_on_android_shared_storage() {
     let srv = server();
@@ -2399,6 +2402,7 @@ fn case_twins_from_a_case_sensitive_device_are_listed_not_renamed_on_android_sha
 /// The same for a note renamed on the case-sensitive device to a case twin of
 /// another note: the phone leaves it under its old name and lists the new
 /// one, and the desktop keeps the name it gave it.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_rename_to_a_case_twin_is_listed_not_renamed_on_android_shared_storage() {
     let srv = server();
@@ -2427,6 +2431,7 @@ fn a_rename_to_a_case_twin_is_listed_not_renamed_on_android_shared_storage() {
 /// renamed it to a case twin of another note: the rename wins, but the phone
 /// cannot store it under that name, so it lists it instead of storing it
 /// under a conflict copy name; the desktop keeps the note.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_rename_to_a_case_twin_of_a_note_deleted_here_is_listed_on_android_shared_storage() {
     let srv = server();
@@ -2456,6 +2461,7 @@ fn a_rename_to_a_case_twin_of_a_note_deleted_here_is_listed_on_android_shared_st
 /// quotes both names, one with "changed on disk" in it, must not be taken
 /// for a race: every round of the sync would be retried until it failed, so
 /// later files would never be pulled.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_case_twin_named_like_an_error_does_not_stop_the_sync_on_android_shared_storage() {
     let srv = server();
@@ -2534,6 +2540,7 @@ fn rename_stays_held(phone: &mut Device, linux: &mut Device, on_phone: &[(&str, 
 /// with the edit, which would undo the rename on every device. The edit
 /// waits on the phone, which lists the note, and goes up, merged, once the
 /// name is free.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn an_edit_on_the_phone_does_not_undo_a_held_rename_to_a_case_twin_on_android_shared_storage() {
     let srv = server();
@@ -2561,6 +2568,7 @@ fn an_edit_on_the_phone_does_not_undo_a_held_rename_to_a_case_twin_on_android_sh
 /// The same for an edit made on the phone before it pulled the rename. Here
 /// the desktop frees the name by renaming the other note: the phone applies
 /// that rename first, then the held one, with the edit.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn an_edit_made_before_the_pull_does_not_undo_a_rename_to_a_case_twin_on_android_shared_storage() {
     let srv = server();
@@ -2581,6 +2589,7 @@ fn an_edit_made_before_the_pull_does_not_undo_a_rename_to_a_case_twin_on_android
 /// And for a note the phone has under a conflict copy name that it has not
 /// uploaded yet: the phone does not push that name, a name the sync chose,
 /// over the desktop's rename.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_conflict_copy_name_not_uploaded_yet_does_not_undo_a_rename_to_a_case_twin_on_android_shared_storage() {
     let srv = server();
@@ -2622,6 +2631,7 @@ fn a_conflict_copy_name_not_uploaded_yet_does_not_undo_a_rename_to_a_case_twin_o
 /// is edited on the phone: the edit wins over the delete, as everywhere, so
 /// the note comes back on the desktop with the phone's text, under its name
 /// on the phone. The delete is not held.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_desktop_delete_of_a_held_note_edited_on_the_phone_brings_the_note_back_on_android_shared_storage() {
     let srv = server();
@@ -2643,6 +2653,7 @@ fn a_desktop_delete_of_a_held_note_edited_on_the_phone_brings_the_note_back_on_a
 /// A rename the user makes in Cairn on the phone, of a note whose rename the
 /// phone holds back: as on every device when the other device's name is
 /// taken there, the user's name is kept and reaches every device.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn renaming_a_held_note_on_the_phone_gives_it_that_name_everywhere_on_android_shared_storage() {
     let srv = server();
@@ -2692,6 +2703,7 @@ fn and_keep(files: &[(String, String)]) -> Vec<(String, String)> {
 /// devices.
 /// Also when the upload of the delete fails, after the pull stored the other
 /// note: the next sync uploads it.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn deleting_the_stored_case_twin_on_the_phone_deletes_it_on_every_device_on_android_shared_storage() {
     for interrupted in [false, true] {
@@ -2719,6 +2731,7 @@ fn deleting_the_stored_case_twin_on_the_phone_deletes_it_on_every_device_on_andr
 /// wins over the delete, as everywhere. The phone stores the other note and
 /// lists the edited one, which it cannot store next to it, and the desktop
 /// keeps both.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn deleting_the_stored_case_twin_on_the_phone_while_the_desktop_edits_it_keeps_the_edit_on_android_shared_storage() {
     let srv = server();
@@ -2744,6 +2757,7 @@ fn deleting_the_stored_case_twin_on_the_phone_while_the_desktop_edits_it_keeps_t
 /// The same for the stored twin renamed outside Cairn on the phone: the
 /// rename reaches every device. The other devices do not get the note under
 /// its new name as a new note and keep the old one too.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn renaming_the_stored_case_twin_outside_cairn_on_the_phone_renames_it_on_every_device_on_android_shared_storage() {
     let srv = server();
@@ -2763,6 +2777,7 @@ fn renaming_the_stored_case_twin_outside_cairn_on_the_phone_renames_it_on_every_
 /// Cases 1 and 2 together: the phone deletes the note whose name a held
 /// rename wants, after editing the renamed note. The delete and the edit
 /// reach the desktop, and the rename stays.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn deleting_the_other_case_twin_on_the_phone_lets_a_held_rename_and_its_edit_through_on_android_shared_storage() {
     let srv = server();
@@ -2791,6 +2806,10 @@ fn deleting_the_other_case_twin_on_the_phone_lets_a_held_rename_and_its_edit_thr
 #[test]
 fn a_note_the_phone_has_under_another_spelling_takes_the_name_it_has_elsewhere_on_android_shared_storage() {
     for twins in [false, true] {
+        // Case twins need a case-sensitive file system.
+        if twins && !cfg!(target_os = "linux") {
+            continue;
+        }
         let srv = server();
         let desk: &[(&str, &str)] = if twins { &[("Notes.md", "upper\n"), ("notes.md", "lower\n")] } else { &[("Notes.md", "upper\n")] };
         let mut linux = Device::new(&srv, "linux", desk);
@@ -2812,6 +2831,7 @@ fn a_note_the_phone_has_under_another_spelling_takes_the_name_it_has_elsewhere_o
 /// If the phone cannot rename its copy, the desktop's note waits as not
 /// synced and the phone's copy goes up as a note of its own. Nothing is
 /// lost, and the desktop keeps its name.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_note_the_phone_cannot_rename_to_the_name_it_has_elsewhere_is_kept_as_its_own_on_android_shared_storage() {
     let srv = server();
@@ -2834,6 +2854,7 @@ fn a_note_the_phone_cannot_rename_to_the_name_it_has_elsewhere_is_kept_as_its_ow
 /// and with it every note in it, on every device (FINDING-034). The desktop's
 /// note is listed as not synced, as any note in that folder is, and the
 /// phone's goes up as a note of its own; the desktop keeps its names.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn a_note_the_phone_has_in_a_folder_spelled_another_way_does_not_rename_the_desktop_note_on_android_shared_storage() {
     let srv = server();
@@ -2855,6 +2876,7 @@ fn a_note_the_phone_has_in_a_folder_spelled_another_way_does_not_rename_the_desk
 /// and `note.md` are both tracked, but they are one file on disk, which now
 /// holds the lower case note. The next sync must not push a delete of
 /// `note.md`, nor the lower case note as an edit of `Note.md`.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn two_tracked_files_that_are_one_file_on_disk_are_downloaded_again() {
     let srv = server();
@@ -3022,6 +3044,7 @@ fn same_note_created_under_names_differing_in_case_is_adopted() {
 
 /// Two remote notes with the same content, whose names differ only in
 /// case, are not both adopted as the one local file.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn two_same_notes_differing_in_case_are_not_adopted_as_one() {
     let srv = server();
@@ -3082,6 +3105,7 @@ impl cairn_core::VaultFs for MissOnceFs {
 
 /// On a case-sensitive device, a note that one scan misses while a note
 /// whose name differs only in case is there is not taken for the same file.
+#[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]
 fn note_missed_by_a_scan_next_to_a_case_variant_is_not_a_case_twin() {
     let srv = server();

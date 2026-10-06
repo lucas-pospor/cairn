@@ -50,6 +50,7 @@ fn chmod(p: &Path, mode: u32) {
 // FINDING-003: case-only renames never overwrite an existing, different file
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn fs01_case_only_rename_onto_existing_file_is_refused() {
     // Linux is case-sensitive: a.md and A.md are two different notes.
@@ -59,6 +60,7 @@ fn fs01_case_only_rename_onto_existing_file_is_refused() {
     assert_eq!(read(&d, "A.md"), "UPPER precious", "A.md was overwritten");
 }
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn fs01_move_between_case_differing_folders_is_refused() {
     // Drag "Projects/todo.md" into the (different) folder "projects/".
@@ -68,6 +70,7 @@ fn fs01_move_between_case_differing_folders_is_refused() {
     assert_eq!(read(&d, "projects/todo.md"), "lower folder todo PRECIOUS");
 }
 
+#[cfg(target_os = "linux")] // Case twins need a case-sensitive file system.
 #[test]
 fn fs01_non_ascii_case_only_rename_is_refused() {
     let (d, v) = setup(&[("Über.md", "upper umlaut"), ("über.md", "lower umlaut PRECIOUS")]);
