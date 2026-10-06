@@ -1,10 +1,10 @@
-// Reproduction for FINDING-088: Chinese/Japanese words in the middle of a
+// Regression tests for FINDING-088: Chinese/Japanese words in the middle of a
 // sentence must be found by full-text search, through the same Vault::search
 // path the app's search panel uses (commands.rs `search`).
 //
 // Run: cargo test -p cairn-core --test adv_verify_lk_17 -- --include-ignored --nocapture
 //
-// Tests named `control_*` are controls; the others reproduce the finding.
+// Tests named `control_*` are controls; the other one checks the fix.
 
 use std::fs;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ fn hits(v: &Vault, q: &str) -> Vec<String> {
 }
 
 /// Controls: Latin text works, and the first characters of a CJK run are
-/// found (prefix matching on the one big token).
+/// found (as they were when a whole CJK run was one token).
 #[test]
 fn control_latin_and_cjk_prefix() {
     let (_d, v) = fixture();

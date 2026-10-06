@@ -155,9 +155,9 @@ fn held_unresolved_link_becomes_resolved_after_create_and_back_after_delete() {
 
 /// PLAN: "then a path relative to the linking note's folder". Obsidian writes
 /// `[[../Folder/Note]]` when "New link format" is "Relative path to file".
-/// Cairn only handles the descendant form (`[[sub/Note]]`); any `..` or `.`
-/// segment makes the link unresolved (and clicking it fails to create the note
-/// because `..`/`.` are rejected by path::normalize).
+/// Besides the descendant form (`[[sub/Note]]`), links with `..` or `.`
+/// segments resolve from the linking note's folder (they used to stay
+/// unresolved).
 #[test]
 fn finding_relative_wikilinks_with_dot_segments() {
     let (_d, v) = vault(&[
@@ -186,7 +186,7 @@ fn finding_relative_wikilinks_with_dot_segments() {
 /// a different note than the one whose backlinks list it (FINDING-036). The
 /// command gets the link kind and calls `Vault::resolve_target`.
 #[test]
-fn finding_markdown_link_click_differs_from_index() {
+fn finding_markdown_link_click_matches_index() {
     let (_d, v) = vault(&[
         ("Note.md", "root note"),
         ("a/Note.md", "folder note"),
@@ -204,10 +204,10 @@ fn finding_markdown_link_click_differs_from_index() {
     assert_eq!(click_view, idx_view, "click resolution must match the index (backlinks/outgoing)");
 }
 
-/// Markdown links to a `.markdown` note resolve (outgoing shows them), but the
-/// backlinks lookup files them under the key "note.markdown" while the note's
-/// key is "note", so the note's backlinks panel never lists them. Wikilinks
-/// with the full name `[[Note.markdown]]` do not resolve at all.
+/// Markdown links to a `.markdown` note resolve (outgoing shows them), and the
+/// note's backlinks panel lists them (the backlinks lookup once filed them
+/// under the key "note.markdown" while the note's key was "note"). Wikilinks
+/// with the full name `[[Note.markdown]]` resolve too.
 #[test]
 fn finding_dot_markdown_backlinks() {
     let (_d, v) = vault(&[("Doc.markdown", "# Doc"), ("src.md", "[d](Doc.markdown) [[Doc.markdown]]")]);
@@ -220,8 +220,8 @@ fn finding_dot_markdown_backlinks() {
 }
 
 /// Note identity is NFC (PLAN 2.2) and paths from disk are NFC-normalized,
-/// but link text is not normalized. A link typed or pasted in NFD (macOS
-/// file names, some keyboards) never matches the NFC key of the note.
+/// and so is link text: a link typed or pasted in NFD (macOS file names,
+/// some keyboards) matches the NFC key of the note, in outgoing and backlinks.
 #[test]
 fn finding_nfd_link_target() {
     let nfc_name = "Caf\u{e9}.md";
@@ -241,21 +241,22 @@ fn finding_nfd_link_target() {
     assert!(problems.is_empty(), "{problems:#?}");
 }
 
-/// "Shortest path" is measured in UTF-8 bytes in Rust, so a non-ASCII folder
-/// counts double. The TS LinkIndex (UTF-16 units) picks the other file, so
-/// previews and the core disagree (see the TS fixture test).
+/// "Shortest path" is measured in characters, as in the TS LinkIndex, so a
+/// non-ASCII folder does not count double and previews and the core pick
+/// the same file (see the TS fixture test).
 #[test]
-fn finding_shortest_path_counts_bytes() {
+fn finding_shortest_path_counts_characters() {
     let idx = index(&[("ééé/Note.md", ""), ("abcd/Note.md", "")]);
     // "ééé/Note.md" has 11 characters, "abcd/Note.md" 12.
     assert_eq!(idx.resolve("Note", "x.md").as_deref(), Some("ééé/Note.md"));
 }
 
 /// `[![badge](img.png)](Note.md)`, an image that links to a note, is a common
-/// pattern. The parser keeps only one pending Markdown link, so the inner
-/// image overwrites the outer link and the link to Note.md is lost.
+/// pattern. The parser keeps both the inner image and the outer link to
+/// Note.md (when it kept only one pending Markdown link, the image overwrote
+/// the outer link).
 #[test]
-fn finding_image_inside_link_drops_outer_link() {
+fn finding_image_inside_link_keeps_outer_link() {
     let p = parse::parse("[![badge](img.png)](Note.md)");
     let mut t = targets(&p);
     t.sort();
@@ -263,10 +264,10 @@ fn finding_image_inside_link_drops_outer_link() {
 }
 
 /// A backslash-escaped wikilink is literal text for CommonMark and for the
-/// preview (markdown-it), but the core's regex runs on raw text and still
-/// counts it as a link (backlinks, graph, outgoing).
+/// preview (markdown-it), and the core does not count it as a link either
+/// (backlinks, graph, outgoing).
 #[test]
-fn finding_escaped_wikilink_counted() {
+fn finding_escaped_wikilink_not_counted() {
     let p = parse::parse("Write \\[[Not a link]] to show brackets.");
     assert!(p.links.is_empty(), "{:?}", p.links);
 }
@@ -288,10 +289,10 @@ fn finding_frontmatter_trailing_space_close() {
 }
 
 /// The skip-range lookup uses partition_point on ranges that can nest (a
-/// Markdown link range contains its code spans and inline HTML). For a
-/// position after a nested range the binary search answers "not inside", so a
-/// wikilink inside Markdown link text is indexed only when an inline code span
-/// (or inline HTML) precedes it. (Tags are protected by a second check.)
+/// Markdown link range contains its code spans and inline HTML), so they are
+/// merged first: a wikilink inside Markdown link text is skipped even when an
+/// inline code span (or inline HTML) precedes it. (Tags are protected by a
+/// second check.)
 #[test]
 fn finding_nested_skip_ranges() {
     let plain = parse::parse("[see [[Wiki]]](x.md)");
@@ -312,11 +313,11 @@ fn held_markdown_link_kinds() {
     );
 }
 
-/// Unresolved graph nodes are keyed by basename only, so different missing
-/// notes in different folders ("Projects/Todo" and "Home/Todo") become one
-/// ghost node labelled with whichever link was seen first.
+/// Unresolved graph nodes are keyed by the whole target, not the basename, so
+/// different missing notes in different folders ("Projects/Todo" and
+/// "Home/Todo") are separate ghost nodes.
 #[test]
-fn finding_graph_unresolved_nodes_merge_by_basename() {
+fn finding_graph_unresolved_nodes_not_merged_by_basename() {
     let idx = index(&[("a.md", "[[Projects/Todo]]"), ("b.md", "[[Home/Todo]]")]);
     let g = idx.graph(true);
     let ghosts: Vec<&str> = g
@@ -343,9 +344,9 @@ fn held_graph_edges_follow_resolution_and_skip_attachments_and_self() {
     assert_eq!(g.nodes[0].degree, 2);
 }
 
-/// Outline text for a multi-line setext heading drops the line break
-/// entirely (SoftBreak events are not turned into spaces): "Line one" +
-/// "line two" becomes "Line oneline two".
+/// Outline text for a multi-line setext heading turns the line break into a
+/// space (SoftBreak events once vanished): "Line one" + "line two" becomes
+/// "Line one line two", not "Line oneline two".
 #[test]
 fn finding_multiline_setext_heading_text() {
     let p = parse::parse("Line one\nline two\n===\n");

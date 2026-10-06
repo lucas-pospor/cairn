@@ -1,18 +1,19 @@
 //! Impact checks for FINDING-018 (one undecryptable blob in
-//! the changes feed stops all sync).
+//! the changes feed stopped all sync).
 //!
 //! What these tests establish:
 //!   1. `garbage_head_is_fail_closed_and_heals`: a
-//!      token-only garbage head makes sync stop with a visible Crypto error,
-//!      but nothing on disk is lost, overwritten, trashed or conflict-copied,
-//!      the client keeps no damaged state, and sync resumes (and the stuck
-//!      local edit is pushed) as soon as the server serves a valid head again.
+//!      token-only garbage head (which used to stop sync with a Crypto error)
+//!      changes nothing on disk: nothing is lost, overwritten, trashed or
+//!      conflict-copied, the client keeps no damaged state, and once the
+//!      server serves a valid head again the file updates and the local edit
+//!      reaches the other device.
 //!   2. `malicious_server_can_already_withhold_silently`: the admitted
 //!      known gap ("the server can withhold ... revisions")
 //!      already lets a hostile server cut a device off completely, and do it
-//!      silently (the client reports success). A garbage blob is a loud,
+//!      silently (the client reports success). A garbage blob was a loud,
 //!      detected version of the same denial, not a new capability.
-//!   3. `one_flipped_bit_in_server_storage_stops_all_sync` (FINDING-018):
+//!   3. `one_flipped_bit_in_server_storage_does_not_stop_sync` (FINDING-018):
 //!      the realistic non-malicious trigger, a single corrupted blob in the
 //!      server's SQLite file (disk bit rot, bad restore), must not stop every
 //!      device until someone edits the server database by hand.
@@ -215,7 +216,7 @@ fn malicious_server_can_already_withhold_silently() {
 
 /// The non-malicious trigger: one blob corrupted in the server's storage.
 #[test]
-fn one_flipped_bit_in_server_storage_stops_all_sync() {
+fn one_flipped_bit_in_server_storage_does_not_stop_sync() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("A.md", b"alpha"), ("B.md", b"bravo")]);
     laptop.engine.sync().expect("initial push");

@@ -78,7 +78,7 @@ describe("FINDING-153", () => {
     ["enabling", "b.js", true],
     ["disabling", "c.js", false],
   ] as const) {
-    it(`FINDING-153: ${label} another plugin restarts a plugin that was stopped for taking too long`, async () => {
+    it(`FINDING-153: ${label} another plugin does not restart a plugin that was stopped for taking too long`, async () => {
       vi.useFakeTimers();
       config.set("plugins/a.js", "// @name A\n");
       config.set("plugins/b.js", "// @name B\n");

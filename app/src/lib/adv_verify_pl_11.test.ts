@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 
 describe("FINDING-154 verification", () => {
-  it("FINDING-154: disabling 'a.js' removes the command of the still-enabled plugin 'a.js:b.js'", async () => {
+  it("FINDING-154: disabling 'a.js' keeps the command of the still-enabled plugin 'a.js:b.js'", async () => {
     config.set("plugins/a.js", "// @name A\n");
     config.set("plugins/a.js:b.js", "// @name AB\n");
     const host = makeHost();
@@ -96,7 +96,7 @@ describe("FINDING-154 verification", () => {
     expect(ids).toEqual(["plugin:a.js:b.js:y"]); // ...and so is its command
   });
 
-  it("FINDING-154: plugin 'a.js' registering id 'b.js:y' replaces the command of plugin 'a.js:b.js'", async () => {
+  it("FINDING-154: plugin 'a.js' registering id 'b.js:y' does not replace the command of plugin 'a.js:b.js'", async () => {
     config.set("plugins/a.js", "// @name A\n");
     config.set("plugins/a.js:b.js", "// @name AB\n");
     const host = makeHost();

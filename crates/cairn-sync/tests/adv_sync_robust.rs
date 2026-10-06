@@ -325,7 +325,7 @@ fn plain(d: &mut Device) {
 }
 
 #[test]
-fn interrupted_sync_after_local_rename_vs_remote_edit_never_converges() {
+fn interrupted_sync_after_local_rename_vs_remote_edit_converges() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("Draft.md", "line 1\nline 2\n")]);
     a.sync_ok();
@@ -347,7 +347,7 @@ fn interrupted_sync_after_local_rename_vs_remote_edit_never_converges() {
 }
 
 #[test]
-fn interrupted_sync_after_same_path_created_twice_never_converges() {
+fn interrupted_sync_after_same_path_created_twice_converges() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("Today.md", "laptop notes\n")]);
     let mut b = Device::new(&srv, "phone", &[("Today.md", "phone notes\n")]);
@@ -3100,7 +3100,7 @@ fn note_missed_by_a_scan_next_to_a_case_variant_is_not_a_case_twin() {
 }
 
 #[test]
-fn interrupted_sync_after_local_rename_then_remote_edit_undoes_the_rename() {
+fn interrupted_sync_after_local_rename_then_remote_edit_keeps_the_rename() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("Draft.md", "line 1\nline 2\n")]);
     a.sync_ok();

@@ -1,4 +1,4 @@
-//! Reproduction for FINDING-134 (folder-rename detection in
+//! Regression tests for FINDING-134 (folder-rename detection in
 //! `Vault::apply_diff` must not be cubic).
 //!
 //! fs12 in adv_fs_scan.rs varies the number of folders and the number of
@@ -9,7 +9,10 @@
 //! folders, the other keeps a single folder and changes the number of notes.
 //!
 //! Run with:
-//!   cargo test -p cairn-core --test adv_verify_fs_12 -- --ignored --nocapture --test-threads=1
+//!   cargo test -p cairn-core --test adv_verify_fs_12 -- --nocapture --test-threads=1
+//!
+//! The slow scaling probe (`fs12_probe_layouts`) is ignored; run it with:
+//!   cargo test -p cairn-core --test adv_verify_fs_12 -- --ignored --nocapture
 
 use std::fs;
 use std::path::Path;
@@ -49,7 +52,7 @@ fn replace(folders: usize, per: usize) -> f64 {
 }
 
 #[test]
-fn fs12_folder_loop_same_notes_more_folders_is_much_slower() {
+fn fs12_folder_loop_same_notes_more_folders_is_not_much_slower() {
     // 500 deleted notes and 500 created notes in both runs; only the number
     // of folders they sit in changes (1 vs 500).
     let one = replace(1, 500);
@@ -60,7 +63,7 @@ fn fs12_folder_loop_same_notes_more_folders_is_much_slower() {
 }
 
 #[test]
-fn fs12_file_level_rename_search_is_quadratic() {
+fn fs12_file_level_rename_search_is_not_quadratic() {
     // One folder of n notes deleted, one folder of n different notes created:
     // the folder-rename loop runs once, so only the file-level passes scale.
     let small = replace(1, 500);

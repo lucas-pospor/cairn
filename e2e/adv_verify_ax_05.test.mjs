@@ -1,6 +1,6 @@
-// Reproduction for FINDING-106 (quick switcher and command palette can be
-// open at once; closing the top one leaves the other orphaned with no
-// keyboard focus, so Escape no longer closes it).
+// Regression tests for FINDING-106 (quick switcher and command palette could
+// be open at once; closing the top one left the other orphaned with no
+// keyboard focus, so Escape no longer closed it).
 //
 // Beyond the other reproduction (adv_a11y_keyboard.test.mjs), this one:
 // - runs a control (Ctrl+O, Escape closes the switcher normally) so the Escape
@@ -9,8 +9,9 @@
 // - records focus after the first Escape, checks which overlay is on top
 //   (elementFromPoint), and whether Ctrl+O re-focuses the orphaned switcher;
 // - counts how many Tab presses a keyboard user needs to get back into it;
-// - checks the reverse order (Ctrl+P, then Ctrl+O): the switcher takes focus
-//   while it is rendered underneath the palette.
+// - checks the reverse order (Ctrl+P, then Ctrl+O): the two overlays must not
+//   be open at once (with the defect, the switcher took focus while it was
+//   rendered underneath the palette).
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_05.test.mjs
 
@@ -55,7 +56,7 @@ test("control: Ctrl+O then Escape closes the quick switcher", async () => {
   assert.equal(st.switcher, false, JSON.stringify(st));
 });
 
-test("FINDING-106: Ctrl+O, Ctrl+P, Escape, Escape leaves the switcher open with focus on <body>", async () => {
+test("FINDING-106: Ctrl+O, Ctrl+P, Escape, Escape closes both the switcher and the palette", async () => {
   await app.reset();
   await logKeys();
   const log = {};
@@ -89,7 +90,7 @@ test("FINDING-106: Ctrl+O, Ctrl+P, Escape, Escape leaves the switcher open with 
   assert.ok(!log.afterEsc2.switcher && !log.afterEsc2.palette, `after two Escapes: ${JSON.stringify(log)}`);
 });
 
-test("FINDING-106 (reverse order): Ctrl+P then Ctrl+O focuses the switcher while it is drawn under the palette", async () => {
+test("FINDING-106 (reverse order): Ctrl+P then Ctrl+O does not leave both overlays open", async () => {
   await app.reset();
   await logKeys();
   const log = {};

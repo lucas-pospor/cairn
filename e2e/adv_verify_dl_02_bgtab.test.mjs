@@ -1,13 +1,13 @@
-// Reproduction for FINDING-002 (in addition to
+// Regression tests for FINDING-002 (in addition to
 // adv_verify_dl_02.test.mjs). Two extra routes to the same root cause
-// (closeTab / closeVault drop a tab whose flush() could not save):
+// (closeTab / closeVault dropped a tab whose flush() could not save):
 //  1. The conflict happens on a BACKGROUND tab. The banner is only drawn for
 //     the active tab, so the user never sees it: the only hint is the small
 //     unsaved dot. Clicking that tab's X (which does not activate the tab)
-//     throws the edit away.
+//     must ask first or keep the edit.
 //  2. A failed save (read-only folder, like a full disk or a lost mount),
-//     then a single click on the vault name in the status bar. Reopening the
-//     vault shows the edit is gone.
+//     then a single click on the vault name in the status bar. The app must
+//     ask first, or the edit must survive reopening the vault.
 // A control case shows the same background-tab close saves fine when nothing
 // blocks the save.
 //

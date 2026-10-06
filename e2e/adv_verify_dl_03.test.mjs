@@ -1,5 +1,5 @@
-// Reproduction for FINDING-009: edits still inside the 600 ms autosave
-// debounce are lost when the window (or the process) goes away.
+// Regression tests for FINDING-009: edits still inside the 600 ms autosave
+// debounce were lost when the window (or the process) went away.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_03.test.mjs
 //

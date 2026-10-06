@@ -4,7 +4,7 @@
 //!
 //! Run: cargo test -p cairn-sync --test adv_sync_robust_net
 //! Slow tests (about a minute each): add `-- --ignored slow_`
-//! Findings: cargo test -p cairn-sync --test adv_sync_robust_net -- --ignored --exact <name>
+//! One test: cargo test -p cairn-sync --test adv_sync_robust_net -- --exact <name>
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;

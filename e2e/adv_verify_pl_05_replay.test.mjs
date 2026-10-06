@@ -1,4 +1,4 @@
-// Reproduction for FINDING-068 (overlapping plugin starts leave an
+// Regression tests for FINDING-068 (overlapping plugin starts left an
 // orphan worker). Self-contained: own driver session, own throwaway vaults.
 //
 //   scripts/e2e-headless.sh e2e/adv_verify_pl_05_replay.test.mjs

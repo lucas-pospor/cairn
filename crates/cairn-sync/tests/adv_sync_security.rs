@@ -7,8 +7,8 @@
 //! `HttpTransport`), extended so a test can act as a raw client that holds
 //! the vault key and PUTs arbitrary revisions.
 //!
-//! Run one finding reproduction with, e.g.:
-//!   cargo test -p cairn-sync --test adv_sync_security -- --exact one_bad_pull_record_blocks_all_sync
+//! Run one test with, e.g.:
+//!   cargo test -p cairn-sync --test adv_sync_security -- --exact one_bad_pull_record_does_not_block_sync
 //! Run the whole file with:
 //!   cargo test -p cairn-sync --test adv_sync_security
 
@@ -132,19 +132,20 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
 }
 
 // ===================================================================
-// FINDING-017: one hostile pull record permanently aborts ALL sync.
+// FINDING-017: one hostile pull record must not abort ALL sync.
 //
 // A buggy-or-malicious other client (it knows the vault key) uploads a
 // single revision whose decrypted path is unsafe (e.g. "../escape.md").
-// The honest engine rejects the whole `round()` with a hard error instead
-// of skipping and reporting that one record, so:
-//   * a perfectly good file uploaded alongside it is never pulled, and
-//   * the honest device's own local notes are never pushed.
-// Because `last_seq` is not advanced past the bad head, every later sync
-// re-fetches it and fails again: sync is broken forever for every device.
+// The honest engine skips and reports that one record instead of failing
+// the whole `round()` with a hard error, so:
+//   * a perfectly good file uploaded alongside it is still pulled, and
+//   * the honest device's own local notes are still pushed.
+// With the defect, `last_seq` was not advanced past the bad head, so every
+// later sync re-fetched it and failed again: sync was broken for good on
+// every device.
 // ===================================================================
 #[test]
-fn one_bad_pull_record_blocks_all_sync() {
+fn one_bad_pull_record_does_not_block_sync() {
     let srv = server();
     let atk = RawClient::create(&srv, "notes");
     // Hostile record FIRST (lowest seq), a perfectly good record after it.
@@ -165,16 +166,17 @@ fn one_bad_pull_record_blocks_all_sync() {
 }
 
 // ===================================================================
-// FINDING-018: a single undecryptable / malformed blob aborts all sync.
+// FINDING-018: a single undecryptable / malformed blob must not abort all sync.
 //
 // A malicious server (or a corrupt record) returns one revision whose blob
-// does not decrypt. `round()` propagates the decrypt error, so no other
-// file in the feed is applied and the device never pushes. Same permanent
-// breakage as FINDING-017 but triggerable by the server, which the plan treats as
-// untrusted.
+// does not decrypt. The engine skips and reports that record; the other
+// files in the feed are still applied and the device still pushes. With the
+// defect, `round()` propagated the decrypt error: the same permanent
+// breakage as FINDING-017, but triggerable by the server, which the plan
+// treats as untrusted.
 // ===================================================================
 #[test]
-fn one_undecryptable_blob_blocks_all_sync() {
+fn one_undecryptable_blob_does_not_block_sync() {
     let srv = server();
     let atk = RawClient::create(&srv, "notes");
     // A blob of pure garbage (valid base64, wrong bytes) at the lowest seq.
@@ -188,19 +190,20 @@ fn one_undecryptable_blob_blocks_all_sync() {
 }
 
 // ===================================================================
-// FINDING-019: a file larger than ~7.5 MB can be pushed but can never be
-// pulled by another device.
+// FINDING-019: a file larger than ~7.5 MB that one device pushed must also
+// be pulled by another device.
 //
 // The server accepts bodies up to CAIRN_MAX_BODY_MB (default 200 MB), but
-// the client's HTTP library (ureq) caps every *response* body at 10 MB. The
-// changes feed inlines the base64 blob (~1.33x), so a single ~8 MB
-// attachment makes the changes response exceed 10 MB and the receiving
-// device's `read_json` fails with BodyExceedsLimit. That error aborts the
-// whole sync (see FINDING-017/018), so the large file and everything after it never
-// arrive. Attachments this size are ordinary (photos, PDFs).
+// the client's HTTP library (ureq) caps every *response* body at 10 MB by
+// default. The changes feed inlines the base64 blob (~1.33x), so a single
+// ~8 MB attachment made the changes response exceed 10 MB, the receiving
+// device's `read_json` failed with BodyExceedsLimit, and that error aborted
+// the whole sync (see FINDING-017/018). The client now reads the feed with
+// its own, larger limit and asks for fewer records per page when a page
+// would exceed it. Attachments this size are ordinary (photos, PDFs).
 // ===================================================================
 #[test]
-fn large_file_cannot_be_pulled() {
+fn large_file_can_be_pulled() {
     let srv = server();
     let big = vec![b'x'; 9 * 1024 * 1024]; // 9 MiB -> ~12 MiB base64 in the feed
     let mut a = Honest::new(&srv, "notes", "laptop", &[("big.bin", &big)]);
@@ -214,13 +217,14 @@ fn large_file_cannot_be_pulled() {
 }
 
 // ===================================================================
-// FINDING-065: a payload path containing NUL aborts sync (another
-// permanent-breakage vector in the FINDING-017 family). `vpath::normalize` does
-// not reject interior NUL; the engine carries it to `write`, where the OS
-// rejects the file name, and the whole round errors.
+// FINDING-065: a payload path containing NUL must not abort sync (another
+// permanent-breakage vector in the FINDING-017 family). Path normalization
+// now rejects interior NUL, so that record is skipped; with the defect, the
+// engine carried it to `write`, where the OS rejected the file name, and
+// the whole round errored.
 // ===================================================================
 #[test]
-fn nul_in_pulled_path_blocks_sync() {
+fn nul_in_pulled_path_does_not_block_sync() {
     let srv = server();
     let atk = RawClient::create(&srv, "notes");
     atk.put_new("aaaaaaaaaaaaaaaa", "a\u{0}b.md", b"x");

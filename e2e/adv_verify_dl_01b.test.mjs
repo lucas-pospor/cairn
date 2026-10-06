@@ -1,13 +1,14 @@
-// Reproduction for FINDING-001.
+// Regression test for FINDING-001.
 // The cases in adv_verify_dl_01.test.mjs need the conflict banner (or a
 // failed-save toast) to be on screen before the user navigates away. This
-// variant shows that no warning is needed at all: if another program writes
-// the note while the user is typing, and the user clicks another note before
-// the 600 ms autosave fires, openNote()'s own flush() hits the conflict, and
-// the same tab is then reused (dirty/conflict cleared, editorState dropped).
-// The edit is gone and the user never saw a toast; the conflict banner only
-// flashes for a few milliseconds (between flush() setting tab.conflict and
-// openNote() clearing it).
+// variant does not: another program writes the note while the user is
+// typing, and the user clicks another note before the 600 ms autosave fires,
+// so openNote()'s own flush() hits the conflict. With the defect, the same
+// tab was then reused (dirty/conflict cleared, editorState dropped): the edit
+// was gone and the user never saw a toast; the conflict banner only flashed
+// for a few milliseconds (between flush() setting tab.conflict and openNote()
+// clearing it). The test checks that the edit is kept, or that a lasting
+// warning is shown.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_01b.test.mjs
 

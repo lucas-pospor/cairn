@@ -45,7 +45,7 @@ fn fs03_hinted_rescan_of_other_paths_still_works() {
 /// produces such an event) keeps every other change in that batch, and a
 /// full rescan succeeds.
 #[test]
-fn fs03_batch_with_unreadable_folder_loses_other_changes() {
+fn fs03_batch_with_unreadable_folder_keeps_other_changes() {
     let (d, v) = vault_with(&[("ok.md", "fine"), ("private/x.md", "x")]);
     chmod(&d.path().join("private"), 0o000);
     fs::write(d.path().join("new.md"), "made in another editor").unwrap();

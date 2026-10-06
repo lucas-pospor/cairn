@@ -2,10 +2,10 @@
 //! cairn-core API: rename, delete, write, permissions, symlinks, trash, path
 //! validation of every entry point.
 //!
-//! Tests named `fsNN_*` reproduce a finding and are `#[ignore]`d while the
-//! bug exists. Run one with:
-//!   cargo test -p cairn-core --test adv_fs_ops -- --ignored --exact <name>
-//! Run the passing coverage with:
+//! Tests named `fsNN_*` are regression tests for fixed findings.
+//! Run one with:
+//!   cargo test -p cairn-core --test adv_fs_ops -- --exact <name>
+//! Run them all with:
 //!   cargo test -p cairn-core --test adv_fs_ops
 
 use std::fs;
@@ -45,11 +45,11 @@ fn chmod(p: &Path, mode: u32) {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-003: case-only renames overwrite an existing, different file
+// FINDING-003: case-only renames never overwrite an existing, different file
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs01_case_only_rename_onto_existing_file_overwrites_it() {
+fn fs01_case_only_rename_onto_existing_file_is_refused() {
     // Linux is case-sensitive: a.md and A.md are two different notes.
     let (d, v) = setup(&[("a.md", "lower"), ("A.md", "UPPER precious")]);
     let r = v.rename("a.md", "A.md");
@@ -58,7 +58,7 @@ fn fs01_case_only_rename_onto_existing_file_overwrites_it() {
 }
 
 #[test]
-fn fs01_move_between_case_differing_folders_overwrites() {
+fn fs01_move_between_case_differing_folders_is_refused() {
     // Drag "Projects/todo.md" into the (different) folder "projects/".
     let (d, v) = setup(&[("Projects/todo.md", "upper folder todo"), ("projects/todo.md", "lower folder todo PRECIOUS")]);
     let r = v.rename("Projects/todo.md", "projects/todo.md");
@@ -67,7 +67,7 @@ fn fs01_move_between_case_differing_folders_overwrites() {
 }
 
 #[test]
-fn fs01_non_ascii_case_only_rename_overwrites() {
+fn fs01_non_ascii_case_only_rename_is_refused() {
     let (d, v) = setup(&[("Über.md", "upper umlaut"), ("über.md", "lower umlaut PRECIOUS")]);
     let r = v.rename("Über.md", "über.md");
     assert!(matches!(r, Err(CoreError::AlreadyExists(_))), "rename returned {r:?}");
@@ -109,11 +109,11 @@ fn rename_refuses_existing_targets_self_moves_and_bad_paths() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-013: atomic save replaces symlinked / hard-linked notes
+// FINDING-013: saving keeps symlinked / hard-linked notes linked
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs06_saving_symlinked_note_replaces_symlink() {
+fn fs06_saving_symlinked_note_keeps_symlink() {
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("target.md"), "outside original").unwrap();
     let d = tempfile::tempdir().unwrap();
@@ -127,7 +127,7 @@ fn fs06_saving_symlinked_note_replaces_symlink() {
 }
 
 #[test]
-fn fs06_saving_hard_linked_note_breaks_link() {
+fn fs06_saving_hard_linked_note_keeps_link() {
     let (d, v) = setup(&[("hard.md", "hard")]);
     fs::hard_link(d.path().join("hard.md"), d.path().join("other-name.md")).unwrap();
     let n = v.read_note("hard.md").unwrap();
@@ -155,11 +155,11 @@ fn symlinked_folder_delete_only_removes_the_link() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-050: long names (temp file name exceeds NAME_MAX)
+// FINDING-050: long names (the temp file name must fit NAME_MAX too)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs07_note_with_240_byte_name_cannot_be_created() {
+fn fs07_note_with_240_byte_name_can_be_created() {
     let (_d, v) = setup(&[]);
     let name = format!("{}.md", "b".repeat(240)); // 243 bytes, legal on ext4/tmpfs (255)
     let r = v.create_note(&name, "x");
@@ -167,7 +167,7 @@ fn fs07_note_with_240_byte_name_cannot_be_created() {
 }
 
 #[test]
-fn fs07_external_long_note_cannot_be_saved() {
+fn fs07_external_long_note_can_be_saved() {
     // 80 CJK characters = 240 bytes: a plausible Japanese/Chinese title.
     let title: String = "日本語のとても長いノートのタイトル".chars().cycle().take(80).collect();
     let name = format!("{title}.md");
@@ -186,11 +186,11 @@ fn unique_path_handles_names_at_the_limit_without_panicking() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-051: predictable temp name, followed without O_EXCL
+// FINDING-051: temp files get a random name and are created with O_EXCL
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs08_planted_temp_symlink_redirects_write_outside_vault() {
+fn fs08_planted_temp_symlink_does_not_redirect_write() {
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("victim.txt"), "victim original").unwrap();
     let (d, v) = setup(&[("note.md", "n")]);
@@ -206,11 +206,11 @@ fn fs08_planted_temp_symlink_redirects_write_outside_vault() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-044: read-only notes are overwritten
+// FINDING-044: read-only notes are not overwritten
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs09_read_only_note_is_silently_overwritten() {
+fn fs09_read_only_note_is_not_overwritten() {
     let (d, v) = setup(&[("ro.md", "read only")]);
     chmod(&d.path().join("ro.md"), 0o444);
     let n = v.read_note("ro.md").unwrap();
@@ -234,7 +234,7 @@ fn save_keeps_the_file_mode() {
 }
 
 #[test]
-fn fs23_private_note_content_lands_in_world_readable_temp_file() {
+fn fs23_private_note_temp_file_is_not_world_readable() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let (d, v) = setup(&[("private.md", "secret")]);
     chmod(&d.path().join("private.md"), 0o600);
@@ -287,11 +287,11 @@ fn read_only_folder_fails_cleanly_without_leftovers() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-046: write_note trusts size+mtime for the conflict check
+// FINDING-046: write_note's conflict check does not trust size+mtime
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs10_same_size_same_mtime_external_edit_is_overwritten() {
+fn fs10_same_size_same_mtime_external_edit_is_not_overwritten() {
     let (d, v) = setup(&[]);
     let r = v.create_note("n.md", "AAAA original").unwrap();
     let mtime = fs::metadata(d.path().join("n.md")).unwrap().modified().unwrap();
@@ -323,11 +323,11 @@ fn write_note_base_hash_rules_hold() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-139: parse_hash slices by bytes
+// FINDING-139: a multi-byte base hash is rejected without a panic
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs19_multibyte_base_hash_panics() {
+fn fs19_multibyte_base_hash_does_not_panic() {
     let (_d, v) = setup(&[("note.md", "n")]);
     let bad = format!("{}a", "\u{20ac}".repeat(21));
     assert_eq!(bad.len(), 64);
@@ -391,7 +391,7 @@ fn delete_twice_and_missing_paths() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs13_read_note_reads_hidden_files() {
+fn fs13_read_note_refuses_hidden_files() {
     let (_d, v) = setup(&[(".git/config", "[remote \"origin\"]\nurl = https://user:ghp_secret@example.com/x"), ("n.md", "n")]);
     let r = v.read_note(".git/config");
     assert!(matches!(r, Err(CoreError::InvalidPath(_)) | Err(CoreError::NotANote(_))), "read_note returned {:?}", r.map(|n| n.content));
@@ -400,7 +400,7 @@ fn fs13_read_note_reads_hidden_files() {
 }
 
 #[test]
-fn fs14_write_note_into_hidden_folder_pollutes_index() {
+fn fs14_write_note_into_hidden_folder_is_refused() {
     let (d, v) = setup(&[(".trash/old.md", "trashed")]);
     let w = v.write_note(".trash/old.md", "overwritten", None);
     let in_index = v.index().entry(".trash/old.md").is_some();
@@ -412,7 +412,7 @@ fn fs14_write_note_into_hidden_folder_pollutes_index() {
 }
 
 #[test]
-fn fs21_names_cairn_refuses_can_still_be_created() {
+fn fs21_names_cairn_refuses_cannot_be_created() {
     let (d, v) = setup(&[]);
     // create_note validates only the last component.
     let a = v.create_note("bad:dir/x.md", "");
@@ -425,7 +425,7 @@ fn fs21_names_cairn_refuses_can_still_be_created() {
 }
 
 #[test]
-fn fs21_write_note_creates_names_cairn_refuses() {
+fn fs21_write_note_cannot_create_names_cairn_refuses() {
     let (d, v) = setup(&[]);
     // write_note creates new files without validate_name at all.
     let e = v.write_note("bad:name.md", "", None);
@@ -468,11 +468,11 @@ fn fs21_new_entries_in_folders_with_names_cairn_refuses_are_allowed() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-053: case-insensitive duplicates are not detected on create
+// FINDING-053: case-insensitive duplicates are detected on create
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs22_create_allows_case_insensitive_duplicate() {
+fn fs22_create_refuses_case_insensitive_duplicate() {
     let (_d, v) = setup(&[("note.md", "n"), ("Folder/a.md", "a")]);
     let r = v.create_note("Note.md", "x");
     assert!(matches!(r, Err(CoreError::AlreadyExists(_))), "create_note returned {:?}", r.map(|r| r.entry.path));
@@ -485,7 +485,7 @@ fn fs22_create_allows_case_insensitive_duplicate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs24_concurrent_write_config_fails() {
+fn fs24_concurrent_write_config_succeeds() {
     let (_d, v) = setup(&[]);
     let v = Arc::new(v);
     let hs: Vec<_> = (0..4u8)
@@ -659,11 +659,11 @@ fn prune_keeps_folders_with_hidden_files_and_stops_at_non_empty() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-047: the base_hash check runs before the temp file is written
+// FINDING-047: an external save while the temp file is written is not lost
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs26_external_save_during_temp_write_is_lost() {
+fn fs26_external_save_during_temp_write_is_not_lost() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let (d, v) = setup(&[("n.md", "original")]);
     let n = v.read_note("n.md").unwrap();

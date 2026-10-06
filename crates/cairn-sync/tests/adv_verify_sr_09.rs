@@ -1,15 +1,15 @@
-//! Reproduction for FINDING-057 (one file that cannot be read
-//! or written stops every sync on that device).
+//! Regression tests for FINDING-057 (one file that could not be read
+//! or written stopped every sync on that device).
 //!
-//! Run: cargo test -p cairn-sync --test adv_verify_sr_09 -- --ignored --nocapture
+//! Run: cargo test -p cairn-sync --test adv_verify_sr_09 -- --nocapture
 //!
-//! What these show beyond sync stopping:
-//! - (a) the unreadable-file case aborts in `scan()` before the pull starts
-//!   (last_seq does not move, nothing is pulled), so it is a separate code path
+//! What these showed beyond sync stopping:
+//! - (a) the unreadable-file case aborted in `scan()` before the pull started
+//!   (last_seq did not move, nothing was pulled), so it is a separate code path
 //!   from the FINDING-017 pull loop. The vault itself opens and indexes around the
-//!   unreadable note; only sync stops. Fixing the permission recovers.
-//! - (c) the file-vs-folder clash fails in both directions, because
-//!   `exists()` only counts files, so no conflict name is chosen.
+//!   unreadable note; only sync stopped. Fixing the permission recovered.
+//! - (c) the file-vs-folder clash failed in both directions, because
+//!   `exists()` only counts files, so no conflict name was chosen.
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -35,7 +35,7 @@ fn last_seq(d: &Device) -> u64 {
 }
 
 #[test]
-fn unreadable_note_stops_pull_and_push_until_fixed() {
+fn unreadable_note_does_not_stop_pull_and_push() {
     let (_srv, mut a, mut b) = pair(&[("n.md", "v1\n")]);
     a.write("private.md", "secret\n");
     fs::set_permissions(a.root.join("private.md"), fs::Permissions::from_mode(0o000)).unwrap();
@@ -84,7 +84,7 @@ fn unreadable_note_stops_pull_and_push_until_fixed() {
 }
 
 #[test]
-fn folder_first_then_file_also_blocks() {
+fn folder_first_then_file_does_not_block() {
     // Reverse of the usual order: the folder is on the server first and
     // the device that pulls it has a plain file with that name.
     let srv = server();

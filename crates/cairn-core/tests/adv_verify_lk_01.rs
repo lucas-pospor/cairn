@@ -1,9 +1,9 @@
-// Reproduction for FINDING-035: wikilinks with `../` or `./` segments must
-// resolve (outgoing, backlinks, graph, click, image embeds).
+// Regression tests for FINDING-035: wikilinks with `../` or `./` segments
+// must resolve (outgoing, backlinks, graph, click, image embeds).
 //
 // Run: cargo test -p cairn-core --test adv_verify_lk_01 -- --include-ignored --nocapture
 //
-// Tests named `control_*` are controls; the others reproduce the finding.
+// Tests named `control_*` are controls; the others check the fix.
 
 use std::fs;
 use std::sync::Arc;
@@ -60,7 +60,7 @@ fn control_descendant_wikilink_and_md_parent_link_resolve() {
 }
 
 #[test]
-fn dot_segment_wikilinks_unresolved_in_outgoing() {
+fn dot_segment_wikilinks_resolve_in_outgoing() {
     let (_d, v) = fixture();
     let out: Vec<(String, Option<String>)> = v.outgoing("a/src.md").into_iter().map(|o| (o.target, o.resolved)).collect();
     eprintln!("outgoing: {out:?}");
@@ -76,7 +76,7 @@ fn dot_segment_wikilinks_unresolved_in_outgoing() {
 }
 
 #[test]
-fn dot_segment_wikilinks_missing_from_backlinks() {
+fn dot_segment_wikilinks_show_in_backlinks() {
     let (_d, v) = fixture();
     let sib = v.backlinks("a/Sibling.md");
     let tgt = v.backlinks("b/Target.md");
@@ -89,7 +89,7 @@ fn dot_segment_wikilinks_missing_from_backlinks() {
 }
 
 #[test]
-fn dot_segment_wikilinks_missing_from_graph() {
+fn dot_segment_wikilinks_show_in_graph() {
     let (_d, v) = fixture();
     let e = graph_edges(&v);
     eprintln!("graph edges: {e:?}");

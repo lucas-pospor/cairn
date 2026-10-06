@@ -1,9 +1,8 @@
 // Switching vaults while a sync is running, through the
 // real app. SyncManager::stop() only sets a flag, so the old vault's sync
 // finishes in the background after the user switched. Its engine holds its
-// own Arc<Vault>, so files land in the right folder; but its `vault-changed`
-// and `sync-status` events go to the one window, which now shows the other
-// vault.
+// own Arc<Vault>, so files land in the right folder, and the stopped manager
+// sends no more events to the one window, which now shows the other vault.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_sync_ui_switch.test.mjs   (about 1 min)
 

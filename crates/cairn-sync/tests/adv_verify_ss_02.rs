@@ -1,10 +1,9 @@
-//! Reproductions for FINDING-003 (a case-only rename onto
-//! a *different* existing file replaces it on a case-sensitive file system).
-//! These tests check where the overwritten note goes (trash? nowhere?), and
-//! whether sync's server-side version history makes it recoverable.
+//! Regression tests for FINDING-003 (a case-only rename onto a *different*
+//! existing file replaced it on a case-sensitive file system). These tests
+//! check that such a rename is refused, with and without sync, so the other
+//! note keeps its text.
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_ss_02 -- --ignored --nocapture
 //!   cargo test -p cairn-sync --test adv_verify_ss_02 -- --nocapture
 
 #[path = "adv_sync_semantics_common.rs"]
@@ -31,7 +30,7 @@ fn holders(root: &Path, needle: &str) -> Vec<String> {
 /// the old `note.md` would exist nowhere in the vault, not in `.trash` and
 /// not in any other hidden folder.
 #[test]
-fn local_only_overwritten_note_goes_nowhere() {
+fn local_only_case_rename_onto_other_note_is_refused() {
     let mut failures = Vec::new();
     for mode in [TrashMode::Vault, TrashMode::System, TrashMode::Permanent] {
         let d = tempfile::tempdir().unwrap();
@@ -79,9 +78,10 @@ fn synced_case_twin_is_kept_on_both_devices() {
 }
 
 /// A file never synced (created after the last sync, or sync not set up) has
-/// no server history, so with sync on it is still lost for good.
+/// no server history to restore it from, so with sync on the rename onto it
+/// must be refused too.
 #[test]
-fn unsynced_overwritten_note_is_unrecoverable_even_with_sync() {
+fn case_rename_onto_unsynced_note_is_refused_with_sync() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("Note.md", "upper\n")]);
     laptop.sync();

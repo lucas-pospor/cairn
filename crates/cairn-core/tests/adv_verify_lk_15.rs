@@ -1,4 +1,4 @@
-// Reproduction for FINDING-087: with a query word that expands to at most
+// Regression tests for FINDING-087: with a query word that expands to at most
 // 256 dictionary terms taken in alphabetical order, notes whose matching word
 // sorts later would be silently missing.
 //
@@ -10,7 +10,7 @@
 // starting with "2024". Goes through the real Vault on a temp folder and the
 // same limit (100) the search panel passes.
 //
-// Tests named `control_*` are controls; the others reproduce the finding.
+// Tests named `control_*` are controls; the others check the fix.
 
 use std::fs;
 use std::sync::Arc;
@@ -52,7 +52,7 @@ fn control_rare_word_alone_finds_note() {
 }
 
 #[test]
-fn finding_and_query_misses_note_past_expansion_cap() {
+fn finding_and_query_finds_note_past_expansion_cap() {
     let (_d, v, last) = zettel_vault(400);
     let hits: Vec<String> = v.search("2024 kiwi", 100).into_iter().map(|h| h.path).collect();
     eprintln!("'2024 kiwi' -> {hits:?} (expected [{last:?}])");
@@ -60,7 +60,7 @@ fn finding_and_query_misses_note_past_expansion_cap() {
 }
 
 #[test]
-fn finding_prefix_query_drops_later_months() {
+fn finding_prefix_query_keeps_later_months() {
     let (_d, v, _last) = zettel_vault(400);
     let all = v.search("2024", 1000);
     let december = all.iter().filter(|h| h.path.starts_with("202412")).count();

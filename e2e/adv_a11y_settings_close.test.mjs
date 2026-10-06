@@ -1,7 +1,7 @@
 // Settings are written to .cairn/settings.json 300 ms after the last change
-// (settings.svelte.ts update(), debounced, never flushed). Closing the window
-// inside that window loses the change. Two app launches: a control that waits
-// before closing, and the finding that closes right away.
+// (settings.svelte.ts update(), debounced) and flushed when the window closes,
+// so closing inside that window keeps the change. Three app launches: a control
+// that waits before closing, one that closes right away, and one that reloads.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_a11y_settings_close.test.mjs
 
@@ -34,7 +34,7 @@ test("held up (control): a theme change is saved when the window is closed 800 m
   assert.equal(await changeThemeThenClose(800), "dark");
 });
 
-test("FINDING-223: a settings change made less than 300 ms before the window closes is lost (debounced save, no flush on close)", async () => {
+test("FINDING-223: a settings change made less than 300 ms before the window closes is saved (the debounced save is flushed on close)", async () => {
   const saved = await changeThemeThenClose(0);
   assert.equal(saved, "dark", `Settings > Theme = Dark, window closed at once: settings.json theme is ${JSON.stringify(saved)}`);
 });

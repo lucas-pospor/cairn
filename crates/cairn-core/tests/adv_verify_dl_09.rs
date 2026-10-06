@@ -1,4 +1,4 @@
-//! Timing-free reproduction for FINDING-129.
+//! Timing-free regression test for FINDING-129.
 //!
 //! The desktop watcher (`start` in app/src-tauri/src/watcher.rs) hands each
 //! notify-debouncer-full batch to `Vault::rescan_paths` on its own. The
@@ -20,7 +20,7 @@
 //! rescanned from the nearest folder that still exists instead.
 //!
 //! Run:
-//!   cargo test -p cairn-core --test adv_verify_dl_09 -- --ignored --nocapture
+//!   cargo test -p cairn-core --test adv_verify_dl_09 -- --nocapture
 
 use std::fs;
 use std::path::Path;

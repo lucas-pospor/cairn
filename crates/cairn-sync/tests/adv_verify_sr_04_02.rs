@@ -1,12 +1,12 @@
-//! Further reproductions for FINDING-015: how wide
-//! is the overwrite window once the desktop file watcher is taken into
+//! Further regression tests for FINDING-015: how wide
+//! was the overwrite window once the desktop file watcher is taken into
 //! account?
 //!
 //! The desktop app runs a notify debouncer (app/src-tauri/src/watcher.rs,
 //! 250 ms) that calls `Vault::rescan_paths` for externally changed paths.
 //! Once the index knows the new file, `SyncEngine::exists()` returns true and
 //! the incoming remote file gets a conflict name instead of overwriting it
-//! (`apply_remote`'s new-file branch). So the overwrite needs the external create to land
+//! (`apply_remote`'s new-file branch). So the overwrite needed the external create to land
 //! after the round's scan AND less than one debounce before the apply of the
 //! head with the same path.
 //!
@@ -18,13 +18,13 @@
 //! Cases (in each, the user's text must survive):
 //! * fast network (round trip shorter than the debounce, i.e. a LAN or a
 //!   nearby server): the watcher never gets there first, so the WHOLE
-//!   scan-to-apply interval is exposed;
+//!   scan-to-apply interval was exposed;
 //! * slow network (round trip longer than the debounce): the watcher alone
 //!   would save the file;
-//! * no watcher (Android, the sync_dir CLI): the whole interval is
+//! * no watcher (Android, the sync_dir CLI): the whole interval was
 //!   exposed regardless of latency.
 //!
-//!   cargo test -p cairn-sync --test adv_verify_sr_04_02 -- --include-ignored --nocapture --test-threads=1
+//!   cargo test -p cairn-sync --test adv_verify_sr_04_02 -- --nocapture --test-threads=1
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -95,7 +95,7 @@ fn race(rtt: Duration, watcher: bool) -> (Vec<(String, String)>, Vec<(String, St
 }
 
 #[test]
-fn desktop_watcher_does_not_help_on_a_fast_network() {
+fn fast_network_with_watcher_keeps_the_file() {
     let (files, trash, survives) = race(Duration::from_millis(20), true);
     println!("rtt 20 ms, watcher on: A files {files:?}; trash {trash:?}; survives {survives}");
     assert!(survives, "user's note overwritten despite the watcher: A files {files:?}; trash {trash:?}");
@@ -109,7 +109,7 @@ fn desktop_watcher_saves_the_file_on_a_slow_network() {
 }
 
 #[test]
-fn no_watcher_slow_network_still_overwrites() {
+fn no_watcher_slow_network_does_not_overwrite() {
     let (files, trash, survives) = race(Duration::from_millis(700), false);
     println!("rtt 700 ms, no watcher: A files {files:?}; trash {trash:?}; survives {survives}");
     assert!(survives, "user's note overwritten: A files {files:?}; trash {trash:?}");
@@ -117,8 +117,8 @@ fn no_watcher_slow_network_still_overwrites() {
 
 /// Same race, but the external program writes the SAME bytes the remote
 /// file has (e.g. a second sync tool delivering the same note): nothing is
-/// lost, the overwrite is a no-op. This shows the loss needs two
-/// different contents under one new name.
+/// lost, and no conflict copy is made. With the defect, this showed that
+/// the loss needed two different contents under one new name.
 #[test]
 fn same_content_external_create_loses_nothing() {
     let (_srv, mut a, mut b) = synced_pair(&[("x.md", "x\n")]);

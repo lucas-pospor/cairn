@@ -1,10 +1,11 @@
-// Reproduction for FINDING-130: an inotify queue overflow
-// (notify Flag::Rescan, an event with no paths) is dropped by
+// Regression tests for FINDING-130: an inotify queue overflow
+// (notify Flag::Rescan, an event with no paths) was dropped by
 // app/src-tauri/src/watcher.rs, so files whose events were lost during the
-// overflow never reach the index until something else triggers a full rescan.
-// With the defect, 32-36 of 113 burst files stay unindexed 15 s later; one
-// readdir of the vault root (file manager, ls, git status) or the app's own
-// visibilitychange rescan heals it, because an IN_OPEN on the root folder
+// overflow never reached the index until something else triggered a full
+// rescan; the watcher now does a full rescan on an overflow. With the defect,
+// 32-36 of 113 burst files stayed unindexed 15 s later; one readdir of the
+// vault root (file manager, ls, git status) or the app's own
+// visibilitychange rescan healed it, because an IN_OPEN on the root folder
 // maps to vault path "" and rescan_paths("") does a full rescan. That full
 // rescan opens the root again, so it then repeats every ~250 ms forever
 // (diagnostics below), which also masks overflow losses for the rest of the
@@ -84,7 +85,7 @@ print(n)
 }
 
 test(
-  "burst: files lost in an overflow stay unindexed until something lists the vault folder",
+  "burst: files lost in an overflow are indexed without anything listing the vault folder",
   async () => {
     const v = env.vault("v", { "Open.md": "open\n", "log-a.md": "", "log-b.md": "" });
     const app = await env.launch(v);

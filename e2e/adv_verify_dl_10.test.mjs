@@ -1,6 +1,6 @@
-// Reproduction for FINDING-010.
-// "Save my version" on the "deleted or moved" banner force-writes the path,
-// even after something else has put a file there again.
+// Regression tests for FINDING-010.
+// "Save my version" on the "deleted or moved" banner used to force-write the
+// path, even after something else had put a file there again.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_10.test.mjs
 
@@ -44,7 +44,7 @@ function filesContaining(dir, marker) {
 }
 
 test(
-  "file deleted while typing, later recreated by an atomic replace (sync-client style): banner stays 'deleted' and Save my version destroys the new file",
+  "file deleted while typing, later recreated by an atomic replace (sync-client style): the recreated file survives Save my version",
   async () => {
     const v = env.vault("v", { "N.md": "original\n", "Z.md": "z\n" });
     const app = await env.launch(v);
@@ -88,7 +88,7 @@ test(
 );
 
 test(
-  "in-app rename of a note that is NOT open onto a 'deleted' tab's path, then Save my version: the renamed note is destroyed",
+  "in-app rename of a note that is NOT open onto a 'deleted' tab's path, then Save my version: the renamed note survives",
   async () => {
     const v = env.vault("v", { "X.md": "x original\n", "Y.md": "y content that matters\n" });
     const app = await env.launch(v);

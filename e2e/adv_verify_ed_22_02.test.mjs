@@ -1,14 +1,15 @@
-// Reproduction for FINDING-007 (external link inside a Live Preview embed
-// navigates the app window), see also adv_verify_ed_22.test.mjs. These
-// cases check how much harm the navigation does:
+// Regression tests for FINDING-007 (an external link inside a Live Preview
+// embed navigated the app window), see also adv_verify_ed_22.test.mjs. These
+// cases check the harm the navigation could do:
 //
 //  1. Realistic timing: a user types, then takes ~1 s to reach the mouse and
-//     click. Is the edit still lost, or only edits inside the 600 ms window?
-//  2. Remote page: after the window navigates to a non-app http page, can that
-//     page's own script reach the Tauri IPC (app commands)?
+//     click. The window must stay on the app.
+//  2. Remote page: a non-app http page behind the link must not be able to
+//     call the Tauri IPC (app commands), even if it loads in the app window.
 //  3. vault:// page: the same click path with a link to an SVG file in the
 //     vault. vault:// is a registered custom scheme, which Tauri treats as a
-//     *local* origin. Does the SVG's script get the IPC?
+//     *local* origin. The window must stay on the app and the SVG's script
+//     must not be able to create a note through the IPC.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ed_22_02.test.mjs
 
@@ -54,7 +55,7 @@ window.__probe = { internals: typeof window.__TAURI_INTERNALS__, results: {}, do
 `;
 
 test(
-  "FINDING-007: realistic pause (1 s) between typing and clicking the embed link: window still navigates, but is the edit saved?",
+  "FINDING-007: realistic pause (1 s) between typing and clicking the embed link: the window stays on the app",
   async () => {
     await withApp(
       { "Host.md": "top line\n\n![[Inner]]\n\nend\n", "Inner.md": "Inner says: [example](https://example.com/from-embed)\n" },
@@ -77,7 +78,7 @@ test(
 );
 
 test(
-  "FINDING-007: a remote http page loaded into the app window by the embed link cannot call app commands",
+  "FINDING-007: a remote http page behind the embed link cannot call app commands",
   async () => {
     const server = http.createServer((req, res) => {
       res.writeHead(200, { "content-type": "text/html" });
@@ -114,7 +115,7 @@ test(
 );
 
 test(
-  "FINDING-007: an embed link to vault://localhost/<file>.svg loads the SVG as the app's top page; its script gets the IPC as a local origin",
+  "FINDING-007: an embed link to vault://localhost/<file>.svg keeps the app as the top page; the SVG's script cannot create a note through the IPC",
   async () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="60"><text x="10" y="35">svg probe</text><script><![CDATA[${PROBE_JS}]]></script></svg>`;
     await withApp(

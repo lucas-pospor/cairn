@@ -1,4 +1,4 @@
-// Reproduction for FINDING-036.
+// Regression test for FINDING-036.
 //
 // The app follows every clicked link (reading view, Live Preview, Ctrl+click in
 // source, and the outgoing-links panel) through the `resolve_link` command.
@@ -8,10 +8,10 @@
 // a click on a Markdown link follows the same rules, not the name-based
 // wikilink rules of `Vault::resolve`.
 //
-// This test shows that a mismatch would not need duplicate note names:
-// a `../` or `./` Markdown link to a uniquely named note is resolved by the
-// index, but `Vault::resolve` returns None for it, so a click resolved that
-// way would fall through to "create note" and fail with "Invalid path".
+// This test uses `../` and `./` Markdown links to uniquely named notes,
+// because a mismatch did not need duplicate note names: the index resolves
+// them, but `Vault::resolve` used to return None for them, so a click resolved
+// that way fell through to "create note" and failed with "Invalid path".
 //
 // Run: cargo test -p cairn-core --test adv_verify_lk_02
 
@@ -33,7 +33,7 @@ fn vault(files: &[(&str, &str)]) -> (tempfile::TempDir, Vault) {
 }
 
 #[test]
-fn relative_markdown_links_to_unique_notes_cannot_be_followed() {
+fn relative_markdown_links_to_unique_notes_can_be_followed() {
     let (_d, v) = vault(&[
         ("Root.md", "# Root"),
         ("docs/Sibling.md", "# Sibling"),

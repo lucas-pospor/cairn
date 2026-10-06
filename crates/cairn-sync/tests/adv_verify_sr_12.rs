@@ -1,10 +1,10 @@
-//! Reproduction for FINDING-016 with the app's default layout:
+//! Regression test for FINDING-016 with the app's default layout:
 //! attachments are saved to `attachments/`, which sorts before most note
-//! folders, so one attachment the server refuses (413) stops edits, new notes
-//! and deletions in later folders from ever being uploaded, and the error does
-//! not say which file is the problem.
+//! folders, so one attachment the server refused (413) stopped edits, new notes
+//! and deletions in later folders from ever being uploaded, and the error did
+//! not say which file was the problem.
 //!
-//! Run: cargo test -p cairn-sync --test adv_verify_sr_12 -- --ignored --nocapture
+//! Run: cargo test -p cairn-sync --test adv_verify_sr_12 -- --nocapture
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -17,7 +17,7 @@ fn bytes(n: usize, seed: u64) -> Vec<u8> {
 }
 
 #[test]
-fn oversized_attachment_in_default_folder_blocks_note_changes() {
+fn oversized_attachment_in_default_folder_does_not_block_note_changes() {
     // CAIRN_MAX_BODY_MB=1 stands in for the 200 MB default (scaled down)
     let srv = server_with_body(1 << 20);
     let mut a = Device::new(

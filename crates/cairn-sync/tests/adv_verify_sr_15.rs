@@ -1,16 +1,16 @@
-//! Reproduction for FINDING-058 along the path the app actually offers.
+//! Regression tests for FINDING-058 along the path the app actually offers.
 //!
 //! In the app, a configured device has no "connect" form: the only way to
 //! reconnect is Settings > Sync > "Turn off" (SyncEngine::disconnect, which
 //! deletes the whole sync state folder) and then "Connect and sync". That
-//! path does re-upload. The silent part is on every OTHER device: as soon
-//! as one device has re-created the vault, their syncs could succeed again
-//! while their changes-feed cursor still points into the old database, so
-//! they would skip the new server's revisions until its seq numbers pass the
-//! old cursor. So a device whose cursor is ahead of the server's head stops
+//! path does re-upload. The silent part was on every OTHER device: as soon
+//! as one device had re-created the vault, their syncs could succeed again
+//! while their changes-feed cursor still pointed into the old database, so
+//! they would skip the new server's revisions until its seq numbers passed the
+//! old cursor. So a device whose cursor is ahead of the server's head now stops
 //! with an error that tells the user to turn sync off and connect again.
 //!
-//! Run: cargo test -p cairn-sync --test adv_verify_sr_15 -- --include-ignored --nocapture
+//! Run: cargo test -p cairn-sync --test adv_verify_sr_15 -- --nocapture
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -95,7 +95,7 @@ fn two_devices_in_use(url: &str) -> (Device, Device) {
 }
 
 #[test]
-fn after_a_server_reset_the_device_that_did_not_reconnect_silently_misses_changes() {
+fn after_a_server_reset_the_device_that_did_not_reconnect_is_told_to_reconnect() {
     let data = tempfile::tempdir().unwrap();
     let port = free_port();
     let url = format!("http://127.0.0.1:{port}");
@@ -144,7 +144,7 @@ fn after_a_server_reset_the_device_that_did_not_reconnect_silently_misses_change
 }
 
 #[test]
-fn after_a_server_reset_edits_on_the_stale_device_fail_forever() {
+fn after_a_server_reset_edits_on_the_stale_device_wait_for_a_reconnect() {
     let data = tempfile::tempdir().unwrap();
     let port = free_port();
     let url = format!("http://127.0.0.1:{port}");

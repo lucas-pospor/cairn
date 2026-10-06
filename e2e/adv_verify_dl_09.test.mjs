@@ -1,14 +1,15 @@
-// Reproduction for FINDING-129: an external folder rename is reported
+// Regression tests for FINDING-129: an external folder rename was reported
 // as delete+create when a file inside the folder had a watcher event (even an
-// IN_OPEN from a plain read) shortly before, so open tabs do not follow.
+// IN_OPEN from a plain read) shortly before, so open tabs did not follow.
 //
 // 1. Control: nothing touched the folder before the rename -> tab follows.
 // 2. Gap sweep: a read of dir/C.md, then the rename after various gaps, in one
-//    app session; records which gaps break.
+//    app session; the tab must follow after every gap.
 // 3. Cairn's own reads: an external write to the open (clean) note makes
 //    Cairn re-read it (watcher rescan + tab reload), which queues a fresh
-//    IN_OPEN. A folder rename ~0.45 s after the external write then breaks,
-//    although the external write's own event was already flushed.
+//    IN_OPEN. The tab must still follow a folder rename ~0.45 s after the
+//    external write (with the defect, the tab did not follow it, although the
+//    external write's own event was already flushed).
 //
 // Run:
 //   RUST_LOG=info,cairn_app_lib=debug scripts/e2e-headless.sh --test-reporter=spec e2e/adv_verify_dl_09.test.mjs
@@ -80,7 +81,7 @@ test(
 );
 
 test(
-  "Cairn's own re-read after an external edit is enough: rename 450 ms after an external write",
+  "folder rename 450 ms after an external write (and Cairn's own re-read): the open tab follows",
   async () => {
     const v = env.vault("v", { "dir/C.md": "charlie\n", "Z.md": "z\n" });
     const app = await env.launch(v);

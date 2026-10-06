@@ -1,8 +1,8 @@
-//! Reproduction for FINDING-053: creating a note or folder whose name
+//! Regression tests for FINDING-053: creating a note or folder whose name
 //! differs only in case from an existing sibling must be refused (docs/PLAN.md
 //! section 6: refuse new case twins on case-insensitive file systems).
 //!
-//! Run: cargo test -p cairn-core --test adv_verify_fs_22 -- --ignored
+//! Run: cargo test -p cairn-core --test adv_verify_fs_22
 
 use std::fs;
 use std::path::Path;
@@ -32,7 +32,7 @@ fn names(dir: &Path) -> Vec<String> {
 /// calls create_note("projects/idea.md"), which must not silently create a
 /// second folder `projects/` next to `Projects/`.
 #[test]
-fn fs22_create_note_in_case_variant_parent_creates_second_folder() {
+fn fs22_create_note_in_case_variant_parent_is_refused() {
     let (d, v) = setup(&[("Projects/plan.md", "plan")]);
     let r = v.create_note("projects/idea.md", "");
     let top = names(d.path());
@@ -48,7 +48,7 @@ fn fs22_create_note_in_case_variant_parent_creates_second_folder() {
 /// rank, so [[note]] would tie between the two and the alphabetical tie-break
 /// would pick the new, empty "Note.md" (uppercase sorts first).
 #[test]
-fn fs22_case_duplicate_hijacks_existing_links() {
+fn fs22_case_duplicate_does_not_hijack_existing_links() {
     let (_d, v) = setup(&[("note.md", "the real note"), ("other.md", "see [[note]]")]);
     assert_eq!(v.resolve("note", "other.md").as_deref(), Some("note.md"));
     let r = v.create_note("Note.md", "");

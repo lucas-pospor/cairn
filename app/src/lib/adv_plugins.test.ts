@@ -195,7 +195,7 @@ describe("plugin host: lifecycle", () => {
     expect(w.terminated).toBe(false);
   });
 
-  it("FINDING-069: running a plugin command twice before the first run finishes kills the plugin 30 s later", async () => {
+  it("FINDING-069: running a plugin command twice before the first run finishes does not kill the plugin 30 s later if both runs finish", async () => {
     vi.useFakeTimers();
     config.set("plugins/a.js", "// @name A\n");
     const host = makeHost();
@@ -213,7 +213,7 @@ describe("plugin host: lifecycle", () => {
     expect(w.terminated).toBe(false);
   });
 
-  it("FINDING-070: a stale command timer from a stopped instance kills the re-enabled plugin", async () => {
+  it("FINDING-070: a stale command timer from a stopped instance does not kill the re-enabled plugin", async () => {
     vi.useFakeTimers();
     config.set("plugins/a.js", "// @name A\n");
     const host = makeHost();
@@ -283,7 +283,7 @@ describe("plugin host: lifecycle", () => {
     expect(pluginCommands()).toEqual([]);
   });
 
-  it("FINDING-068: two overlapping sync() calls start the plugin twice and leave an orphan worker that disabling cannot stop", async () => {
+  it("FINDING-068: two overlapping sync() calls start the plugin once, and disabling it stops it", async () => {
     readConfigDelay = 5;
     config.set("plugins/a.js", "// @name A\n// @permissions write\n");
     const host = makeHost();
@@ -297,7 +297,7 @@ describe("plugin host: lifecycle", () => {
     expect(alive).toEqual([]);
   });
 
-  it("FINDING-068: stopAll() while a start is in flight (vault switch, Reload) leaves the plugin running", async () => {
+  it("FINDING-068: stopAll() while a start is in flight (vault switch, Reload) leaves no plugin running", async () => {
     readConfigDelay = 5;
     config.set("plugins/a.js", "// @name A\n// @permissions read write\n");
     const host = makeHost();
@@ -326,7 +326,7 @@ describe("plugin host: lifecycle", () => {
     expect(names()).toEqual(["cairn-plugin-a.js"]);
   });
 
-  it("FINDING-153: a plugin stopped for taking too long is silently restarted when any other plugin is toggled", async () => {
+  it("FINDING-153: a plugin stopped for taking too long is not restarted when another plugin is enabled", async () => {
     vi.useFakeTimers();
     config.set("plugins/a.js", "// @name A\n");
     config.set("plugins/b.js", "// @name B\n");
@@ -432,7 +432,7 @@ describe("plugin host: consent and permissions", () => {
     expect(FakeWorker.all.length).toBe(1);
   });
 
-  it("FINDING-021: permissions are re-read from the file at every start, so a changed file gets new permissions without consent", async () => {
+  it("FINDING-021: permissions are re-read from the file at every start, so a changed file needs consent again", async () => {
     recordedApprovals = true;
     config.set("plugins/p.js", "// @name P\n// @permissions editor\n");
     const host = makeHost();
@@ -460,7 +460,7 @@ describe("plugin host: consent and permissions", () => {
     expect(isApproved(undefined, "h1", [])).toBe(false);
   });
 
-  it("FINDING-067: plugins enabled in settings but not ending in .js or inside a subfolder run, yet are not listed in Settings > Plugins", async () => {
+  it("FINDING-067: plugins enabled in settings but not ending in .js or inside a subfolder do not run, so every running plugin is listed in Settings > Plugins", async () => {
     config.set("plugins/visible.js", "// @name Visible\n");
     config.set("plugins/hidden/stealth.js", "// @name Stealth\n// @permissions read write\n");
     config.set("plugins/stealth2.txt", "// @name Stealth 2\n// @permissions read write\n");
@@ -595,8 +595,8 @@ describe("plugin manifest parsing", () => {
   });
 });
 
-describe("plugin host: messages that bypass limits", () => {
-  it("FINDING-072: error toasts from a plugin are not capped like ui.toast (500 chars)", async () => {
+describe("plugin host: messages that try to bypass limits", () => {
+  it("FINDING-072: error toasts and command names from a plugin are capped like ui.toast (all under 1000 chars)", async () => {
     config.set("plugins/big.js", "// @name Big\n");
     const host = makeHost();
     await host.sync(["big.js"]);
@@ -609,7 +609,7 @@ describe("plugin host: messages that bypass limits", () => {
     expect(longest).toBeLessThan(1000);
   });
 
-  it("FINDING-154: disabling plugin 'a.js' also removes the commands of plugin 'a.js:b.js' (prefix collision)", async () => {
+  it("FINDING-154: disabling plugin 'a.js' keeps the commands of plugin 'a.js:b.js' (prefix collision)", async () => {
     config.set("plugins/a.js", "// @name A\n");
     config.set("plugins/a.js:b.js", "// @name AB\n");
     const host = makeHost();

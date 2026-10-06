@@ -1,11 +1,11 @@
-// Reproduction for FINDING-090: a Vault::rename that changes whether a path
-// is a note (todo.txt -> todo.md, Note.md -> Note.txt) must not carry the old
-// index state over (index.rs rename_tree). A stale index would not be fixed
-// by a full rescan or by the watcher's rescan_paths either.
+// Regression tests for FINDING-090: a Vault::rename that changes whether a
+// path is a note (todo.txt -> todo.md, Note.md -> Note.txt) must not carry
+// the old index state over (index.rs rename_tree). A stale index would not
+// be fixed by a full rescan or by the watcher's rescan_paths either.
 //
 // Run: cargo test -p cairn-core --test adv_verify_lk_20 -- --include-ignored --nocapture
 //
-// Tests named `control_*` are controls; the others reproduce the finding.
+// The first two tests are controls; the others check the fix.
 
 use std::fs;
 use std::path::Path;
@@ -90,7 +90,7 @@ fn in_app_rename_md_to_txt_is_not_a_note() {
 /// Editing the renamed note through the app's save path leaves it indexed as
 /// a note.
 #[test]
-fn editing_after_rename_repairs_index() {
+fn editing_after_rename_keeps_note_indexed() {
     let (_d, _root, v) = vault(&[("todo.txt", TODO), ("Target.md", "")]);
     v.rename("todo.txt", "todo.md").unwrap();
     let n = v.read_note("todo.md").unwrap();

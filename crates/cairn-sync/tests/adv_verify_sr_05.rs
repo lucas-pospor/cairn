@@ -1,27 +1,27 @@
-//! Reproduction for FINDING-055.
+//! Regression tests for FINDING-055.
 //!
-//! Root cause: `SyncEngine::scan` reuses the tracked hash whenever the tracked
-//! size and mtime equal the index entry, and several places record a
-//! (size, mtime) that was taken separately from the bytes whose hash is
+//! Root cause: `SyncEngine::scan` reused the tracked hash whenever the tracked
+//! size and mtime equaled the index entry, and several places recorded a
+//! (size, mtime) that was taken separately from the bytes whose hash was
 //! recorded (`self.stat(path)` after a read or a rename). When the recorded
-//! (size, mtime) describes newer bytes than the recorded hash, the newer bytes
-//! are never hashed again: they are never uploaded, and the next remote edit
-//! of that note fails the expected-hash write in the Unchanged branch on every
-//! round, so the whole sync of the device fails with "the server kept changing
+//! (size, mtime) described newer bytes than the recorded hash, the newer bytes
+//! were never hashed again: they were never uploaded, and the next remote edit
+//! of that note failed the expected-hash write in the Unchanged branch on every
+//! round, so the whole sync of the device failed with "the server kept changing
 //! during sync".
 //!
-//! These tests show two more triggers:
+//! These tests cover two more triggers:
 //!
 //! * a remote rename-only revision applied while the user saves the note
 //!   through the vault during the pull (`apply_remote`, Unchanged branch,
-//!   `rhash == old.hash` -> `self.stat(&path)`); the window is the whole
+//!   `rhash == old.hash` -> `self.stat(&path)`); the window was the whole
 //!   changes request, not the few microseconds between the push's read and
 //!   its stat;
 //! * a file system with 2 s mtime granularity (FAT32 USB sticks and SD
 //!   cards), where two same-size saves (checkbox toggles) in the same 2 s
-//!   bucket with a sync in between are enough.
+//!   bucket with a sync in between were enough.
 //!
-//! Run: cargo test -p cairn-sync --test adv_verify_sr_05 -- --ignored --nocapture
+//! Run: cargo test -p cairn-sync --test adv_verify_sr_05 -- --nocapture
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;

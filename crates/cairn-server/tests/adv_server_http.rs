@@ -530,8 +530,9 @@ fn unauthenticated_upload_to_api_route_is_refused_before_body() {
 }
 
 // ===================================================================
-// FINDING-025: the 404 fallback extracts the whole request body, without
-// authentication, up to CAIRN_MAX_BODY_MB (default 200 MB).
+// FINDING-025: the 404 fallback answers at once, without reading the
+// request body (it used to buffer it, unauthenticated, up to
+// CAIRN_MAX_BODY_MB, default 200 MB).
 // ===================================================================
 
 /// Deterministic form: an unauthenticated request with a huge Content-Length
@@ -617,9 +618,10 @@ fn unauthenticated_post_to_unknown_path_does_not_grow_memory() {
 }
 
 // ===================================================================
-// FINDING-076: no header-read / body-read / idle timeouts. A connection
-// that sends a partial request is held open forever, and each one keeps a
-// file descriptor; enough of them stop the server accepting connections.
+// FINDING-076: header-read / body-read / idle timeouts. A connection that
+// sends a partial request or goes quiet is closed after a timeout. Without
+// them it was held open forever, keeping a file descriptor, and enough of
+// them stopped the server accepting connections.
 // ===================================================================
 
 #[test]
@@ -752,8 +754,8 @@ fn slow_upload_that_keeps_sending_is_not_cut_off() {
 }
 
 // ===================================================================
-// FINDING-167: history of a vault that does not exist is 200 [] instead
-// of 404 (every other vault route says 404 "no such vault").
+// FINDING-167: history of a vault that does not exist is 404, like every
+// other vault route ("no such vault"), not 200 [].
 // ===================================================================
 
 #[test]
@@ -766,9 +768,9 @@ fn history_of_missing_vault_is_404() {
 }
 
 // ===================================================================
-// FINDING-168: since >= 2^63 wraps to a negative number in SQL, so the
-// changes feed returns every head although the client asked for changes
-// after an enormous cursor; the returned cursor then jumps backwards.
+// FINDING-168: since >= 2^63 must not wrap to a negative number in SQL:
+// after an enormous cursor the changes feed returns no heads, and the
+// returned cursor does not jump backwards.
 // ===================================================================
 
 #[test]
@@ -785,7 +787,7 @@ fn huge_since_returns_nothing() {
 }
 
 // ===================================================================
-// FINDING-169: the Bearer scheme is matched case-sensitively; RFC 9110
+// FINDING-169: the Bearer scheme is matched case-insensitively; RFC 9110
 // section 11.1 says auth schemes are case-insensitive ("bearer x" is valid).
 // ===================================================================
 
@@ -800,9 +802,9 @@ fn bearer_scheme_is_case_insensitive() {
 }
 
 // ===================================================================
-// FINDING-170: error responses come in two formats. The server's own
-// errors are JSON {"error": ...}; axum's extractor rejections (bad JSON,
-// bad query, bad path, wrong content type) are text/plain.
+// FINDING-170: error responses come in one format. Like the server's own
+// errors, axum's extractor rejections (bad JSON, bad query, bad path, wrong
+// content type) are JSON, not text/plain.
 // ===================================================================
 
 #[test]
@@ -852,8 +854,8 @@ fn server_log_contains_no_tokens_or_blobs() {
 }
 
 // ===================================================================
-// FINDING-171: failed authentication is not logged at all, so an operator
-// cannot see a misconfigured device or token guessing.
+// FINDING-171: failed authentication is logged, so an operator can see a
+// misconfigured device or token guessing.
 // ===================================================================
 
 #[test]

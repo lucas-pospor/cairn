@@ -1,9 +1,10 @@
-//! Reproduction for FINDING-013: a save that renamed its temp file over the
-//! vault path itself would replace a symlinked file with a regular file, and
-//! the real target would stop receiving edits. A symlinked note is written
-//! through its link; `.cairn/settings.json` is a special case, see below.
+//! Regression tests for FINDING-013: a save that renamed its temp file over
+//! the vault path itself would replace a symlinked file with a regular file,
+//! and the real target would stop receiving edits. A symlinked note is
+//! written through its link; `.cairn/settings.json` is a special case, see
+//! below.
 //!
-//! Run: cargo test -p cairn-core --test adv_verify_fs_06 -- --ignored
+//! Run: cargo test -p cairn-core --test adv_verify_fs_06
 
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -42,7 +43,7 @@ fn fs06_symlinked_settings_json_is_replaced_on_write_config() {
 /// A symlinked note: every save reaches the real target, and the vault path
 /// reads the same text.
 #[test]
-fn fs06_edit_survives_in_vault_but_target_diverges() {
+fn fs06_edit_survives_in_vault_and_reaches_target() {
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("target.md"), "v0").unwrap();
     let d = tempfile::tempdir().unwrap();

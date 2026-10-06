@@ -1,8 +1,8 @@
-//! Reproduction for FINDING-011: a watcher hint for a folder whose name is
+//! Regression test for FINDING-011: a watcher hint for a folder whose name is
 //! NFD on disk must not remove the whole folder from the index (the app's
 //! tree would show it briefly after open, then it would disappear).
 //!
-//!   cargo test -p cairn-core --test adv_verify_fs_02 -- --ignored
+//!   cargo test -p cairn-core --test adv_verify_fs_02
 
 use std::fs;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use cairn_core::{Change, StdFs, TrashMode, Vault};
 
 #[test]
-fn fs02_watcher_hint_drops_nfd_folder() {
+fn fs02_watcher_hint_keeps_nfd_folder() {
     let d = tempfile::tempdir().unwrap();
     fs::create_dir(d.path().join("Re\u{301}sume\u{301}")).unwrap();
     fs::write(d.path().join("Re\u{301}sume\u{301}/inside.md"), "in folder").unwrap();

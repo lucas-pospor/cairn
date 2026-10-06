@@ -75,13 +75,13 @@ describe("FINDING-085: closing fence with trailing spaces", () => {
 });
 
 describe("FINDING-085: empty '---\\n---' frontmatter", () => {
-  it("reading view hides the empty block, like the core (it rendered two rules)", () => {
+  it("reading view hides the empty block, like the core", () => {
     const src = "---\n---\nbody";
     expect(stripFrontmatter(src)).toEqual({ body: "body", frontmatter: "" });
     expect(renderUnsafe(src)).toBe("<p>body</p>\n");
   });
 
-  it("with a later '---' rule, the empty block still ends at its second line (the intro was swallowed as YAML)", () => {
+  it("with a later '---' rule, the empty block still ends at its second line, before the intro", () => {
     const s = stripFrontmatter(EMPTY_INTRO);
     expect(s.frontmatter).toBe("");
     expect(s.body.startsWith("Intro paragraph")).toBe(true);

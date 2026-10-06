@@ -1,10 +1,10 @@
-//! Reproduction for FINDING-019 (ureq's 10 MiB response cap vs the
-//! server's CAIRN_MAX_BODY_MB upload limit). Checks what follows from the
-//! cap one claim at a time:
+//! Regression tests for FINDING-019 (ureq's 10 MiB response cap vs the
+//! server's CAIRN_MAX_BODY_MB upload limit). Checks what the cap used to
+//! break, one case at a time:
 //!
-//!   cargo test -p cairn-sync --test adv_verify_sx_03 -- --ignored --nocapture --test-threads=1
+//!   cargo test -p cairn-sync --test adv_verify_sx_03 -- --nocapture --test-threads=1
 //!
-//! Each test is a separate claim so the output shows which ones hold.
+//! Each test is a separate case so the output shows which ones work.
 
 use std::fs;
 use std::path::PathBuf;
@@ -76,12 +76,12 @@ fn noise(n: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-/// Claim: "The uploading device sees no error (it skips its own head on later
-/// syncs)". The engine only skips its own head AFTER the changes page has been
-/// read, and `last_seq` is not advanced past its own uploads, so the uploader's
-/// next sync downloads the same oversized page.
+/// The uploading device's next sync works. With the defect it did not: the
+/// engine skipped its own head only AFTER the changes page had been read, and
+/// `last_seq` was not advanced past its own uploads, so the uploader's next
+/// sync downloaded the same oversized page.
 #[test]
-fn uploader_breaks_on_its_next_sync() {
+fn uploader_does_not_break_on_its_next_sync() {
     let srv = server();
     let big = noise(8 * 1024 * 1024, 1); // 8 MiB, an ordinary photo/PDF size
     let mut a = Device::new(&srv, "laptop", &[("big.bin", &big), ("a.md", b"hello")]);
@@ -92,10 +92,10 @@ fn uploader_breaks_on_its_next_sync() {
     assert!(second.is_ok(), "the uploading device's own next sync failed: {:?}", second.err());
 }
 
-/// Claim: the whole round aborts, so the receiving device cannot push its own
-/// local changes either (pull runs before push).
+/// The receiving device's whole round completes, so it pushes its own local
+/// changes too (pull runs before push; with the defect the round aborted).
 #[test]
-fn receiver_cannot_push_its_own_notes() {
+fn receiver_can_push_its_own_notes() {
     let srv = server();
     let big = noise(8 * 1024 * 1024, 2);
     let mut a = Device::new(&srv, "laptop", &[("big.bin", &big)]);
@@ -111,10 +111,10 @@ fn receiver_cannot_push_its_own_notes() {
 
 /// No single big file is needed. The changes feed returns up to 500 heads per
 /// page with every blob inlined and no byte cap, so an initial pull of a vault
-/// whose files add up to more than ~7.5 MB in one 500-file window fails the
-/// same way. Here: 16 attachments of 640 KiB each.
+/// whose files add up to more than ~7.5 MB in one 500-file window used to fail
+/// the same way; it must work. Here: 16 attachments of 640 KiB each.
 #[test]
-fn many_medium_files_break_initial_pull() {
+fn many_medium_files_do_not_break_initial_pull() {
     let srv = server();
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     for i in 0..16 {
@@ -130,9 +130,9 @@ fn many_medium_files_break_initial_pull() {
     assert!(rb.is_ok(), "initial pull of 10 MiB of medium attachments failed: {:?}", rb.err());
 }
 
-/// Claim: version history of a file larger than ~7.5 MB cannot be read.
+/// Version history of a file larger than ~7.5 MB can be read.
 #[test]
-fn large_revision_content_fails() {
+fn large_revision_content_is_readable() {
     let srv = server();
     let big = noise(8 * 1024 * 1024, 3);
     let mut a = Device::new(&srv, "laptop", &[("big.bin", &big)]);
@@ -144,8 +144,8 @@ fn large_revision_content_fails() {
     assert!(rc.is_ok(), "revision content of an 8 MiB file failed: {:?}", rc.err());
 }
 
-/// Control: a file just under the threshold round-trips, so the failure is the
-/// response cap and not something else about large files.
+/// Control: a file just under the old threshold round-trips (with the defect,
+/// this showed the failures above were the response cap, nothing else).
 #[test]
 fn control_7mib_file_round_trips() {
     let srv = server();

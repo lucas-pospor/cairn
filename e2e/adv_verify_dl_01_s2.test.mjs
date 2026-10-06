@@ -1,9 +1,9 @@
-// Reproduction for FINDING-001.
-// Opening another note in the same tab while that tab's save is blocked
-// (conflict banner) silently drops the unsaved edits.
+// Regression tests for FINDING-001.
+// Opening another note in the same tab while that tab's save was blocked
+// (conflict banner) used to drop the unsaved edits silently.
 //
 // These variants use real key events, keep typing after the banner (so the
-// loss is not limited to the 600 ms autosave window), and reach openNote
+// check is not limited to the 600 ms autosave window), and reach openNote
 // through the quick switcher and a plain click on a wikilink in Live Preview,
 // plus the "deleted outside Cairn" banner that offers an explicit
 // "Discard and close" button.
@@ -125,7 +125,7 @@ test(
 );
 
 // Control: the same flow without a blocked save keeps the edits (autosave
-// flushes on switch), so the loss is specific to the blocked-save state.
+// flushes on switch); with the defect, only the blocked-save state lost them.
 test("control: dirty but saveable tab, plain click on B, edits are flushed to disk", async () => {
   const v = env.vault("v", { "A.md": "alpha\n", "B.md": "bravo\n" });
   const app = await env.launch(v);

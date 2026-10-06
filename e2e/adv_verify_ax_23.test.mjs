@@ -1,5 +1,5 @@
-// Reproduction for FINDING-118 (the "Move to…" chooser takes no
-// focus and ignores Escape), from the state a real user is usually in: a note
+// Regression test for FINDING-118 (the "Move to…" chooser took no
+// focus and ignored Escape), from the state a real user is usually in: a note
 // open in the editor, then right-click a tree row > Move to….
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ax_23.test.mjs

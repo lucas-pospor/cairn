@@ -1,11 +1,12 @@
-//! Reproduction of the impact of FINDING-138 on sync: a file
-//! whose on-disk name is a single backslash (legal on Linux) is listed by
+//! Regression test for the impact of FINDING-138 on sync: a file
+//! whose on-disk name is a single backslash (legal on Linux) was listed by
 //! StdFs::list_into under the empty path "" (vpath::normalize splits on '\\'),
-//! i.e. as the vault root itself with kind File. The sync scan then tries to
-//! read_file("") (the vault root folder) and the error is not NotFound.
+//! i.e. as the vault root itself with kind File. The sync scan then tried to
+//! read_file("") (the vault root folder) and the error was not NotFound.
 //!
-//! A file named `back\slash.md` is listed as `back/slash.md`, which cannot be
-//! read (NotFound), so sync skips it silently and never uploads it.
+//! The listing now skips names with a backslash: a file named `back\slash.md`
+//! is listed in the files not synced and never uploaded (by design; that test
+//! is ignored).
 //!
 //! Run:
 //!   cargo test -p cairn-sync --test adv_verify_fs_18 -- --include-ignored --nocapture
@@ -16,7 +17,7 @@ mod common;
 use common::*;
 
 #[test]
-fn fs18_file_named_backslash_breaks_sync() {
+fn fs18_file_named_backslash_does_not_break_sync() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("ok.md", "ok\n")]);
     a.sync();

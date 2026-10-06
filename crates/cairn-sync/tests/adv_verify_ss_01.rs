@@ -1,7 +1,7 @@
-//! Reproductions for FINDING-004 (notes whose names differ
-//! only in case destroy each other through a case-insensitive device).
+//! Regression tests for FINDING-004 (notes whose names differ only in
+//! case used to destroy each other through a case-insensitive device).
 //!
-//! The other reproductions use a simulated `CaseInsensitiveFs`. These tests
+//! The other tests use a simulated `CaseInsensitiveFs`. These tests
 //! use the product's real `StdFs` (atomic temp-file + rename writes) on a REAL
 //! case-insensitive, case-preserving directory: a Linux casefold (`chattr +F`)
 //! directory on a tmpfs mounted with `-o casefold` inside a private user and
@@ -155,9 +155,9 @@ fn real_ci_fs_two_notes_differing_only_in_case_different_sizes() {
 }
 
 /// Variant: the case-insensitive device's own, never-synced `Note.md` is
-/// overwritten by a remote `note.md` during the pull (pull runs before push).
+/// not lost when a remote `note.md` arrives in the pull (pull runs before push).
 #[test]
-fn real_ci_fs_remote_note_overwrites_local_unsynced_note() {
+fn real_ci_fs_local_unsynced_note_survives_remote_note() {
     let srv = server();
     let mut linux = Device::new(&srv, "linux", &[("note.md", "from linux\n")]);
     linux.sync();

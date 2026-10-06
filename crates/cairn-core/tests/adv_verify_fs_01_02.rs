@@ -42,7 +42,7 @@ fn holders(dir: &Path, root: &Path, needle: &str, out: &mut Vec<String>) {
 /// note; otherwise it would replace `Projects/todo.md`, and the old text
 /// would be nowhere in the vault (not in `.trash`).
 #[test]
-fn twin_folder_created_by_cairn_then_merge_move_destroys_note() {
+fn twin_folder_merge_move_is_refused_and_keeps_note() {
     let (d, v) = vault_with(&[("Projects/todo.md", "old list PRECIOUS\n")]);
     let r = v.create_note("projects/todo.md", "new list\n");
     assert!(matches!(r, Err(CoreError::AlreadyExists(_))), "create_note returned {:?}", r.map(|w| w.entry.path));
@@ -63,8 +63,8 @@ fn twin_folder_created_by_cairn_then_merge_move_destroys_note() {
     assert_eq!(found, vec!["Projects/todo.md".to_string()]);
 }
 
-/// Control (passes): a case-only rename of a folder onto a non-empty
-/// twin folder fails in rename(2) (ENOTEMPTY), so whole folders are not lost.
+/// Control: a case-only rename of a folder onto a non-empty twin folder
+/// fails, so whole folders are not lost.
 #[test]
 fn control_case_only_folder_rename_onto_nonempty_twin_fails_safely() {
     let (d, v) = vault_with(&[("Projects/a.md", "A\n"), ("projects/b.md", "B\n")]);
@@ -75,9 +75,10 @@ fn control_case_only_folder_rename_onto_nonempty_twin_fails_safely() {
     assert_eq!(fs::read_to_string(d.path().join("projects/b.md")).unwrap(), "B\n");
 }
 
-/// Control (passes): the index after the overwrite matches the disk
-/// (one `A.md` holding the moved text), so nothing in the UI hints that a
-/// note was lost; search no longer finds the old text either.
+/// Control: if the rename overwrote `A.md`, the index would match the disk
+/// (one `A.md` holding the moved text), so nothing in the UI would hint that
+/// a note was lost, and search would not find the old text either. The
+/// rename is refused now, so these checks only run if that regresses.
 #[test]
 fn control_index_after_overwrite_shows_no_trace_of_the_lost_note() {
     let (_d, v) = vault_with(&[("a.md", "lower\n"), ("A.md", "UPPER precious\n")]);

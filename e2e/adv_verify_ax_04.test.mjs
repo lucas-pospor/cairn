@@ -1,4 +1,4 @@
-// Reproduction for FINDING-105 (global hotkeys run behind the Settings
+// Regression tests for FINDING-105 (global hotkeys ran behind the Settings
 // modal). Differences from the other reproduction (adv_a11y_keyboard.test.mjs):
 // - a control first: with a DialogHost confirm dialog open, Ctrl+O is ignored
 //   (Workspace.onKey returns early on app.dialog), so the expectation is the
@@ -59,7 +59,7 @@ test("FINDING-105 control: Ctrl+O is ignored while a DialogHost confirm dialog i
   assert.ok(app.exists("Victim.md"), "Escape should have cancelled the delete");
 });
 
-test("FINDING-105: Ctrl+O / Ctrl+N / Ctrl+W act behind the open Settings modal", async () => {
+test("FINDING-105: Ctrl+O / Ctrl+N / Ctrl+W do nothing behind the open Settings modal", async () => {
   await app.reset();
   const problems = [];
   const before = untitled();

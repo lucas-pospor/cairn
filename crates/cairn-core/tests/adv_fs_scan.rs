@@ -2,11 +2,13 @@
 //! edges: unreadable folders, races, symlink loops, bulk changes, rename
 //! detection, very large notes.
 //!
-//! Tests named `fsNN_*` reproduce a finding and are `#[ignore]`d while the
-//! bug exists. Run one with:
+//! Tests named `fsNN_*` come from findings; those not ignored are regression
+//! tests for fixed ones. Run one with:
+//!   cargo test -p cairn-core --test adv_fs_scan -- --exact <name>
+//! Ignored tests are slow coverage (a "slow:" reason) or document behaviour
+//! that is not a defect (by design); run one of those with:
 //!   cargo test -p cairn-core --test adv_fs_scan -- --ignored --exact <name>
-//! Slow coverage is ignored with a "slow:" reason; run it the same way.
-//! Run the passing coverage (about 10 s in a debug build) with:
+//! Run the rest (about 10 s in a debug build) with:
 //!   cargo test -p cairn-core --test adv_fs_scan
 
 use std::fs;
@@ -59,11 +61,11 @@ fn is_renamed(c: &Change) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-049: one unreadable subfolder fails the whole scan
+// FINDING-049: one unreadable subfolder does not fail the whole scan
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs03_unreadable_subfolder_fails_whole_open() {
+fn fs03_unreadable_subfolder_does_not_fail_open() {
     // A vault at the root of an ext4 USB stick has a root-owned 0700 lost+found.
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("ok.md"), "fine").unwrap();
@@ -76,7 +78,7 @@ fn fs03_unreadable_subfolder_fails_whole_open() {
 }
 
 #[test]
-fn fs03_unreadable_subfolder_breaks_every_rescan() {
+fn fs03_unreadable_subfolder_does_not_fail_rescan() {
     let (d, v) = setup(&[("ok.md", "fine"), ("private/x.md", "x")]);
     chmod(&d.path().join("private"), 0o000);
     fs::write(d.path().join("new.md"), "made in another editor").unwrap();
@@ -102,11 +104,11 @@ fn unreadable_file_does_not_break_open_or_rescan() {
 }
 
 // ---------------------------------------------------------------------------
-// FINDING-132: a folder replaced by a file mid-scan aborts the scan
+// FINDING-132: a folder replaced by a file mid-scan does not abort the scan
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs04_folder_replaced_by_file_during_scan_aborts_scan() {
+fn fs04_scan_survives_folder_replaced_by_file() {
     let (d, v) = setup(&[("a/one.md", "1"), ("b/two.md", "2")]);
     let stop = Arc::new(AtomicBool::new(false));
     let (s2, root) = (stop.clone(), d.path().to_path_buf());
@@ -194,7 +196,7 @@ fn scan_survives_files_appearing_and_vanishing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs05_single_self_loop_duplicates_every_note() {
+fn fs05_single_self_loop_adds_no_duplicates() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("n.md"), "unique words").unwrap();
     symlink(".", d.path().join("loop")).unwrap();
@@ -228,7 +230,7 @@ fn a_symlink_loop_seen_by_the_watcher_adds_no_duplicates() {
 }
 
 #[test]
-fn fs05_two_symlink_loops_make_open_hang() {
+fn fs05_two_symlink_loops_do_not_hang_open() {
     if let Ok(dir) = std::env::var("ADV_FS_LOOP_CHILD") {
         // Child process: try to open the vault and report.
         let v = open(Path::new(&dir));
@@ -241,7 +243,7 @@ fn fs05_two_symlink_loops_make_open_hang() {
     symlink(".", d.path().join("loop2")).unwrap();
     // Run the open in a child process so the runaway listing can be killed.
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "fs05_two_symlink_loops_make_open_hang", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "fs05_two_symlink_loops_do_not_hang_open", "--nocapture", "--test-threads=1"])
         .env("ADV_FS_LOOP_CHILD", d.path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -388,7 +390,7 @@ fn replace_folders_secs(n: usize) -> (f64, usize) {
 }
 
 #[test]
-fn fs12_replacing_many_folders_rescan_is_cubic() {
+fn fs12_replacing_many_folders_rescan_is_not_quadratic() {
     let (small, c1) = replace_folders_secs(50);
     let (big, c2) = replace_folders_secs(200);
     assert_eq!((c1, c2), (50 * 12, 200 * 12)); // n deleted folders, n created folders, 10n created notes
@@ -402,7 +404,7 @@ fn fs12_replacing_many_folders_rescan_is_cubic() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs16_unrelated_identical_note_is_reported_as_rename() {
+fn fs16_unrelated_identical_note_is_not_reported_as_rename() {
     let (d, v) = setup(&[("Meeting 2026-09-01.md", ""), ("work/keep.md", "k")]);
     // User deletes an empty note in one place and, separately, creates a new
     // empty note somewhere else before the next scan.
@@ -413,7 +415,7 @@ fn fs16_unrelated_identical_note_is_reported_as_rename() {
 }
 
 #[test]
-fn fs16_identical_notes_renamed_together_are_swapped() {
+fn fs16_identical_notes_renamed_together_are_not_swapped() {
     let (d, v) = setup(&[("a.md", "template"), ("b.md", "template")]);
     fs::rename(d.path().join("a.md"), d.path().join("z-from-a.md")).unwrap();
     fs::rename(d.path().join("b.md"), d.path().join("y-from-b.md")).unwrap();
@@ -455,7 +457,7 @@ fn renames_of_distinct_notes_are_attributed_correctly() {
 }
 
 #[test]
-fn fs17_replaced_folder_with_same_sizes_keeps_stale_index() {
+fn fs17_replaced_folder_with_same_sizes_refreshes_index() {
     let (d, v) = setup(&[("t1.md", ""), ("old/x.md", "aaaa [[t1]]")]);
     let m = fs::metadata(d.path().join("old/x.md")).unwrap().modified().unwrap();
     // Folder deleted, a different one restored from an archive (mtimes preserved).
@@ -476,7 +478,7 @@ fn fs17_replaced_folder_with_same_sizes_keeps_stale_index() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs15_utf8_bom_hides_frontmatter() {
+fn fs15_utf8_bom_does_not_hide_frontmatter() {
     let (_d, v) = setup(&[("bom.md", "\u{feff}---\ntags: [alpha]\ntitle: T\n---\n# Head\n"), ("plain.md", "---\ntags: [alpha]\ntitle: T\n---\n# Head\n")]);
     let plain = v.note_info("plain.md").unwrap();
     let bom = v.note_info("bom.md").unwrap();
@@ -500,7 +502,7 @@ fn log_note(n: usize) -> String {
 }
 
 #[test]
-fn fs11_indexing_time_is_quadratic_in_links_and_tags() {
+fn fs11_indexing_time_is_not_quadratic_in_links_and_tags() {
     let (_d, v) = setup(&[]);
     let small = log_note(2_000); // ~55 KB
     let big = log_note(16_000); // ~450 KB

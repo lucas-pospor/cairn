@@ -1,12 +1,13 @@
-// Reproduction for FINDING-041 (relative Markdown links in Live Preview
-// table / embed widgets are followed by the webview).
+// Regression test for FINDING-041 (relative Markdown links in Live Preview
+// table / embed widgets were followed by the webview).
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ed_23.test.mjs
 //
-// Separates the two symptoms:
-//   1. the link does not open the note and the page reloads (any timing);
-//   2. typed text is lost, which only happens when the click comes inside the
-//      600 ms autosave debounce. Here the click comes 1.5 s after typing.
+// The defect had two symptoms:
+//   1. the link did not open the note and the page reloaded (any timing);
+//   2. typed text was lost, which only happened when the click came inside
+//      the 600 ms autosave debounce. Here the click comes 1.5 s after typing,
+//      so this test checks the first: the link opens the note, no reload.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +22,7 @@ async function where(app) {
 }
 
 test(
-  "FINDING-041: relative link in a Live Preview table, clicked after autosave, reloads the app and does not open the note",
+  "FINDING-041: relative link in a Live Preview table, clicked after autosave, opens the note without reloading the app",
   async () => {
     const css = '.cm-lp-table a[href="Other.md"]';
     let r;

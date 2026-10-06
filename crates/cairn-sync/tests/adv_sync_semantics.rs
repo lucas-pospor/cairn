@@ -92,11 +92,11 @@ fn three_devices_create_the_same_path_with_different_content() {
 }
 
 /// PLAN: "the file uploaded first is renamed to a conflict copy and the
-/// second keeps the name". With three devices nobody keeps the name: when
-/// the laptop pulls (a) the rename of its own Today.md to a conflict name
-/// and (b) the tablet's new Today.md in the same pull, it still believes
-/// Today.md is taken (the scan from before the pull) and renames the
-/// tablet's note too, then uploads that rename.
+/// second keeps the name". With three devices the last one keeps the name,
+/// also when the laptop pulls (a) the rename of its own Today.md to a
+/// conflict name and (b) the tablet's new Today.md in the same pull: the
+/// scan from before the pull still shows Today.md as taken, but the
+/// tablet's note must not be renamed too.
 #[test]
 fn three_devices_create_the_same_path_last_one_keeps_the_name() {
     let srv = server();
@@ -112,8 +112,8 @@ fn three_devices_create_the_same_path_last_one_keeps_the_name() {
 
 /// Rename a note and later create a new note with the old name (daily
 /// notes, "Untitled.md", templates). A device that receives both changes in
-/// one pull renames the NEW note to a conflict copy, although the old name
-/// is free by then, and uploads that rename to every device.
+/// one pull keeps the NEW note under the old name, which is free by then,
+/// with no conflict copy.
 #[test]
 fn rename_then_new_note_with_the_old_name_received_in_one_pull() {
     let srv = server();
@@ -1187,8 +1187,8 @@ fn delete_of_one_of_two_identical_files() {
 
 /// The engine classifies local files once, before the pull. If the user
 /// saves a note after that scan and the server has a deletion for it, the
-/// engine deletes the file without checking: the fresh edit goes to the
-/// trash and the delete wins, against "edit vs delete: the edit wins".
+/// fresh edit must still win ("edit vs delete: the edit wins"): it stays in
+/// place and is uploaded, instead of going to the trash.
 #[test]
 fn local_edit_during_sync_beats_remote_delete() {
     let srv = server();
@@ -1215,11 +1215,10 @@ fn local_edit_during_sync_beats_remote_delete() {
     assert_eq!(b.read("n.md").as_deref(), Some("v1\nimportant edit typed during sync\n"));
 }
 
-/// Same window, other direction: a remote NEW file is written with no
-/// "expected content" check when the path was free at scan time. A file the
-/// user creates at that path in the meantime with another program (not
-/// through Cairn, so the index does not know it yet) is overwritten, not
-/// even moved to the trash.
+/// Same window, other direction: a remote NEW file arrives for a path that
+/// was free at scan time. A file the user creates at that path in the
+/// meantime with another program (not through Cairn, so the index does not
+/// know it yet) must not be overwritten: its text is kept on the device.
 #[test]
 fn file_created_outside_cairn_during_sync_is_not_overwritten() {
     let srv = server();
@@ -1254,10 +1253,10 @@ fn recreate_after_delete_on_two_devices() {
     assert!(files.iter().any(|f| f.1 == "phone new\n"), "{files:?}");
 }
 
-/// `SyncEngine::history(path)` takes the first file id (in id order) whose
-/// tracked path is `path`, deleted files included. After a note is deleted
-/// and another note is later renamed to the same name, the version history
-/// of the new note can show (and restore) the deleted note's revisions.
+/// `SyncEngine::history(path)` must take the live file whose tracked path
+/// is `path`, not a deleted one. After a note is deleted and another note
+/// is later renamed to the same name, the version history of the new note
+/// shows the new note's revisions, not the deleted note's.
 #[test]
 fn history_belongs_to_the_current_note_at_that_path() {
     let mut wrong = Vec::new();
@@ -1359,10 +1358,11 @@ fn case_only_rename_received_on_case_insensitive_device() {
 
 /// Linux (and Android app storage) allow `Note.md` and `note.md` side by
 /// side. On a case-insensitive device (macOS, Windows) the second download
-/// overwrites the first, and the resulting "edit" is uploaded back, so the
-/// other note's content is gone on every device (only server history has
-/// it). PLAN section 6 says "sync reports case-only collisions as
-/// conflicts"; nothing in the engine does that.
+/// must not overwrite the first (nor be uploaded back as an "edit"): a
+/// name that differs only in case counts as taken, so that file gets a
+/// conflict copy name, as PLAN section 6 says ("sync gives a pulled case
+/// twin a conflict copy name on macOS and Windows"). Both notes survive on
+/// both devices.
 #[test]
 fn two_files_differing_only_in_case_survive_a_case_insensitive_device() {
     let srv = server();
@@ -1385,8 +1385,8 @@ fn two_files_differing_only_in_case_survive_a_case_insensitive_device() {
 }
 
 /// Worse variant: the case-insensitive device has its own, never synced
-/// `Note.md`; a remote `note.md` is written straight into it. That text was
-/// never uploaded, so no device and no server history has it any more.
+/// `Note.md`; a remote `note.md` must not be written into it. That text was
+/// never uploaded, so it would be on no device and in no server history.
 #[test]
 fn remote_file_differing_in_case_does_not_overwrite_local_unsynced_note() {
     let srv = server();
@@ -1400,9 +1400,9 @@ fn remote_file_differing_in_case_does_not_overwrite_local_unsynced_note() {
     assert!(everywhere.contains("only on the mac, never synced"), "the mac's own note is gone: mac {:?}, linux {:?}", m.files(), a.files());
 }
 
-/// `Vault::rename` lets a case-only rename through even when the target is
-/// a different file (Linux): `Note.md` -> `note.md` replaces the existing
-/// `note.md` without a trace (no trash).
+/// `Vault::rename` refuses a case-only rename when the target is a
+/// different file (Linux): `Note.md` -> `note.md` must not replace the
+/// existing `note.md`, which would leave no trace (no trash).
 #[test]
 fn case_only_rename_onto_another_existing_file_is_refused() {
     let d = tempfile::tempdir().unwrap();
@@ -1419,7 +1419,8 @@ fn case_only_rename_onto_another_existing_file_is_refused() {
 
 /// A file whose name is stored in NFD on disk (as macOS HFS+ writes them, and
 /// as rsync/unzip copy them to Linux) is listed under its NFC name, which
-/// does not exist on disk, so reading it fails and sync silently skips it.
+/// does not exist on disk; reading it must still find the file, or sync
+/// would silently skip it.
 #[test]
 fn nfd_file_name_is_synced() {
     let srv = server();
@@ -1533,10 +1534,10 @@ fn conflict_on_a_conflict_copy() {
 
 /// Two devices that sync at the same time and both upload a new note at the
 /// same path (both pulls happen before either push, so neither sees the
-/// other's file) end with NO file at that path: each device renames the
-/// other's file to a conflict name and then receives the other's rename.
+/// other's file) must still end with a file at that path, not each rename
+/// the other's file to a conflict name and then receive the other's rename.
 /// PLAN: "the file uploaded first is renamed to a conflict copy and the
-/// second keeps the name"; identical contents should merge into one file.
+/// second keeps the name"; identical contents merge into one file.
 #[test]
 fn concurrent_sync_creating_same_path_keeps_the_name() {
     let srv = server();
@@ -1818,11 +1819,11 @@ fn conflict_on_a_long_file_name_does_not_stop_sync() {
     assert_eq!(a.read(&name).as_deref(), Some("phone\n"));
 }
 
-/// `StdFs::write` writes `.<name>.cairn-tmp-<pid>` first, 12 bytes plus the
-/// pid longer than the name. A file whose name is 237..=255 bytes (legal on
-/// every file system; 79-85 CJK characters) can therefore never be written
-/// by Cairn: the download fails, and like every apply error it stops the
-/// whole sync of that device for good.
+/// `StdFs::write` writes a temp file first. Its name must fit wherever the
+/// target's does (one derived from the target, `.<name>.cairn-tmp-<pid>`,
+/// was longer than the name), so that a file whose name is 237..=255 bytes
+/// (legal on every file system; 79-85 CJK characters) can be downloaded and
+/// the device keeps syncing.
 #[test]
 fn file_with_a_long_but_legal_name_syncs() {
     let srv = server();

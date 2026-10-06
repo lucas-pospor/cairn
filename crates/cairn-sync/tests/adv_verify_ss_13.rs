@@ -1,11 +1,14 @@
-//! Reproduction for the sync half of FINDING-011: file names that
-//! `vpath::normalize` changes (NFD Unicode, a backslash) are listed under a
-//! vault path that does not exist on disk, so the sync scan's `read_file`
-//! gets NotFound and can skip the file silently (`SyncEngine::scan`). For a
-//! file that was already synced, the skip makes the engine think the note
-//! was deleted, and the other device moves it to its trash. NFD names are
-//! handled; names with a backslash are skipped by design (the ignored tests).
+//! Regression tests for the sync half of FINDING-011: file names that
+//! `vpath::normalize` changes (NFD Unicode, a backslash) were listed under a
+//! vault path that did not exist on disk, so the sync scan's `read_file`
+//! got NotFound and could skip the file silently (`SyncEngine::scan`). For a
+//! file that was already synced, the skip made the engine think the note
+//! was deleted, and the other device moved it to its trash. NFD names are
+//! now handled. Names with a backslash are still skipped by design (the
+//! ignored tests): a synced note renamed to one still counts as deleted and
+//! goes to the other device's trash.
 //!
+//!   cargo test -p cairn-sync --test adv_verify_ss_13
 //!   cargo test -p cairn-sync --test adv_verify_ss_13 -- --ignored
 
 #[path = "adv_sync_semantics_common.rs"]
@@ -57,7 +60,7 @@ fn ss13_new_backslash_note_is_pushed_or_reported() {
 }
 
 #[test]
-fn fs02_synced_note_replaced_by_nfd_copy_is_trashed_elsewhere() {
+fn fs02_synced_note_replaced_by_nfd_copy_is_updated_elsewhere() {
     let srv = server();
     let mut a = Device::new(&srv, "linux", &[(NFC, "v1\n"), ("anchor.md", "untouched\n")]);
     a.sync();

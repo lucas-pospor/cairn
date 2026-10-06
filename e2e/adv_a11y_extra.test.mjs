@@ -162,7 +162,7 @@ test("held up: typing after Ctrl+E (reading view) does not edit the hidden note"
 // ---------------------------------------------------------------------------
 // Findings.
 
-test("FINDING-123: Settings > Hotkeys only lists commands that are available at that moment (no editor/note commands without an open note, none of the editor commands in reading view)", async () => {
+test("FINDING-123: with no note open and in reading view, Settings > Hotkeys still lists every command it lists with a note open", async () => {
   await app.reset();
   const listed = async () => {
     await openSettings("hotkeys");
@@ -187,7 +187,7 @@ test("FINDING-123: Settings > Hotkeys only lists commands that are available at 
   );
 });
 
-test("FINDING-214: the hotkey recorder accepts bare keys: pressing Tab binds Tab (Tab then never moves focus), pressing Q binds Q (the letter can no longer be typed)", async () => {
+test("FINDING-214: the hotkey recorder does not bind bare keys: Tab or Q pressed while recording binds nothing, so Tab still moves focus and q can still be typed", async () => {
   await app.reset();
   await addFile("Bare keys.md", "start\n");
   const problems = [];
@@ -239,7 +239,7 @@ test("FINDING-214: the hotkey recorder accepts bare keys: pressing Tab binds Tab
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-124: no keyboard way to follow a link from the editor (only Ctrl+click): Alt+Enter / Ctrl+Enter do nothing and the palette has no 'follow link' command", async () => {
+test("FINDING-124: a link can be followed from the editor with the keyboard: Alt+Enter or Ctrl+Enter opens it and the palette has a 'follow link' command", async () => {
   await app.reset();
   await addFile("Linker.md", "Go to [[Ideas]] now.\n\nsecond line\n");
   const problems = [];
@@ -266,7 +266,7 @@ test("FINDING-124: no keyboard way to follow a link from the editor (only Ctrl+c
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-109: focus is dropped to <body> after in-panel keyboard actions (Enter on a tag in the Tags panel, closing the last tab with its close button; closing an inactive tab holds up)", async () => {
+test("FINDING-109: focus is not dropped to <body> after in-panel keyboard actions (Enter on a tag in the Tags panel, Delete on an inactive tab and on the last tab)", async () => {
   await app.reset();
   const out = [];
   // Tags panel: Enter on a tag switches the sidebar to Search.
@@ -302,7 +302,7 @@ test("FINDING-109: focus is dropped to <body> after in-panel keyboard actions (E
   assert.deepEqual(lost, []);
 });
 
-test("FINDING-109: Settings > Hotkeys: adding or removing a hotkey from the keyboard drops focus to <body> (the whole list is re-created)", async () => {
+test("FINDING-109: Settings > Hotkeys: adding or removing a hotkey from the keyboard does not drop focus to <body>", async () => {
   await app.reset();
   const out = [];
   try {
@@ -325,7 +325,7 @@ test("FINDING-109: Settings > Hotkeys: adding or removing a hotkey from the keyb
   assert.deepEqual(out.filter((o) => o.focus === "BODY"), []);
 });
 
-test("FINDING-205: search progress and result counts are not announced (no live region around 'Searching…' / 'N results')", async () => {
+test("FINDING-205: search progress and result counts are announced (a live region around 'Searching…' / 'N results')", async () => {
   await app.reset();
   await app.chord(K.ctrl, K.shift, "f");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'search-input'`, { message: "search focused" });
@@ -340,7 +340,7 @@ test("FINDING-205: search progress and result counts are not announced (no live 
   assert.ok(r.live, `"${r.text}" appears silently; focus stays in the search box`);
 });
 
-test("FINDING-222: the search panel says 'No matches.' and '0 results · 0 ms' while the search is still pending, and '1 results' for one hit", async () => {
+test("FINDING-222: the search panel does not say 'No matches.' or '0 results · 0 ms' while the search is pending, nor '1 results' for one hit", async () => {
   await app.reset();
   await app.chord(K.ctrl, K.shift, "f");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'search-input'`, { message: "search focused" });
@@ -358,7 +358,7 @@ test("FINDING-222: the search panel says 'No matches.' and '0 results · 0 ms' w
   assert.deepEqual(wrong, [], "the panel claimed there were no matches before the search had returned, or said '1 results'");
 });
 
-test("FINDING-125: the interface text cannot be enlarged: Ctrl+= / Ctrl++ do nothing and Settings > Font size only changes the note text", async () => {
+test("FINDING-125: the interface text can be enlarged: Ctrl+= / Ctrl++ zoom the whole interface and Ctrl+0 resets it", async () => {
   await app.reset();
   const sizes = () =>
     app.exec(`
@@ -399,7 +399,7 @@ test("FINDING-125: the interface text cannot be enlarged: Ctrl+= / Ctrl++ do not
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-221: several pointer targets are smaller than 24x24 px (tab close, hotkey remove, status-bar buttons)", async () => {
+test("FINDING-221: pointer targets (tab close, hotkey remove, status-bar buttons) are at least 24x24 px", async () => {
   await app.reset();
   await app.openNote("welcome", "Welcome.md");
   const main = await app.exec(`
@@ -464,7 +464,7 @@ test("held up: every control in Settings, the switcher, the palette and the prom
   assert.deepEqual(out, {});
 });
 
-test("FINDING-104: with no note open, Settings opened with Ctrl+, does not take focus; Tab walks the whole workspace behind it first", async () => {
+test("FINDING-104: with no note open, the first Tab after Ctrl+, lands in Settings and Tab never leaves it", async () => {
   await app.reset();
   await app.chord(K.ctrl, ",");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=settings]')`);
@@ -487,7 +487,7 @@ test("FINDING-104: with no note open, Settings opened with Ctrl+, does not take 
   assert.deepEqual(left, [], "Tab moved focus out of Settings");
 });
 
-test("FINDING-216: composite widgets contain children with the wrong role: buttons nested inside role=tab, a button inside the tablist, a non-option inside the switcher listbox; every tab is its own Tab stop", async () => {
+test("FINDING-216: composite widgets hold only children with the right role (no buttons inside role=tab, only tabs in the tablist, only options in the switcher listbox) and the tabs are one Tab stop", async () => {
   await app.reset();
   await app.openNote("ideas", "Ideas.md");
   await app.chord(K.ctrl, "o");
@@ -519,7 +519,7 @@ test("FINDING-216: composite widgets contain children with the wrong role: butto
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-217: 'Sync now' with sync not set up silently opens Settings on the Appearance page", async () => {
+test("FINDING-217: 'Sync now' with sync not set up opens Settings on the Sync page", async () => {
   await app.reset();
   await app.palette("sync now");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=settings]')`, { message: "settings opened" });
@@ -530,7 +530,7 @@ test("FINDING-217: 'Sync now' with sync not set up silently opens Settings on th
   assert.equal(st.heading, "Sync", `Settings opened on "${st.heading}" with toasts ${JSON.stringify(st.toasts)}`);
 });
 
-test("FINDING-218: error toasts vanish after 7 s even while hovered, have no close button and no history", async () => {
+test("FINDING-218: an error toast stays while hovered and has a close button that removes it", async () => {
   await app.reset();
   await addFile("Toast me.md", "toast\n");
   await app.openNote("toast me", "Toast me.md");
@@ -557,7 +557,7 @@ test("FINDING-218: error toasts vanish after 7 s even while hovered, have no clo
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-219: a custom accent colour is used as-is for links, tag chips and button fills while the button text colour stays fixed, so common accents fail contrast", async () => {
+test("FINDING-219: with a custom accent colour, links, tag chips and button text still meet AA contrast", async () => {
   await app.reset();
   const out = {};
   const setTheme = (v) => app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = arguments[0]; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`, v);
@@ -582,7 +582,7 @@ test("FINDING-219: a custom accent colour is used as-is for links, tag chips and
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-220: the status-bar vault button is named after the vault folder, not its action; activating it closes the vault at once", async () => {
+test("FINDING-220: the status-bar vault button is named after its action (switch or close the vault)", async () => {
   await app.reset();
   const r = await app.exec(`const b = document.querySelector('.status .vault'); return { name: __ax.name(b), title: b.title }`);
   log("status bar vault button", r);
@@ -637,14 +637,14 @@ async function stateScenes(theme) {
   return scenes;
 }
 
-test("FINDING-117: light theme, more states: highlighted palette shortcut, switcher 'Create note' row and hint bar below AA (conflict banner and context menu pass)", async () => {
+test("FINDING-117: light theme, more states: highlighted palette shortcut, switcher 'Create note' row and hint bar, conflict banner and context menu meet AA", async () => {
   const scenes = await stateScenes("light");
   log("light theme, extra states", scenes);
   const bad = Object.entries(scenes).flatMap(([k, v]) => (v ?? []).filter((l) => /= (\d+(\.\d+)?)/.test(l) && Number(l.match(/= (\d+(\.\d+)?)/)[1]) < 4.5).map((l) => `${k}: ${l}`));
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-206: dark theme, more states: highlighted palette shortcut and the switcher's 'Shift+Enter' hint below AA (conflict banner and context menu pass)", async () => {
+test("FINDING-206: dark theme, more states: highlighted palette shortcut, switcher hints, conflict banner and context menu meet AA", async () => {
   const scenes = await stateScenes("dark");
   await app.setTheme("light");
   log("dark theme, extra states", scenes);
@@ -655,9 +655,9 @@ test("FINDING-206: dark theme, more states: highlighted palette shortcut and the
 // ---------------------------------------------------------------------------
 // Need a sync server (last).
 
-// Unlike Settings opened with Ctrl+, (FINDING-104) and the graph view
-// (FINDING-008), Version history opened from the palette leaves no live
-// selection in the editor, so typed keys go nowhere.
+// Version history opened from the palette leaves no live selection in the
+// editor, so typed keys go nowhere. (Settings opened with Ctrl+, and the
+// graph view used to let them through: FINDING-104, FINDING-008.)
 test("held up: typing while Version history (opened from the palette) is shown does not edit the note behind it", async () => {
   await app.reset();
   const { url, proc } = await startServer("history");
@@ -724,7 +724,7 @@ test("FINDING-008, FINDING-105: with Version history open over the editor, typin
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-215: a failed sync shows only 'Sync error' in the status bar; the reason is a hover tooltip (unreachable by keyboard, not announced) and raw", async () => {
+test("FINDING-215: a failed sync shows its reason in the page and in plain words, not only in a hover tooltip", async () => {
   await app.reset();
   const { url, proc } = await startServer("err");
   let r;

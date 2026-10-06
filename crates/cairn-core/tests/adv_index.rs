@@ -8,7 +8,7 @@
 //
 //   cargo test -p cairn-core --test adv_index
 //   ADV_INDEX_SEEDS=50 ADV_INDEX_STEPS=300 cargo test -p cairn-core --test adv_index -- --nocapture
-//   cargo test -p cairn-core --test adv_index -- --ignored      (FINDING tests)
+//   cargo test -p cairn-core --test adv_index finding_      (FINDING tests only)
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -404,10 +404,9 @@ fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Vault) {
 
 /// Renaming a text file to `.md` in the file tree (allowed: the UI only adds
 /// `.md` when the old name was a note) or receiving that rename from sync goes
-/// through Vault::rename -> Index::rename_tree, which carries over "no note
-/// content". The new note is never parsed: it is not searchable, its links,
-/// tags and headings are missing, and it is not in the graph. Rename keeps
-/// size and mtime, so no later rescan fixes it; only a restart does.
+/// through Vault::rename. The new note must be parsed: searchable, with its
+/// links, tags and headings, and in the graph, as after a fresh open. Rename
+/// keeps size and mtime, so no later rescan would fix a note left unparsed.
 #[test]
 fn finding_rename_changing_extension_txt_to_md() {
     let (d, v) = vault_with(&[("todo.txt", "buy zucchini\nsee [[Target]] #errand\n"), ("Target.md", "")]);

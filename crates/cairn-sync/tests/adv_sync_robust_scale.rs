@@ -1,7 +1,7 @@
 //! Sync at scale: a 5,000-note vault through the real server binary
 //! (a separate process, so the memory numbers are the client's).
 //!
-//! Slow, so ignored by default:
+//! The slow_ measurements are ignored by default:
 //!   cargo test -p cairn-sync --test adv_sync_robust_scale -- --ignored --nocapture --test-threads=1
 //! SR_SCALE_NOTES (default 5000) and SR_SCALE_CHANGES (default 1000) set the size.
 //! Debug build numbers (cargo test); a release build is several times faster.

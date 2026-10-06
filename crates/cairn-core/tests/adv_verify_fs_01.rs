@@ -1,11 +1,11 @@
-//! Reproduction for FINDING-003: a case-only rename (or a move into a
+//! Regression tests for FINDING-003: a case-only rename (or a move into a
 //! folder whose name differs only in case) onto an existing, different file
 //! on a case-sensitive file system must be refused, not replace that file.
 //! These tests also check that nothing is lost: they search the whole vault
 //! (including `.trash` and every other hidden folder) for the target's
 //! content after the rename.
 //!
-//!   cargo test -p cairn-core --test adv_verify_fs_01 -- --ignored
+//!   cargo test -p cairn-core --test adv_verify_fs_01
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -84,8 +84,8 @@ fn control_true_case_only_rename_of_a_single_file_still_works() {
     assert!(!d.path().join("note.md").exists());
 }
 
-/// Control: a plain (non case-only) rename onto an existing file is refused,
-/// so the overwrite is specific to the case-only shortcut.
+/// Control: a plain (non case-only) rename onto an existing file is refused
+/// too, like the case-only renames onto another file above.
 #[test]
 fn control_plain_rename_onto_existing_file_is_refused() {
     let (d, v) = vault_with(&[("a.md", "a\n"), ("b.md", "b\n")]);

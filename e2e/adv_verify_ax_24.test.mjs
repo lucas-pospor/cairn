@@ -1,5 +1,5 @@
-// Reproduction for FINDING-208 (the quick switcher's Ctrl+N / Ctrl+P
-// "next/previous result" keys are taken by global hotkeys first).
+// Regression test for FINDING-208 (the quick switcher's Ctrl+N / Ctrl+P
+// "next/previous result" keys were taken by global hotkeys first).
 // adv_a11y_keyboard.test.mjs checks Ctrl+N; this checks Ctrl+P (default:
 // command palette), the other half of the same QuickSwitcher.onKey branch.
 //
@@ -21,7 +21,7 @@ after(async () => {
 
 // By design, the switcher's own Ctrl+N / Ctrl+P win over global hotkeys. On
 // macOS the palette is Cmd+P, which still swaps the switcher for the palette.
-test("FINDING-208: Ctrl+P inside the quick switcher opens the command palette instead of moving up", async () => {
+test("FINDING-208: Ctrl+P inside the quick switcher moves up instead of opening the command palette", async () => {
   await app.reset();
   await app.chord(K.ctrl, "o");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'switcher-input'`);

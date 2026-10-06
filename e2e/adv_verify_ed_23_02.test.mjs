@@ -1,16 +1,16 @@
-// Reproduction for FINDING-041 (relative Markdown links in Live Preview
-// table / embed widgets are followed by the webview), see also
+// Regression tests for FINDING-041 (relative Markdown links in Live Preview
+// table / embed widgets were followed by the webview), see also
 // adv_verify_ed_23.test.mjs.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ed_23_02.test.mjs
 //
-// Separates the broken-feature part from the data-loss part:
+// Covers both the broken-feature part and the data-loss part:
 //   1. control: the same relative link as plain inline text in Live Preview
-//      opens Other.md (no reload), so only links inside widgets are affected;
-//   2. embed case, click 1.5 s after typing (autosave has run): the page still
-//      reloads and Other.md is not opened, but nothing is lost;
+//      opens Other.md (no reload);
+//   2. embed case, click 1.5 s after typing (autosave has run): the link opens
+//      Other.md without reloading the page;
 //   3. table case, click about 200 ms after typing (inside the 600 ms
-//      autosave debounce): the pending text is lost.
+//      autosave debounce): the pending text still reaches the disk.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +53,7 @@ test("FINDING-041 control: an inline relative link in Live Preview opens the not
 });
 
 test(
-  "FINDING-041: relative link in a Live Preview embed, clicked after autosave, reloads the app; nothing is lost",
+  "FINDING-041: relative link in a Live Preview embed, clicked after autosave, opens the note without reloading the app",
   async () => {
     let r;
     await withApp(
@@ -79,7 +79,7 @@ test(
 );
 
 test(
-  "FINDING-041: relative link in a Live Preview table, clicked inside the autosave debounce, loses the pending text",
+  "FINDING-041: relative link in a Live Preview table, clicked inside the autosave debounce, keeps the pending text",
   async () => {
     let r;
     await withApp(

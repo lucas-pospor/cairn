@@ -1,23 +1,21 @@
-// Reproduction for FINDING-108 (version history modal neither takes focus
-// nor closes with Escape).
+// Regression test for FINDING-108 (the version history modal neither took
+// focus nor closed with Escape).
 //
 // Beyond the other reproduction (adv_a11y_keyboard.test.mjs), this one:
 // - logs every keydown at window level (capture), so we know the Escape key
-//   really reached the page and where it was targeted (BODY);
-// - runs a control: once focus is put inside the dialog (Tab into it from the
-//   keyboard), the same Escape closes it, so the key path works and the bug
-//   is only that the dialog never takes focus and handles Escape on the
-//   backdrop's bubbling path instead of at window level;
-// - counts how many Tab presses a keyboard-only user needs from <body> to
-//   reach anything inside the dialog (there is no focus trap; the dialog is
-//   last in document order).
+//   really reached the page and where it was targeted;
+// - checks that the dialog takes focus when opened, is aria-modal, and closes
+//   on the first Escape;
+// - if it stays open, runs a control: Tab until focus is inside the dialog,
+//   counting the presses, then Escape again.
 //
-// The defect: focus BODY, aria-modal null, Escape keydown reaches the
-// page with target BODY and the dialog stays open; ONE Tab lands on the
-// dialog's Close button (WebKit's focus-navigation starting point is where
-// the removed palette was, right before the dialog), and Escape then closes
-// it. So the impact is "Escape needs a Tab first / nothing announced to a
-// screen reader", not "the dialog cannot be closed from the keyboard".
+// With the defect, focus stayed on BODY, aria-modal was null, the Escape
+// keydown reached the page with target BODY and the dialog stayed open; ONE
+// Tab landed on the dialog's Close button (WebKit's focus-navigation starting
+// point is where the removed palette was, right before the dialog), and
+// Escape then closed it. So the impact was "Escape needs a Tab first / nothing
+// announced to a screen reader", not "the dialog cannot be closed from the
+// keyboard".
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_07.test.mjs
 
@@ -86,7 +84,7 @@ async function openHistory() {
 }
 
 test(
-  "FINDING-108: Escape reaches the page but does not close Version history; it does once focus is inside",
+  "FINDING-108: Version history takes focus, is aria-modal and closes with Escape",
   async () => {
     await app.reset();
     await connectSync();

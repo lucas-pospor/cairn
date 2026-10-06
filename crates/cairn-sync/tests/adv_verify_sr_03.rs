@@ -1,7 +1,8 @@
-//! Reproduction for FINDING-054 (lost, damaged, stale or reset
-//! sync state undoes deletions and renames).
+//! Regression tests for FINDING-054 (lost, damaged, stale or reset
+//! sync state undoes deletions, and used to undo renames).
 //!
-//! Run: cargo test -p cairn-sync --test adv_verify_sr_03 -- --ignored --nocapture
+//! Run: cargo test -p cairn-sync --test adv_verify_sr_03 -- --nocapture
+//! (a) and (b) are ignored (deferred by design); run them with -- --ignored.
 //!
 //! These split lost, damaged or stale state into the parts a client could
 //! get right without its state, and leave out the part it cannot: a note the
@@ -13,13 +14,13 @@
 //!   on another device in the meantime, although the local copy is
 //!   byte-identical to the last live revision. It comes back on every device.
 //! - (b) the same with a damaged state.json (no warning, the engine loads).
-//! - (c) a local rename made before the state was lost duplicates the note,
-//!   although the new file's content equals the server head of the old path
+//! - (c) a local rename made before the state was lost must not duplicate the
+//!   note, since the new file's content equals the server head of the old path
 //!   and the old path is absent locally.
-//! - (d) a stale state.json makes this device write a conflict copy whose
-//!   content is identical to the file already at that path (before any other
-//!   device is involved; FINDING-061 then turns the original into a second
-//!   conflict copy on the other device).
+//! - (d) a stale state.json must not make this device write a conflict copy
+//!   whose content is identical to the file already at that path (it did,
+//!   before any other device was involved; FINDING-061 then turned the original
+//!   into a second conflict copy on the other device).
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -80,7 +81,7 @@ fn b_damaged_state_undoes_remote_delete_of_unchanged_note() {
 }
 
 #[test]
-fn c_lost_state_duplicates_local_rename() {
+fn c_lost_state_does_not_duplicate_local_rename() {
     let (_srv, mut a, mut b) = pair(&[("keep.md", "k\n"), ("old_name.md", "o\n")]);
     a.mv("old_name.md", "new_name.md");
     fs::remove_file(a.state_file()).unwrap();
@@ -92,7 +93,7 @@ fn c_lost_state_duplicates_local_rename() {
 }
 
 #[test]
-fn d_stale_state_writes_identical_conflict_copy_locally() {
+fn d_stale_state_writes_no_identical_conflict_copy_locally() {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("n.md", "one\n"), ("r.md", "rename me\n")]);
     a.sync_ok();

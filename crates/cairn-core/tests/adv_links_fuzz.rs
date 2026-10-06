@@ -2,7 +2,6 @@
 //
 //   cargo test -p cairn-core --test adv_links_fuzz
 //   ADV_FUZZ_ROUNDS=20000 cargo test -p cairn-core --test adv_links_fuzz -- --nocapture
-//   cargo test -p cairn-core --test adv_links_fuzz -- --ignored      (FINDING tests)
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};

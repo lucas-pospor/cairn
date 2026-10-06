@@ -93,7 +93,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("FINDING-070", () => {
-  it("FINDING-070: 'Reload plugins' after a hung command does not help: the fresh instance is stopped 30 s after the old run", async () => {
+  it("FINDING-070: 'Reload plugins' after a hung command helps: the fresh instance is not stopped 30 s after the old run", async () => {
     const host = makeHost();
     const w1 = await startAndHang(host);
     vi.advanceTimersByTime(10_000); // the user waits a bit, then presses Reload plugins
@@ -111,7 +111,7 @@ describe("FINDING-070", () => {
     });
   });
 
-  it("FINDING-070: disabling and re-enabling a plugin within 30 s of a slow run gets the new instance stopped", async () => {
+  it("FINDING-070: disabling and re-enabling a plugin within 30 s of a slow run leaves the new instance running", async () => {
     const host = makeHost();
     await startAndHang(host);
     await host.sync([]);
@@ -122,7 +122,7 @@ describe("FINDING-070", () => {
     expect({ terminated: w2.terminated, commands: pluginCmds() }).toEqual({ terminated: false, commands: ["plugin:a.js:slow"] });
   });
 
-  it("FINDING-070: switching vaults stops the other vault's plugin that has the same file name", async () => {
+  it("FINDING-070: switching vaults does not stop the other vault's plugin that has the same file name", async () => {
     const host = makeHost();
     await startAndHang(host); // vault 1: a.js has a slow command running
     // openVault() for vault 2: stopAll(), then sync() with vault 2's plugins.
@@ -134,7 +134,7 @@ describe("FINDING-070", () => {
     expect(w2.terminated).toBe(false);
   });
 
-  it("FINDING-070 (side effect): a plugin disabled during a slow run still gets a 'took too long and was stopped' error 30 s later", async () => {
+  it("FINDING-070 (side effect): a plugin disabled during a slow run gets no 'took too long and was stopped' error 30 s later", async () => {
     const host = makeHost();
     await startAndHang(host);
     await host.sync([]); // disabled; nothing of a.js is running any more

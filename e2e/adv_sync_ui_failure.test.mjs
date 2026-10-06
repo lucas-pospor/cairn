@@ -1,8 +1,9 @@
-// A sync that fails on every round, as the app shows it.
+// A long note name arriving through sync, as the app shows it.
 // The phone (sync_dir on Linux) uploads a note whose name is 245 bytes long,
 // valid on its file system, plus an ordinary note. On the laptop the app
-// cannot write it (FINDING-050 at engine level: the temp file name gets
-// too long). What does the user see, and does anything else still sync?
+// used to fail to write it on every round (FINDING-050 at engine level: the
+// temp file name got too long). Any error must name the note, and everything
+// else must still sync.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_sync_ui_failure.test.mjs   (about 40 s)
 
@@ -31,7 +32,7 @@ after(async () => {
 });
 
 test(
-  "one incoming note that cannot be written here: the error names it, and every other change still syncs",
+  "an incoming note with a 245-byte name: any error names it, and every other change still syncs",
   async () => {
     write(path.join(P, LONG), "long name\n");
     write(path.join(P, "Fine.md"), "an ordinary note from the phone\n");

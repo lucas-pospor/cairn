@@ -1,7 +1,7 @@
-//! Reproduction for FINDING-057 (file vs folder with the same name on two
-//! devices stops sync on the receiving device). The reproductions check
-//! that other files keep syncing; the characterisation tests show how the
-//! clash itself is cleared.
+//! Regression tests for FINDING-057 (file vs folder with the same name on
+//! two devices used to stop sync on the receiving device). The first two
+//! tests check that other files keep syncing; the characterisation tests
+//! show how the clash itself is cleared.
 //!
 //!   cargo test -p cairn-sync --test adv_verify_ss_05
 
@@ -14,7 +14,7 @@ use common::*;
 /// Later syncs must keep working: later remote edits arrive and local work
 /// is pushed. Nothing is lost on disk.
 #[test]
-fn incoming_file_onto_local_folder_stalls_all_sync() {
+fn incoming_file_onto_local_folder_keeps_other_files_syncing() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("Projects", "a file called Projects\n"), ("shared.md", "v1\n")]);
     laptop.sync();
@@ -49,7 +49,7 @@ fn incoming_file_onto_local_folder_stalls_all_sync() {
 /// The reverse order: "Projects/plan.md" arrives on a device that has a
 /// plain file "Projects". The parent folder cannot be created.
 #[test]
-fn incoming_folder_onto_local_file_stalls_all_sync() {
+fn incoming_folder_onto_local_file_keeps_other_files_syncing() {
     let srv = server();
     let mut phone = Device::new(&srv, "phone", &[("Projects/plan.md", "plan\n")]);
     phone.sync();

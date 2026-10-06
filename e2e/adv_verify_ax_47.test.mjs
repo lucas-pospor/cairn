@@ -1,11 +1,11 @@
-// Reproduction for FINDING-223 (debounced settings save, no flush).
+// Regression tests for FINDING-223 (the debounced settings save had no flush).
 //
 // Variant: "Switch vault" (status bar) within 300 ms of a settings change.
-// app.closeVault() calls settings.reset() (value = DEFAULT_SETTINGS) but does
-// not clear the pending save timer and does not close the vault in the
-// backend, so when the timer fires it writes the *defaults* into the vault
-// that was just left: earlier, already-saved settings are overwritten too,
-// not only the last change.
+// With the defect, app.closeVault() called settings.reset() (value =
+// DEFAULT_SETTINGS) but did not clear the pending save timer and did not close
+// the vault in the backend, so when the timer fired it wrote the *defaults*
+// into the vault that was just left: earlier, already-saved settings were
+// overwritten too, not only the last change. Both changes must be kept.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ax_47.test.mjs
 
@@ -54,7 +54,7 @@ test("control: Switch vault 800 ms after a settings change keeps both changes", 
   assert.equal(s.theme, "dark");
 });
 
-test("FINDING-223: Switch vault right after a settings change overwrites the left vault's settings.json with defaults", async () => {
+test("FINDING-223: Switch vault right after a settings change keeps both changes in the left vault's settings.json", async () => {
   const s = await changeThenSwitchVault(0);
   assert.deepEqual({ fontSize: s.fontSize, theme: s.theme }, { fontSize: 20, theme: "dark" }, `settings.json after Switch vault: ${JSON.stringify(s)}`);
 });

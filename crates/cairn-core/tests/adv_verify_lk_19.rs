@@ -1,10 +1,10 @@
-// Reproduction for FINDING-089 (tag regex and tokenizer vs combining
+// Regression tests for FINDING-089 (tag regex and tokenizer vs combining
 // marks). Not only NFD text is affected: scripts whose ordinary NFC spelling
 // uses combining vowel signs (Devanagari, Thai, Bengali, ...) would lose
 // everything after the first consonant in a tag if TAG_RE in parse.rs (and
 // the matching regexes in markdown.ts and livePreview.ts) had no \p{M}.
 //
-//   cargo test -p cairn-core --test adv_verify_lk_19 -- --ignored --nocapture
+//   cargo test -p cairn-core --test adv_verify_lk_19 -- --nocapture
 
 use cairn_core::fs::{EntryKind, FileStat};
 use cairn_core::index::{hash_bytes, Index};
@@ -23,14 +23,14 @@ fn index(files: &[(&str, &str)]) -> Index {
 
 /// "#हिंदी" (Hindi, NFC) must not be truncated to the tag "ह", nor "#ที่นี่" (Thai) to "ท".
 #[test]
-fn verify_indic_thai_tags_truncated() {
+fn verify_indic_thai_tags_not_truncated() {
     let p = cairn_core::parse::parse("notes #हिंदी and #ที่นี่ and #বাংলা");
     eprintln!("tags: {:?}", p.tags);
     assert_eq!(p.tags, vec!["हिंदी", "ที่นี่", "বাংলা"]);
 }
 
 /// Control: full-text search does find these words (vowel signs are
-/// Alphabetic, so the tokenizer keeps them), so only tags are at risk for
+/// Alphabetic, so the tokenizer keeps them), so only tags were at risk for
 /// NFC text in these scripts.
 #[test]
 fn verify_indic_search_control() {
@@ -46,7 +46,7 @@ fn verify_indic_search_control() {
 /// both become the tag "ह", so `tag:ह` would list unrelated notes and the
 /// tags panel would show a single one-letter tag.
 #[test]
-fn verify_indic_tags_collide() {
+fn verify_indic_tags_do_not_collide() {
     let idx = index(&[("a.md", "#हिंदी"), ("b.md", "#हाथ")]);
     let tags: Vec<String> = idx.tags().into_iter().map(|t| t.tag).collect();
     eprintln!("tags: {tags:?}");

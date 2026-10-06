@@ -92,8 +92,8 @@ describe("FINDING-072 baseline", () => {
   });
 });
 
-describe("FINDING-072: plugin-controlled text that skips the 500-char cap", () => {
-  finding("FINDING-072a: a command-done error is shown uncapped", async () => {
+describe("FINDING-072: other plugin-controlled text is held to the 500-char cap", () => {
+  finding("FINDING-072a: a command-done error is shown capped", async () => {
     config.set("plugins/p.js", "// @name P\n");
     await makeHost().sync(["p.js"]);
     await FakeWorker.all[0].emit({ type: "command-done", id: "x", error: "y".repeat(BIG) });
@@ -101,7 +101,7 @@ describe("FINDING-072: plugin-controlled text that skips the 500-char cap", () =
     expect(toasts[0].message.length).toBeLessThanOrEqual(CAP + 10);
   });
 
-  finding("FINDING-072b: a worker error message is shown uncapped", async () => {
+  finding("FINDING-072b: a worker error message is shown capped", async () => {
     config.set("plugins/p.js", "// @name P\n");
     await makeHost().sync(["p.js"]);
     await FakeWorker.all[0].onerror?.({ message: "Uncaught Error: " + "z".repeat(BIG) });
@@ -109,7 +109,7 @@ describe("FINDING-072: plugin-controlled text that skips the 500-char cap", () =
     expect(toasts[0].message.length).toBeLessThanOrEqual(CAP + 30);
   });
 
-  finding("FINDING-072c: a registered command name is stored uncapped", async () => {
+  finding("FINDING-072c: a registered command name is stored capped", async () => {
     config.set("plugins/p.js", "// @name P\n");
     await makeHost().sync(["p.js"]);
     await FakeWorker.all[0].emit({ type: "register-command", id: "c", name: "n".repeat(BIG) });
@@ -117,7 +117,7 @@ describe("FINDING-072: plugin-controlled text that skips the 500-char cap", () =
     expect(pluginCommands()[0].name.length).toBeLessThanOrEqual(CAP + 10);
   });
 
-  finding("FINDING-072d: a long @name makes even a capped ui.toast exceed the cap", async () => {
+  finding("FINDING-072d: a long @name does not make a capped ui.toast exceed the cap", async () => {
     config.set("plugins/p.js", `// @name ${"N".repeat(BIG)}\n`);
     await makeHost().sync(["p.js"]);
     await FakeWorker.all[0].emit({ type: "call", id: 1, method: "ui.toast", args: ["hi"] });
@@ -125,7 +125,7 @@ describe("FINDING-072: plugin-controlled text that skips the 500-char cap", () =
     expect(toasts[0].message.length).toBeLessThanOrEqual(CAP + 10);
   });
 
-  finding("FINDING-072e: real bootstrap: a command handler that throws a long error gives an uncapped toast", async () => {
+  finding("FINDING-072e: real bootstrap: a command handler that throws a long error gives a capped toast", async () => {
     // Capture the Blob the host builds, so the real BOOTSTRAP + plugin wrapper runs.
     const plugin = [
       "// @name Thrower",

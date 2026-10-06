@@ -1,10 +1,10 @@
-// Reproduction for FINDING-069 (a plugin command timeout timer keyed by
+// Regression tests for FINDING-069 (a plugin command timeout timer keyed by
 // command id would leak a timer when runs of the same command overlap).
 //
-// The controls (plain `it`) pass today and show the timeout is otherwise fine:
-// one run, two non-overlapping runs, and two different commands overlapping do
-// not stop the plugin. The FINDING-069 case is the regression test for the
-// defect.
+// The controls show the timeout is otherwise fine: one run, two
+// non-overlapping runs, and two different commands overlapping do not stop
+// the plugin, and a command that never finishes still does. The FINDING-069
+// case covers overlapping runs of the same command.
 //
 // Run: cd app && npx vitest run src/lib/adv_verify_pl_06.test.ts
 
@@ -81,7 +81,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("FINDING-069 controls (pass today)", () => {
+describe("FINDING-069 controls", () => {
   it("one quick run does not stop the plugin", async () => {
     const { w } = await setup(["work"]);
     commands.run("plugin:p.js:work");
@@ -130,7 +130,7 @@ describe("FINDING-069 controls (pass today)", () => {
   });
 });
 
-describe("FINDING-069 defect", () => {
+describe("FINDING-069 regression", () => {
   it("FINDING-069: two overlapping runs of the same command, both finishing in 1.8 s, do not stop the plugin", async () => {
     const { w } = await setup(["work"]);
     commands.run("plugin:p.js:work"); // t = 0

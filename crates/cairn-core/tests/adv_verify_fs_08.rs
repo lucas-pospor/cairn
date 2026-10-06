@@ -1,4 +1,4 @@
-//! Reproduction for FINDING-051: a save temp file with a predictable name
+//! Regression tests for FINDING-051: a save temp file with a predictable name
 //! (`.<name>.cairn-tmp-<pid>`) opened with `File::create` (no O_EXCL, follows
 //! symlinks) would let a pre-planted symlink at that path redirect the write.
 //! `StdFs` creates a random temp name with O_EXCL (`create_new_file`).
@@ -13,7 +13,7 @@
 //!   need the exact PID, only a range that contains it. A local user who can
 //!   write the vault folder can read the PID from /proc and needs no guess.
 //!
-//! Run: cargo test -p cairn-core --test adv_verify_fs_08 -- --ignored --nocapture
+//! Run: cargo test -p cairn-core --test adv_verify_fs_08 -- --nocapture
 
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -38,7 +38,7 @@ fn mode(p: &Path) -> u32 {
 }
 
 #[test]
-fn fs08_dangling_temp_symlink_creates_file_outside_vault() {
+fn fs08_dangling_temp_symlink_creates_no_file_outside_vault() {
     let outside = tempfile::tempdir().unwrap();
     let target = outside.path().join("autostart").join("evil.desktop");
     fs::create_dir_all(target.parent().unwrap()).unwrap();
@@ -59,7 +59,7 @@ fn fs08_dangling_temp_symlink_creates_file_outside_vault() {
 }
 
 #[test]
-fn fs08_temp_symlink_changes_mode_of_outside_file() {
+fn fs08_temp_symlink_keeps_mode_of_outside_file() {
     let outside = tempfile::tempdir().unwrap();
     let victim = outside.path().join("id_secret");
     fs::write(&victim, "secret key").unwrap();
@@ -76,7 +76,7 @@ fn fs08_temp_symlink_changes_mode_of_outside_file() {
 }
 
 #[test]
-fn fs08_write_config_follows_temp_symlink() {
+fn fs08_write_config_does_not_follow_temp_symlink() {
     let outside = tempfile::tempdir().unwrap();
     let victim = outside.path().join("victim.txt");
     fs::write(&victim, "victim original").unwrap();

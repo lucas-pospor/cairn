@@ -61,7 +61,7 @@ fn control_links_only_and_tags_only_scale_linearly() {
 }
 
 #[test]
-fn parse_is_quadratic_when_note_has_links_and_tags() {
+fn parse_is_not_quadratic_when_note_has_links_and_tags() {
     let (r, s, b) = ratio(true, true);
     println!("links+tags: 2k {s:?}, 16k {b:?}, ratio {r:.1} (linear would be about 8)");
     // Sanity: the result is still right (one tag per distinct value, links all found).

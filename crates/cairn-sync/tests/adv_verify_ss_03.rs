@@ -1,16 +1,15 @@
-//! Reproductions for FINDING-015 (a remote NEW file
-//! overwrites a file created outside Cairn after the sync round's scan; a
-//! remote delete trashes an edit saved after the scan).
+//! Regression tests for FINDING-015 (a remote NEW file overwrote a file
+//! created outside Cairn after the sync round's scan; a remote delete
+//! trashed an edit saved after the scan).
 //!
-//! Questions checked: is the overwritten text recoverable anywhere (trash,
-//! other device, server revision history)? How wide is the window in the
-//! desktop app, where a file watcher rescans changed paths ~250 ms after an
-//! external write (app/src-tauri/src/watcher.rs)? Does the delete case lose
-//! anything, or only put the edit in the trash?
+//! Questions checked: is the external text kept somewhere (disk, trash,
+//! other device, server revision history)? Does the desktop app, where a
+//! file watcher rescans changed paths ~250 ms after an external write
+//! (app/src-tauri/src/watcher.rs), keep both texts? Does the delete case
+//! keep the edit in place?
 //!
 //! Run with:
 //!   cargo test -p cairn-sync --test adv_verify_ss_03 -- --nocapture
-//!   cargo test -p cairn-sync --test adv_verify_ss_03 -- --ignored --nocapture
 
 #[path = "adv_sync_semantics_common.rs"]
 mod common;
@@ -66,9 +65,9 @@ fn overwritten_external_file_is_recoverable_somewhere() {
 /// Mitigation in the desktop app: once the file watcher has rescanned the
 /// externally created path (what `watcher.rs` does ~250 ms after the write),
 /// the engine's `exists()` check sees it and the incoming note gets a
-/// conflict name. So in the desktop app only an external
-/// create that lands after the round's scan AND less than one watcher
-/// debounce before the apply of that head is overwritten.
+/// conflict name. With the defect, only an external create that landed
+/// after the round's scan AND less than one watcher debounce before the
+/// apply of that head was overwritten.
 #[test]
 fn watcher_rescan_before_apply_prevents_the_overwrite() {
     let srv = server();

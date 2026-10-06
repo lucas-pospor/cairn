@@ -1,16 +1,16 @@
-// Reproduction for FINDING-010 (see also adv_verify_dl_10.test.mjs): how
+// Regression tests for FINDING-010 (see also adv_verify_dl_10.test.mjs): how
 // narrow is the trigger, and can the user see what "Save my version" is
 // about to replace?
 //
 // 1. Control (expected to pass): a quick delete + recreate (git checkout,
 //    an editor's unlink-and-write) inside the watcher debounce never shows the
 //    "deleted" banner. The tab gets the "changed on disk" banner, whose button
-//    says "overwrite", and nothing is lost. So the bug needs a delete and a
+//    says "overwrite", and nothing is lost. So the bug needed a delete and a
 //    recreate that land in separate scans.
-// 2. todo: once the stale "deleted" banner is up and the file has come back,
-//    clicking that file in the tree only re-activates the stale tab. The
-//    user sees their own editor text, not the file that is on disk now, and
-//    the banner still says "deleted".
+// 2. Once the stale "deleted" banner is up and the file has come back,
+//    clicking that file in the tree must show the file that is on disk now,
+//    or the banner must stop saying "deleted" (with the defect, the click
+//    only re-activated the stale tab with the user's own editor text).
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_10_02.test.mjs
 
@@ -50,7 +50,7 @@ test("control: a quick delete + recreate while typing gives the 'changed on disk
 });
 
 test(
-  "stale 'deleted' banner: clicking the recreated file in the tree shows the editor text and the banner still says 'deleted'",
+  "stale 'deleted' banner: clicking the recreated file in the tree shows the file on disk or clears the 'deleted' banner",
   async () => {
     const v = env.vault("v", { "N.md": "original\n", "Z.md": "z\n" });
     const app = await env.launch(v);

@@ -1,5 +1,5 @@
-// Reproduction for FINDING-007: an external link inside a note embed in
-// Live Preview navigates the app's own webview to that site.
+// Regression tests for FINDING-007: an external link inside a note embed in
+// Live Preview must not navigate the app's own webview to that site.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ed_22.test.mjs
 
@@ -28,7 +28,7 @@ async function realClick(app, css) {
 }
 
 test(
-  "FINDING-007 (diagnostic): the click event after the handled mousedown reaches window with defaultPrevented=false, while open_url is also requested",
+  "FINDING-007 (diagnostic): the click event after the handled mousedown reaches window with defaultPrevented=true",
   async () => {
     await withApp(FILES, async (app) => {
       await app.open("Host.md");
@@ -64,7 +64,7 @@ test(
 );
 
 test(
-  "FINDING-007: type, then click the embed's external link right away: window navigates and the pending edit is lost",
+  "FINDING-007: type, then click the embed's external link right away: the window stays on the app",
   async () => {
     await withApp(
       FILES,
@@ -99,7 +99,7 @@ test(
 );
 
 test(
-  "FINDING-007: even after autosave completed, clicking the embed's external link replaces the app UI with the site",
+  "FINDING-007: after autosave completed, clicking the embed's external link does not replace the app UI with the site",
   async () => {
     await withApp(FILES, async (app, env) => {
       await app.open("Host.md");

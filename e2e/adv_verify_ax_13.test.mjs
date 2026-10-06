@@ -1,7 +1,8 @@
-// Reproduction for FINDING-202: after a narrow -> wide window
-// resize, both sidebars stay hidden. This version checks that both sidebars
-// were open before the resize, and also checks that the inner width really
-// crossed the 760px narrow breakpoint in both directions.
+// Regression test for FINDING-202: after a narrow -> wide window
+// resize, both sidebars stayed hidden. This version checks that both sidebars
+// were open before the resize and are open again after it, and also checks
+// that the inner width really crossed the 760px narrow breakpoint in both
+// directions.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_13.test.mjs
 
@@ -26,7 +27,7 @@ const state = `return {
   right: !document.querySelector('aside.right').classList.contains('hidden'),
 }`;
 
-test("FINDING-202: sidebars open before a narrow -> wide resize are hidden afterwards", async () => {
+test("FINDING-202: sidebars open before a narrow -> wide resize are open again afterwards", async () => {
   await app.reset();
   const pre = await app.exec(state);
   assert.equal(pre.narrow, false, `precondition: wide layout ${JSON.stringify(pre)}`);

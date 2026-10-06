@@ -274,8 +274,8 @@ test(
 );
 
 // ---------------------------------------------------------------------------
-// 4. open_externally: any vault file handed to the system launcher with no
-//    gate, so a disguised executable/.desktop/script runs on click.
+// 4. open_externally: only documents, media and data files go to the system
+//    launcher; a disguised executable/.desktop/script does not run on click.
 // ---------------------------------------------------------------------------
 test(
   "FINDING-066: open_externally refuses to launch an executable/.desktop vault file",

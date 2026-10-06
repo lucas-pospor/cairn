@@ -1,16 +1,16 @@
-// Reproduction for FINDING-008: keys typed while the graph view is shown
-// reach the hidden CodeMirror view and are autosaved into the note.
+// Regression tests for FINDING-008: keys typed while the graph view was shown
+// reached the hidden CodeMirror view and were autosaved into the note.
 // Adds: the DOM selection check (mechanism), destructive keys (Backspace,
 // Ctrl+A + a letter), and reading view entered from source mode (to see
 // whether reading view entered from Live Preview is safe only by accident).
 //
-// The defect: with the graph tab active (Ctrl+G) the hidden editor keeps a
-// DOM selection inside .cm-content while focus is on <body>. Letters are
-// inserted, and a single Backspace empties the whole note, which autosave
-// writes to disk (""). Reading view holds up only when entered from Live
-// Preview; from source mode, letters, Space and Backspace reach the hidden
-// note in the same way (Ctrl+Z in the editor afterwards restores it while
-// the tab is still open). Ctrl+A + a letter changes nothing.
+// With the defect, when the graph tab was active (Ctrl+G) the hidden editor
+// kept a DOM selection inside .cm-content while focus was on <body>. Letters
+// were inserted, and a single Backspace emptied the whole note, which autosave
+// wrote to disk (""). Reading view held up only when entered from Live
+// Preview; from source mode, letters, Space and Backspace reached the hidden
+// note in the same way (Ctrl+Z in the editor afterwards restored it while
+// the tab was still open). Ctrl+A + a letter changed nothing.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_31.test.mjs
 
@@ -37,7 +37,7 @@ async function openFresh(file, query) {
 const selState = `const s = getSelection(); const a = document.activeElement;
   return { focus: __ax.desc(a), ranges: s.rangeCount, anchorInCm: !!(s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement)?.closest('.cm-content')), editorDisplay: getComputedStyle(document.querySelector('[data-testid=editor]')).display }`;
 
-test("FINDING-008: behind the graph view, the hidden editor keeps the DOM selection; typing letters, Backspace or Ctrl+A+key change the note on disk", async () => {
+test("FINDING-008: behind the graph view, typing letters, Backspace or Ctrl+A+key leaves the note on disk unchanged", async () => {
   await app.reset();
   const problems = [];
 
@@ -123,7 +123,7 @@ test("FINDING-008 control: after clicking the graph's find box, typing goes ther
   assert.equal(app.read("Vx find.md"), BODY);
 });
 
-test("FINDING-008: pressing Space (to scroll) in reading view entered from source mode inserts spaces into the note", async () => {
+test("FINDING-008: pressing Space (to scroll) in reading view entered from source mode leaves the note unchanged", async () => {
   await app.reset();
   await openFresh("Vx space.md", "vx space");
   await app.palette("source mode");
@@ -140,7 +140,7 @@ test("FINDING-008: pressing Space (to scroll) in reading view entered from sourc
   assert.equal(d, BODY);
 });
 
-test("FINDING-008: Backspace behind the graph view erases the hidden note (step by step)", async () => {
+test("FINDING-008: Backspace behind the graph view leaves the hidden note intact (step by step)", async () => {
   await app.reset();
   const file = "Vx back2.md";
   await openFresh(file, "vx back2");

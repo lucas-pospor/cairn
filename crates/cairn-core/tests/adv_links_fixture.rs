@@ -8,8 +8,8 @@
 //       rules outside the known finding categories.
 //   ADV_LINKS_REGEN=1 cargo test -p cairn-core --test adv_links_fixture
 //       rewrites crates/cairn-core/tests/fixtures/adv_links_resolution.json
-//   cargo test -p cairn-core --test adv_links_fixture -- --ignored
-//       runs the FINDING tests (Rust vs PLAN per category).
+//   cargo test -p cairn-core --test adv_links_fixture finding_
+//       runs only the FINDING tests (Rust vs PLAN per category).
 //   cd app && npx vitest run src/lib/adv_links.test.ts
 //       replays the fixture in TypeScript.
 

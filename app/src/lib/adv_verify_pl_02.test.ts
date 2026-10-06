@@ -72,7 +72,7 @@ beforeEach(() => {
 });
 
 describe("FINDING-021", () => {
-  it("FINDING-021: a plugin approved for 'editor' only gets read+write after its file changes and plugins are reloaded", async () => {
+  it("FINDING-021: a plugin approved for 'editor' only is not started after its file changes to ask for read+write and plugins are reloaded", async () => {
     config.set("plugins/wordcount.js", "// @name Word count\n// @permissions editor\n");
     files.set("Secret.md", "bank pin 0000\n");
     const h = host();
@@ -91,7 +91,7 @@ describe("FINDING-021", () => {
     expect(files.has("Leak.md")).toBe(false);
   });
 
-  it("FINDING-021: the permissions shown in the consent dialog are not the ones the started plugin gets (file changes between dialog and start)", async () => {
+  it("FINDING-021: a plugin does not start when its file changes between the consent dialog and the start", async () => {
     config.set("plugins/p.js", "// @name P\n// @permissions editor\n");
     files.set("Secret.md", "s3cret");
     const h = host();

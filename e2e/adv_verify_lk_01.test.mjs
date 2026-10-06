@@ -1,5 +1,5 @@
-// Desktop e2e reproduction for FINDING-035 (wikilinks with ../
-// or ./ never resolve). Uses the prebuilt target/debug/cairn.
+// Desktop e2e regression tests for FINDING-035 (wikilinks with ../
+// or ./ never resolved). Uses the prebuilt target/debug/cairn.
 //   scripts/e2e-headless.sh e2e/adv_verify_lk_01.test.mjs
 // The first test only records what the app shows. Screenshots go to a temp
 // dir printed at the start.

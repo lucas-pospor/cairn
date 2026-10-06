@@ -59,7 +59,7 @@ async function switchVault(app, dir, waitRows = 1) {
 // ---------------------------------------------------------------- findings
 
 test(
-  "FINDING-040: hotkeys match the physical key, not the typed letter: AZERTY Ctrl+Z closes the tab, Dvorak Ctrl+C toggles italic",
+  "FINDING-040: hotkeys follow the typed letter, not the physical key: AZERTY Ctrl+Z does not close the tab, Dvorak Ctrl+C does not toggle italic",
   async () => {
     await withApp({ "A.md": "alpha\n", "B.md": "bravo line\n" }, async (app) => {
       await app.open("A.md");
@@ -91,7 +91,7 @@ test(
 );
 
 test(
-  "FINDING-040: punctuation is named by its QWERTY letter: Dvorak Ctrl+, (Open settings) closes the tab, AZERTY Ctrl+, does nothing",
+  "FINDING-040: punctuation hotkeys follow the typed character: Ctrl+, opens Settings on Dvorak (without closing the tab) and on AZERTY",
   async () => {
     await withApp({ "A.md": "alpha\n" }, async (app) => {
       await app.open("A.md");
@@ -115,7 +115,7 @@ test(
 );
 
 test(
-  "FINDING-096: the hotkey recorder accepts a plain letter (and Ctrl+Z) without warning; afterwards that letter cannot be typed",
+  "FINDING-096: the hotkey recorder shows a warning when asked to bind a plain letter and Ctrl+Z; afterwards the letter can still be typed and Ctrl+Z toggles no checkbox",
   async () => {
     await withApp({ "N.md": "start\n" }, async (app, env) => {
       await app.open("N.md");
@@ -157,7 +157,7 @@ test(
 );
 
 test(
-  "FINDING-097: Settings > Hotkeys hides all editing commands unless a note is open in an editing mode",
+  "FINDING-097: Settings > Hotkeys lists the editing commands also with no note open and in reading view",
   async () => {
     await withApp({ "N.md": "text\n" }, async (app) => {
       // No note open yet (fresh session).
@@ -188,7 +188,7 @@ test(
 );
 
 test(
-  "FINDING-193: a settings.json that is valid JSON but not an object (null) reports 'Could not open vault', skips session restore and keeps the previous vault's hotkeys",
+  "FINDING-193: a settings.json that is valid JSON but not an object (null) opens the vault without an error, restores the session and drops the previous vault's hotkeys",
   async () => {
     const env = freshEnv({ "A.md": "alpha\n", [SETTINGS]: JSON.stringify({ hotkeys: { "app:graph": ["Mod+J"] } }) });
     const other = new Dir(path.join(env.tmp, "other"));
@@ -233,7 +233,7 @@ test(
 );
 
 test(
-  "FINDING-194: a hand-edited hotkey given as a string instead of a list hijacks plain typing (substring match)",
+  "FINDING-194: a hand-edited hotkey given as a string instead of a list does not hijack plain typing",
   async () => {
     await withApp({ "N.md": "x\n", [SETTINGS]: JSON.stringify({ hotkeys: { "editor:bold": "Mod+J" } }) }, async (app) => {
       await app.open("N.md");
@@ -248,7 +248,7 @@ test(
 );
 
 test(
-  "FINDING-194: a hand-edited hotkey given as a number makes every later hotkey throw (Ctrl+I no longer toggles italic)",
+  "FINDING-194: a hand-edited hotkey given as a number does not break the other hotkeys (Ctrl+I still toggles italic)",
   async () => {
     await withApp({ "N.md": "word\n", [SETTINGS]: JSON.stringify({ hotkeys: { "editor:bold": 5 } }) }, async (app) => {
       await app.open("N.md");
@@ -264,7 +264,7 @@ test(
 );
 
 test(
-  "FINDING-098: Ctrl+G (find next in the editor's search panel) opens the graph instead",
+  "FINDING-098: Ctrl+G in the editor's search panel finds the next match instead of opening the graph",
   async () => {
     await withApp({ "F.md": "foo one\nfoo two\nfoo three\n" }, async (app) => {
       await app.open("F.md");
@@ -296,7 +296,7 @@ cairn.commands.register("stamp", "Insert stamp", async () => {
 `;
 
 test(
-  "FINDING-197: the Properties panel says 'No frontmatter. Add a --- block' for a note whose frontmatter is invalid YAML",
+  "FINDING-197: the Properties panel does not say 'No frontmatter. Add a --- block' for a note whose frontmatter is invalid YAML",
   async () => {
     await withApp({ "Y.md": "---\nkey: [unclosed\nother: value\n---\nbody\n" }, async (app) => {
       await app.open("Y.md");
@@ -309,7 +309,7 @@ test(
 );
 
 test(
-  "FINDING-199: picking a note in the quick switcher that was deleted meanwhile replaces the current tab with a 'Not found' tab",
+  "FINDING-199: picking a note in the quick switcher that was deleted meanwhile keeps the current tab and opens no 'Not found' tab",
   async () => {
     await withApp({ "Work.md": "my work\n", "Gone.md": "gone\n" }, async (app, env) => {
       await app.open("Work.md");

@@ -1,4 +1,4 @@
-// Reproduction for FINDING-066 (open_externally hands any vault file,
+// Regression tests for FINDING-066 (open_externally handed any vault file,
 // including .desktop launchers, scripts and Windows executables, to the
 // system opener with no type check or confirmation).
 //
@@ -140,10 +140,10 @@ test(
   },
 );
 
-// Left-click on an attachment row only shows a toast ("not supported yet"), so
-// the "clicking it in the file tree" path does not apply to a normal click.
-// Middle-click (auxclick button 1 -> openNote(newTab) -> openAttachment) does
-// reach the launcher.
+// Left-click on an attachment row (activate -> openAttachment) and middle-click
+// (auxclick button 1 -> openNote(newTab) -> openAttachment) both reach
+// open_externally, which refuses a .desktop file: the user gets a toast and
+// the launcher is never called.
 test("tree left-click on a .desktop attachment does not launch it (held up)", async () => {
   clearLaunched();
   await s.click(await s.find(rowSel("report.pdf.desktop")));

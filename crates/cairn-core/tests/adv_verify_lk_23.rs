@@ -1,6 +1,7 @@
-// Reproduction for FINDING-192 (flat substring title boost).
+// Regression test for FINDING-192 (flat substring title boost); the second
+// test only prints scores.
 //
-//   cargo test -p cairn-core --test adv_verify_lk_23 -- --ignored --nocapture
+//   cargo test -p cairn-core --test adv_verify_lk_23 -- --nocapture
 
 use cairn_core::fs::{EntryKind, FileStat};
 use cairn_core::index::{hash_bytes, Index};

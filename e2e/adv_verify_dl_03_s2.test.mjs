@@ -1,5 +1,5 @@
-// Reproduction for FINDING-009:
-// "Closing the window loses whatever was typed in the last 600 ms."
+// Regression tests for FINDING-009:
+// closing the window lost whatever was typed in the last 600 ms.
 //
 // The other reproduction (adv_verify_dl_03.test.mjs) closes the window with
 // WebDriver "Close Window". These

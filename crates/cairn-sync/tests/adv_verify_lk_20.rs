@@ -1,11 +1,12 @@
-//! Reproduction of FINDING-090 through sync: the engine
+//! Regression test for FINDING-090 through sync: the engine
 //! detects renames by content hash regardless of extension (engine.rs
 //! classify), so a todo.txt -> todo.md rename on one device is pulled by
-//! the other as Vault::rename, and that device's index never parses the
-//! note (index.rs rename_tree carries the non-note entry over).
+//! the other as Vault::rename, and that device's index did not parse the
+//! note (index.rs rename_tree carries the non-note entry over). Vault::rename
+//! now parses a file that gets a Markdown name.
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_lk_20 -- --include-ignored --nocapture
+//!   cargo test -p cairn-sync --test adv_verify_lk_20 -- --nocapture
 
 #[path = "adv_sync_semantics_common.rs"]
 mod common;

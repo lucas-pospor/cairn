@@ -1,8 +1,8 @@
-//! Reproduction for FINDING-060.
+//! Regression tests for FINDING-060.
 //!
 //! A note named with 70 CJK characters that conflicts on device "phone" gets
-//! a conflict name of 210 + 33 + 3 = 246 bytes, which is LEGAL; it can fail
-//! only because `StdFs::write` adds `.` + `.cairn-tmp-<pid>` (FINDING-050).
+//! a conflict name of 210 + 33 + 3 = 246 bytes, which is LEGAL; it could fail
+//! only because `StdFs::write` added `.` + `.cairn-tmp-<pid>` (FINDING-050).
 //! So that scenario passes with a short enough temp name and does not guard
 //! the conflict-name length.
 //!

@@ -1,15 +1,15 @@
-// Reproduction for FINDING-002.
-// Closing a tab, or leaving the vault, drops unsaved edits without asking when
-// the tab's save is blocked (conflict banner or a failed write). Beyond
-// closing a tab while the conflict banner is up, these cases cover:
-//  - work typed AFTER the banner appeared (so the loss is not bounded by the
-//    600 ms autosave window), then the tab's X: the text is nowhere afterwards;
+// Regression tests for FINDING-002.
+// Closing a tab, or leaving the vault, used to drop unsaved edits without
+// asking when the tab's save was blocked (conflict banner or a failed write).
+// Beyond closing a tab while the conflict banner is up, these cases cover:
+//  - work typed AFTER the banner appeared (so the check is not bounded by the
+//    600 ms autosave window), then the tab's X;
 //  - the "deleted outside Cairn" banner offers an explicit "Discard and close"
-//    button, yet the tab's X does the same discard with no question;
+//    button, so the tab's X must ask first too (or keep the edit);
 //  - a single click on the vault name in the status bar ("Switch vault");
 //  - middle-click on a tab whose save failed (read-only folder).
 // A control case shows that closing a dirty tab whose save is NOT blocked
-// does save, so only the blocked-save path loses the text.
+// saves it first.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_02.test.mjs
 

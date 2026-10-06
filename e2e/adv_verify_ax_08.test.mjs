@@ -1,12 +1,11 @@
-// Reproduction for FINDING-109 (focus not restored after closing overlays).
-// The other reproduction (adv_a11y_keyboard.test.mjs) only reads
+// Regression test for FINDING-109 (focus was not restored after closing
+// overlays). The other reproduction (adv_a11y_keyboard.test.mjs) only reads
 // document.activeElement; this one
 // checks what a user notices: after Ctrl+P / Ctrl+O / inline rename are
-// cancelled with Escape, typed text no longer reaches the note (the doc and
-// the file on disk stay unchanged) and the next Tab starts at the top of the
-// page. Control: with no overlay in between, the same keys do reach the note,
-// and the Enter path of inline rename does return focus to the editor
-// (app.svelte.ts rename()), so only the cancel paths drop it.
+// cancelled with Escape, typed text still reaches the note (with the defect,
+// it was lost and the next Tab started at the top of the page; the test logs
+// where focus and the next Tab go). Control: with no overlay in between, the
+// same keys reach the note.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_08.test.mjs
 
@@ -28,7 +27,7 @@ const doc = () => app.exec(`return document.querySelector('.cm-editor').__cairnV
 const refocusEnd = () =>
   app.exec(`const v = document.querySelector('.cm-editor').__cairnView; v.focus(); v.dispatch({ selection: { anchor: v.state.doc.length } }); return 1`);
 
-test("FINDING-109: after Escape from palette/switcher/rename, typed text is lost and Tab restarts at the top", async () => {
+test("FINDING-109: after Escape from palette/switcher/rename, typed text reaches the note", async () => {
   await app.reset();
   await app.openNote("garden", "Projects/Garden plan.md");
 

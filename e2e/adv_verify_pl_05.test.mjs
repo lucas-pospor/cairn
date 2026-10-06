@@ -1,8 +1,8 @@
-// Measurements for FINDING-068 (overlapping plugin starts leave an
-// orphan worker). Measures how wide the race window is in the real app, so the
-// severity can be judged: how long does the `readConfig` await in
-// PluginHost.start() take, and which gaps between two "Reload plugins" clicks
-// still produce two workers for one plugin?
+// Measurements and regression tests for FINDING-068 (overlapping plugin
+// starts left an orphan worker). Measures how long the `readConfig` await in
+// PluginHost.start() takes in the real app, and checks that at the tested
+// gaps (0 to 250 ms) two "Reload plugins" clicks never produce two workers
+// for one plugin, also with large plugins that make each start slower.
 //
 //   scripts/e2e-headless.sh e2e/adv_verify_pl_05.test.mjs
 //
@@ -125,7 +125,7 @@ test("measure: read_config IPC round trip (the await inside PluginHost.start)", 
   assert.ok(!r.error, r.error);
 });
 
-test("programmatic double click: which gaps between the two clicks orphan a worker", async () => {
+test("programmatic double click: no gap from 0 to 100 ms between the two clicks orphans a worker", async () => {
   const sweep = {};
   for (const gap of ["sync", 0, 1, 2, 4, 8, 16, 32, 64, 100]) {
     await reset();
@@ -178,7 +178,7 @@ test("real pointer double click with no pause between the clicks (faster than a 
   assert.equal(n, 1);
 });
 
-test("ten enabled 200 KB plugins: how wide the window gets", async () => {
+test("ten enabled 200 KB plugins: a double Reload at gaps from 0 to 150 ms leaves no extra worker", async () => {
   const big = "// padding\n" + ("/* " + "x".repeat(1000) + " */\n").repeat(200);
   const names = Array.from({ length: 10 }, (_, i) => `p${i}.js`);
   const files = { "Note.md": "x\n", ".cairn/settings.json": JSON.stringify({ plugins: names }) };

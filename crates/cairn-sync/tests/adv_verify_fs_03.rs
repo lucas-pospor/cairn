@@ -1,7 +1,7 @@
-//! Reproduction for FINDING-049 (one unreadable subfolder fails the whole
-//! scan). A sync script built on the `sync_dir` example fails in
-//! `Vault::open`, so it does not show the sync engine itself failing.
-//! This test opens the vault and syncs first, then makes a subfolder
+//! Regression tests for FINDING-049 (one unreadable subfolder failed the
+//! whole scan). A sync script built on the `sync_dir` example failed in
+//! `Vault::open`, so it did not show the sync engine itself failing.
+//! The first test opens the vault and syncs first, then makes a subfolder
 //! unreadable and checks that the engine's next sync still pushes a new note
 //! and does not tell the other device to delete the unreadable folder's notes.
 //!
@@ -23,7 +23,7 @@ fn chmod(p: &Path, mode: u32) {
 }
 
 #[test]
-fn fs03_unreadable_subfolder_stops_sync_engine() {
+fn fs03_unreadable_subfolder_does_not_stop_sync_engine() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("n.md", "n\n"), ("private/x.md", "x\n")]);
     laptop.sync();

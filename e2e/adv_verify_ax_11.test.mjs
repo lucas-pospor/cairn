@@ -1,14 +1,15 @@
-// Reproduction for FINDING-112 (narrow-layout drawers: no focus move, no
-// Escape, no aria-expanded, Tab goes behind the backdrop).
+// Regression tests for FINDING-112 (narrow-layout drawers had no focus move,
+// no Escape, no aria-expanded, and Tab went behind the backdrop).
 //
 // Beyond the other reproduction (adv_a11y_keyboard.test.mjs), this one:
 // - logs keydown events at window level (capture) so we know Escape really
 //   reached the page while the drawer was open;
-// - checks with elementFromPoint that the control Tab lands on ("Find note")
-//   is really covered by the backdrop;
-// - runs controls that bound the impact: Enter on the toggle again closes the
-//   drawer (focus never left it), and Shift+Tab from the toggle reaches the
-//   drawer's controls (aside.left precedes the centre column in DOM order);
+// - checks that Tab from the opened drawer stays in it, and logs with
+//   elementFromPoint whether the control it lands on is under the backdrop;
+// - logs the controls that bounded the defect's impact: Enter on the toggle
+//   again closed the drawer (focus never left it), and Shift+Tab from the
+//   toggle reached the drawer's controls (aside.left precedes the centre
+//   column in DOM order);
 // - repeats the checks for the right drawer ("Links and outline") and counts
 //   the Tab presses needed to reach it.
 //

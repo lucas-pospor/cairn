@@ -1,11 +1,11 @@
-// Reproduction for FINDING-001.
-// Opening another note in the same tab throws away unsaved edits when that
-// tab's save is blocked. Beyond a click on another note while the conflict
-// banner is up, these cases cover:
+// Regression tests for FINDING-001.
+// Opening another note in the same tab used to throw away unsaved edits when
+// that tab's save was blocked. Beyond a click on another note while the
+// conflict banner is up, these cases cover:
 //  - the "deleted outside Cairn" banner variant,
-//  - work typed AFTER the banner appeared (so the loss is not bounded by the
-//    600 ms autosave window), lost through the quick switcher (Enter),
-//  - undo cannot bring the text back after returning to the note.
+//  - work typed AFTER the banner appeared (so the check is not bounded by the
+//    600 ms autosave window), then another note opened through the quick
+//    switcher (Enter), with undo as a fallback to bring the text back.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_01.test.mjs
 

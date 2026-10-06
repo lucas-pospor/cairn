@@ -1,16 +1,16 @@
-//! Reproduction for FINDING-126 (sync performance).
+//! Regression test and timing breakdown for FINDING-126 (sync performance).
 //!
-//! 1. `uploader_redownloads_each_push_once`: after a push, the next sync
-//!    fetches every blob the device just uploaded (the changes feed carries
-//!    the blobs inline and `last_seq` was set before the push). It is a
-//!    one-off per push: the sync after that fetches nothing.
+//! 1. `uploader_does_not_redownload_its_pushes`: after a push, the next sync
+//!    fetched every blob the device just uploaded (the changes feed carries
+//!    the blobs inline and `last_seq` was set before the push), once per
+//!    push. Now neither that sync nor the one after it fetches anything.
 //! 2. `slow_initial_upload_breakdown`: splits the initial upload time into
 //!    time inside `Transport::put` (HTTP + server) and time in the client,
 //!    and times one `state.json` rewrite at the final size, to see which part
 //!    grows with the vault.
 //!
-//! Run:
-//!   cargo test -p cairn-sync --test adv_verify_sr_16 -- --ignored --nocapture --test-threads=1
+//! Run (2. is slow and ignored; `--include-ignored` runs it too):
+//!   cargo test -p cairn-sync --test adv_verify_sr_16 -- --include-ignored --nocapture --test-threads=1
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;
@@ -126,7 +126,7 @@ fn note(i: usize) -> String {
 }
 
 #[test]
-fn uploader_redownloads_each_push_once() {
+fn uploader_does_not_redownload_its_pushes() {
     let data = tempfile::tempdir().unwrap();
     let (_srv, url) = spawn_server(data.path());
     let mut a = Device::new_url(&url, "laptop", &[]);

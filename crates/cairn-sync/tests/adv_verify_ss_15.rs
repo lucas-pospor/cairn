@@ -1,4 +1,4 @@
-//! Reproduction for FINDING-064: after a note is deleted and a
+//! Regression tests for FINDING-064: after a note is deleted and a
 //! different note is later renamed onto the same path, the sync state keeps
 //! two entries for that path (the deleted file id and the live one).
 //! If `SyncEngine::file_id_for` took the first match in BTreeMap order of
@@ -8,7 +8,7 @@
 //! then no longer appear in the note's history (although the confirmation
 //! says "The current text stays in the history").
 //!
-//!   cargo test -p cairn-sync --test adv_verify_ss_15 -- --ignored
+//!   cargo test -p cairn-sync --test adv_verify_ss_15
 
 #[path = "adv_sync_semantics_common.rs"]
 mod common;
@@ -38,7 +38,8 @@ fn texts(d: &Device, path: &str) -> Vec<String> {
         .collect()
 }
 
-/// The same happens on a second device that only pulls the changes.
+/// On a second device that only pulls the changes, the history of n.md is
+/// the current note's, not the deleted note's.
 #[test]
 fn ss15_history_on_other_device_is_the_current_notes() {
     let mut wrong = Vec::new();
@@ -62,7 +63,7 @@ fn ss15_history_on_other_device_is_the_current_notes() {
 /// list, the restore would write that note's text and the current text
 /// would no longer be reachable from the note's history.
 #[test]
-fn ss15_restore_from_wrong_history_keeps_current_text_in_history() {
+fn ss15_restore_from_history_keeps_current_text_in_history() {
     for attempt in 0..12 {
         let srv = server();
         let mut a = setup(&srv);

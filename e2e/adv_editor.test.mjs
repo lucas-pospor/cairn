@@ -17,7 +17,7 @@ const PNG = fs.readFileSync(new URL("../app/src-tauri/icons/32x32.png", import.m
 // ---------------------------------------------------------------- findings
 
 test(
-  "FINDING-037: Ctrl+Z after an external change reverts it and autosaves the stale text over the file",
+  "FINDING-037: Ctrl+Z after an external change does not silently write the old text over the file",
   async () => {
     await withApp({ "Note.md": "line one\n" }, async (app, env) => {
       await app.open("Note.md");
@@ -44,7 +44,7 @@ const TABLE_NOTE = (filler) =>
   "intro line\n" + Array.from({ length: filler }, (_, i) => `filler line ${i} with some words in it`).join("\n") + "\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nend\n";
 
 test(
-  "FINDING-091: clicking a rendered table after deleting lines above it puts the cursor on another line",
+  "FINDING-091: clicking a rendered table after deleting lines above it puts the cursor on the table",
   async () => {
     const tail = Array.from({ length: 15 }, (_, i) => `tail line ${i} here`).join("\n") + "\n";
     await withApp({ "T.md": TABLE_NOTE(4) + "\n" + tail }, async (app) => {
@@ -66,7 +66,7 @@ test(
 );
 
 test(
-  "FINDING-091: the stale table position can lie past the end of the note: the click throws a RangeError",
+  "FINDING-091: clicking a table after deleting many lines above it throws no RangeError and puts the cursor on the table",
   async () => {
     await withApp({ "T.md": TABLE_NOTE(40) }, async (app) => {
       await app.open("T.md");
@@ -88,7 +88,7 @@ test(
 );
 
 test(
-  "FINDING-092: Live Preview embeds stay stale after the embedded note changes, even while the host note is edited",
+  "FINDING-092: Live Preview embeds update after the embedded note changes while the host note is being edited",
   async () => {
     await withApp({ "Host.md": "top line\n\n![[Inner]]\n\nbottom\n", "Inner.md": "OLD INNER TEXT\n" }, async (app, env) => {
       await app.open("Host.md");
@@ -106,7 +106,7 @@ test(
 );
 
 test(
-  "FINDING-093: the Live Preview properties box hides frontmatter lines it cannot parse, and body text after an opening --- rule",
+  "FINDING-093: Live Preview shows frontmatter lines the properties box cannot parse, and body text after an opening --- rule",
   async () => {
     const yaml =
       "---\ntitle: Trip\ndescription: |\n  SECRET PLAN line one\n  line two\nlocation:\n  city: PARIS\n# a comment\n---\n# Heading\n\nlast line\n";
@@ -131,7 +131,7 @@ test(
 );
 
 test(
-  "FINDING-038: links inside a rendered Live Preview table do nothing when clicked",
+  "FINDING-038: links inside a rendered Live Preview table open when clicked",
   async () => {
     const src = "top\n\n| Col | Link |\n|---|---|\n| a | [[Target]] |\n| b | [ext](https://example.com/x) |\n\nend\n";
     await withApp({ "T.md": src, "Target.md": "# Target\n" }, async (app) => {
@@ -166,7 +166,7 @@ test(
 );
 
 test(
-  "FINDING-094: a bare URL on the line being edited still acts as a link: clicking into it to edit opens the browser",
+  "FINDING-094: clicking into a bare URL on the line being edited moves the cursor and opens no browser",
   async () => {
     const src = "first line\nsee https://example.com/some/long/page here\nlast line\n";
     await withApp({ "U.md": src }, async (app) => {
@@ -198,7 +198,7 @@ test(
 );
 
 test(
-  "FINDING-095: Ctrl+I on a selected bold word strips the bold instead of adding italic",
+  "FINDING-095: Ctrl+I on a selected bold word adds italic and keeps the bold",
   async () => {
     await withApp({ "B.md": "a **bold** b\n" }, async (app) => {
       await app.open("B.md");
@@ -213,7 +213,7 @@ test(
 );
 
 test(
-  "FINDING-039: embedding a non-image attachment (PDF, archive) dumps its bytes into the note; a big one blocks the UI",
+  "FINDING-039: embedding a non-image attachment (PDF, archive) does not dump its bytes into the note or block the UI",
   async () => {
     const files = {
       "Pdf.md": "top\n\n![[doc.pdf]]\n\nend\n",
@@ -274,7 +274,7 @@ test("FINDING-039: a small text file still embeds as text; a PDF or a big file g
 });
 
 test(
-  "FINDING-099: clicking a rendered image, note embed or horizontal rule does nothing: the mouse cannot reach their source",
+  "FINDING-099: clicking a rendered image, note embed or horizontal rule moves the cursor to its source line",
   async () => {
     const src = "intro\n\n---\n\n![[pic.png]]\n\ninline ![[pic.png]] image\n\n![[Inner]]\n\nend\n";
     await withApp({ "W.md": src, "Inner.md": "inner text\n", "pic.png": PNG }, async (app) => {
@@ -303,7 +303,7 @@ test(
 );
 
 test(
-  "FINDING-195: every keystroke re-renders every table in the note (also off-screen): typing lags in notes with many tables",
+  "FINDING-195: typing stays fast in notes with many tables (median under 50 ms per keystroke with 300 tables)",
   async () => {
     const table = (i) => `| Name ${i} | Value | Link |\n|---|---|---|\n` + Array.from({ length: 8 }, (_, r) => `| row ${r} | **${r * i}** | [[Target]] |`).join("\n");
     const note = (n) => "# Tables\n\n" + Array.from({ length: n }, (_, i) => `Paragraph ${i} with some text.\n\n${table(i)}\n`).join("\n") + "\nend\n";
@@ -376,7 +376,7 @@ test(
 );
 
 test(
-  "FINDING-100: after an external change reloads the open note, the cursor keeps its old offset: the next typed text lands in the wrong place",
+  "FINDING-100: after an external change reloads the open note, the cursor stays with its text: the next typed text lands in the right place",
   async () => {
     await withApp({ "S.md": "first line\nsecond line\nthird line\n" }, async (app, env) => {
       await app.open("S.md");
@@ -394,7 +394,7 @@ test(
 );
 
 test(
-  "FINDING-196: Ctrl+L (toggle checkbox) on a quote or heading line puts '- [ ] ' in front of the '>' / '#', breaking the quote or heading",
+  "FINDING-196: Ctrl+L (toggle checkbox) on a quote or heading line does not put '- [ ] ' in front of the '>' / '#'",
   async () => {
     const src = "> quoted line\n# Heading\n";
     await withApp({ "F.md": src }, async (app) => {
@@ -410,7 +410,7 @@ test(
 );
 
 test(
-  "FINDING-198: Ctrl+click on a link opens a new tab, or replaces the current tab, depending on whether the cursor is on the link's line",
+  "FINDING-198: Ctrl+click on a link opens the same tabs whether or not the cursor is on the link's line",
   async () => {
     const src = "first line\nsee [[Target]] here\nlast line\n";
     await withApp({ "L.md": src, "Target.md": "# Target\n" }, async (app) => {

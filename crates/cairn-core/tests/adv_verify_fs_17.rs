@@ -48,7 +48,7 @@ fn control_replaced_folder_with_different_mtime_is_reindexed() {
 }
 
 #[test]
-fn fs17_stale_index_and_persistent_conflict() {
+fn fs17_fresh_index_and_no_conflict() {
     let (d, v) = setup(&[("t1.md", ""), ("old/x.md", "aaaa [[t1]]")]);
     replace_folder(&d, true);
     let c = v.rescan().unwrap();

@@ -1,5 +1,5 @@
-// Reproduction for FINDING-203: repeated icon buttons (tab Close, hotkey
-// "+" / "×", Welcome "Remove from list") have identical names that do not
+// Regression test for FINDING-203: repeated icon buttons (tab Close, hotkey
+// "+" / "×", Welcome "Remove from list") had identical names that did not
 // say which tab / command / vault they act on.
 //
 // Unlike the other reproduction (adv_a11y_semantics.test.mjs), this one asks
@@ -57,7 +57,7 @@ const counts = (arr) => {
   return c;
 };
 
-test("FINDING-203: repeated per-row buttons have identical, context-free accessible names", async () => {
+test("FINDING-203: repeated per-row buttons have distinct accessible names", async () => {
   await app.reset();
   await app.openNote("welcome", "Welcome.md");
   await app.chord(K.ctrl, "o");

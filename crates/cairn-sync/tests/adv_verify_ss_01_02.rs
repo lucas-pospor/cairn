@@ -1,4 +1,4 @@
-//! Further reproductions for FINDING-004.
+//! Further regression tests for FINDING-004.
 //!
 //! The simulated `CaseInsensitiveFs` and the Linux casefold tmpfs (see
 //! adv_verify_ss_01.rs) both keep the OLD name when a file is renamed over a
@@ -6,14 +6,14 @@
 //! file called `Ideas.md`). APFS/HFS+ and NTFS are expected to take the NEW
 //! name given to rename(2)/MoveFileEx instead. `StdFs::write` is a temp file
 //! plus rename, so on macOS/Windows the overwritten file most likely ends up
-//! called `ideas.md`. This file models that variant, to see whether the
-//! damage depends on which name survives:
+//! called `ideas.md`. This file models that variant, to check that no note
+//! is lost whichever name survives:
 //!
-//! * the two-notes case: the mac now pushes a DELETE of `Ideas.md` (not an
-//!   edit), so the Linux device moves UPPER to its trash instead of
-//!   overwriting it. The mac's own copy is still destroyed outright.
-//! * the unsynced-note case: the mac's never-uploaded note is lost for good
-//!   whichever name survives.
+//! * the two-notes case: both notes stay in a live vault. (With the defect,
+//!   the mac pushed a DELETE of `Ideas.md`, so the Linux device moved UPPER
+//!   to its trash, and the mac's own copy was destroyed outright.)
+//! * the unsynced-note case: the mac's never-uploaded note survives in a
+//!   vault, a trash or the server (with the defect it was lost for good).
 //!
 //! Run: cargo test -p cairn-sync --test adv_verify_ss_01_02 -- --nocapture --test-threads=1
 

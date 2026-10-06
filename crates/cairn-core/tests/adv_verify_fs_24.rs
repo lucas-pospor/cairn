@@ -34,7 +34,7 @@ fn is_whole_version(s: &str) -> bool {
 }
 
 #[test]
-fn fs24_concurrent_write_config_errors_and_corruption() {
+fn fs24_concurrent_write_config_has_no_errors_or_corruption() {
     let d = tempfile::tempdir().unwrap();
     let v = Arc::new(Vault::open(Arc::new(StdFs::new(d.path(), TrashMode::Vault).unwrap())).unwrap());
     let stop = Arc::new(AtomicBool::new(false));

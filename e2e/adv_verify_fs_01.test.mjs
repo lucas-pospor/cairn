@@ -1,8 +1,9 @@
-// Reproduction for FINDING-003 in the real desktop app: F2-renaming a.md to
-// "A" when a different A.md exists replaces A.md.
-// Also checks where the overwritten note went: the vault's .trash folder and
-// the XDG system trash ($XDG_DATA_HOME/Trash, which the desktop app uses for
-// deletes) are both searched, as is the rest of the temp directory.
+// Regression test for FINDING-003 in the real desktop app: F2-renaming a.md
+// to "A" when a different A.md exists must leave A.md as it was.
+// If it does not, the failure message says where the old note went: the
+// vault's .trash folder and the XDG system trash ($XDG_DATA_HOME/Trash, which
+// the desktop app uses for deletes) are both searched, as is the rest of the
+// temp directory.
 //   scripts/e2e-headless.sh e2e/adv_verify_fs_01.test.mjs
 
 import { test, before, after } from "node:test";
@@ -63,7 +64,7 @@ after(async () => {
 });
 
 test(
-  "FINDING-003: F2 rename a.md -> A keeps the other A.md (or at least trashes it)",
+  "FINDING-003: F2 rename a.md -> A keeps the other A.md unchanged",
   async () => {
     await s.click(await s.find(`[data-testid=tree-row][data-path="a.md"]`));
     await sleep(100);

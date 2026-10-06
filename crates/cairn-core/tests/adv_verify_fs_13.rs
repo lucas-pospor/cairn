@@ -1,19 +1,18 @@
-//! Reproduction for FINDING-022 (read_note / read_file must not read hidden
-//! files).
+//! Regression tests for FINDING-022 (read_note / read_file must not read
+//! hidden files).
 //!
-//! `fs13_core_reads_hidden_files` checks the core side: both calls refuse
-//! hidden paths. Reading them would only be exploitable through the plugin
-//! bridge (FINDING-022).
+//! `fs13_core_refuses_to_read_hidden_files` checks the core side: both calls
+//! refuse hidden paths. Reading them would only be exploitable through the
+//! plugin bridge (FINDING-022).
 //!
-//! `fs13_note_content_cannot_steer_ui_to_hidden_files` passes. It shows that
-//! the paths the trusted UI gets from note content (wikilink and embed
-//! resolution through `Vault::resolve`) never point at hidden files, because
-//! hidden files are not in the index. So a note cannot make the app's own UI
-//! call read_note or read_text_file on `.git/config` or `.cairn/...`.
+//! `fs13_note_content_cannot_steer_ui_to_hidden_files` shows that the paths
+//! the trusted UI gets from note content (wikilink and embed resolution
+//! through `Vault::resolve`) never point at hidden files, because hidden
+//! files are not in the index. So a note cannot make the app's own UI call
+//! read_note or read_text_file on `.git/config` or `.cairn/...`.
 //!
 //! Run:
 //!   cargo test -p cairn-core --test adv_verify_fs_13
-//!   cargo test -p cairn-core --test adv_verify_fs_13 -- --ignored
 
 use std::fs;
 use std::sync::Arc;
@@ -40,7 +39,7 @@ const FILES: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn fs13_core_reads_hidden_files() {
+fn fs13_core_refuses_to_read_hidden_files() {
     let (_d, v) = setup(FILES);
     let a = v.read_note(".git/config").map(|n| n.content);
     let b = v.read_file(".cairn/settings.json").map(|b| String::from_utf8_lossy(&b).into_owned());

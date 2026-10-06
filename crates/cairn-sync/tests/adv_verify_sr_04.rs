@@ -1,9 +1,9 @@
-//! Reproductions for FINDING-015 (writes made
+//! Regression tests for FINDING-015 (writes made
 //! while a sync round is waiting for the changes feed).
 //!
 //! The engine classifies the vault once, before the pull
-//! (`SyncEngine::round` -> `scan` + `classify`), and `apply_remote` then
-//! performs unconditional destructive operations based on that snapshot and
+//! (`SyncEngine::round` -> `scan` + `classify`), and `apply_remote` used to
+//! perform unconditional destructive operations based on that snapshot and
 //! on the in-memory index:
 //! * new remote file: `self.exists()` (index only) + `write(.., None)`
 //! * remote delete of an "Unchanged" file: `Vault::delete` without a hash check
@@ -11,18 +11,18 @@
 //!
 //! Beyond an external editor's write after the scan, these tests add three
 //! cases:
-//! 1. the remote-delete case also hits a save made through the app's own
+//! 1. the remote-delete case also hit a save made through the app's own
 //!    path (`Vault::write_note` with the correct base hash, which is what the
-//!    `write_note` Tauri command does), so it is not limited to external
+//!    `write_note` Tauri command does), so it was not limited to external
 //!    editors;
 //! 2. the "remotely edited, locally deleted" restore branch
-//!    in `apply_remote` overwrites a note the user re-created meanwhile;
-//! 3. (passing) once the index knows about the external file (the app's
+//!    in `apply_remote` overwrote a note the user re-created meanwhile;
+//! 3. once the index knows about the external file (the app's
 //!    file watcher calls `rescan_paths` after a 250 ms debounce), the
-//!    incoming file gets a conflict name, so the overwrite window is the time
+//!    incoming file gets a conflict name, so the overwrite window was the time
 //!    between the external write and the watcher's rescan.
 //!
-//!   cargo test -p cairn-sync --test adv_verify_sr_04 -- --include-ignored
+//!   cargo test -p cairn-sync --test adv_verify_sr_04
 
 #[path = "adv_sync_robust_common.rs"]
 mod common;

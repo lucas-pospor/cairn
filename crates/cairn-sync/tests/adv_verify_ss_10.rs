@@ -1,4 +1,4 @@
-//! Reproduction for FINDING-061:
+//! Regression tests for FINDING-061:
 //! `apply_remote`'s new-file branch decides whether the remote path is
 //! taken. If it used `local`, the scan taken at the start of the round,
 //! instead of the current vault, then when an earlier head in the SAME pull
@@ -7,8 +7,8 @@
 //! (through `Tracked::server_path`).
 //!
 //! 1. Control: the very same remote changes received in two separate pulls
-//!    give no conflict. Only "both heads in one pull" differs, which
-//!    isolates the stale round-start scan as the cause.
+//!    give no conflict. With the defect, only "both heads in one pull"
+//!    differed, which isolated the stale round-start scan as the cause.
 //! 2. Variant: a folder rename followed by a new note in a new folder
 //!    with the old name ("Inbox/todo.md" -> "Done/todo.md", then a new
 //!    "Inbox/todo.md"), received in one pull.

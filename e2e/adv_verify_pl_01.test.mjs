@@ -1,19 +1,19 @@
-// Reproduction for FINDING-005 (plugins enabled in .cairn/settings.json
-// start without consent), against the real app.
+// Regression tests for FINDING-005 (plugins enabled in .cairn/settings.json
+// started without consent), against the real app.
 //
 //   scripts/e2e-headless.sh e2e/adv_verify_pl_01.test.mjs
 //
-// Test 1 is the bare reproduction: no dialog is ever shown while a plugin from
-// a received vault runs with read+write. (Such a plugin must stay off until
+// Test 1 is the bare case: a plugin from a received vault must not run with
+// read+write unless a dialog asks first. (Such a plugin must stay off until
 // it is turned on on this device.)
 // Test 2 is the impact case: a "starter" vault from someone else carries a
 // plugin. The user later writes a private note in that vault. The plugin,
-// which was never approved, reads it and writes a note with a remote https
-// image whose URL carries the secret. When the user opens that note, Live
-// Preview loads the image (CSP img-src allows https:), so the secret leaves
-// the machine. Locally the server only sees a TLS connection (no trusted
-// cert), which is enough to show the request is not blocked; a real attacker
-// with a valid certificate would receive the full URL.
+// never approved, must not read it and write a note with a remote https
+// image whose URL carries the secret. With the defect it did, and opening
+// that note made Live Preview load the image (CSP img-src allows https:), so
+// the secret left the machine. Locally the server only sees a TLS connection
+// (no trusted cert), which is enough to show whether the request is made; a
+// real attacker with a valid certificate would receive the full URL.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

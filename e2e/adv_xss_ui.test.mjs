@@ -524,7 +524,7 @@ test("conflict-copy list and version history show hostile note and device names 
 });
 
 // ---------------------------------------------------------------------------
-// External links: the opener plugin is granted the command but no URL scope.
+// External links: the opener plugin may open http, https and mailto URLs only.
 // ---------------------------------------------------------------------------
 test(
   "FINDING-023: clicking an https link asks the system to open it (opener scope allows https)",

@@ -1,6 +1,6 @@
-// Reproduction for FINDING-070 against the real app: a command timer left
-// over from a stopped plugin instance stops the next instance of the same
-// plugin file 30 s after the original run.
+// Regression tests for FINDING-070 against the real app: a command timer left
+// over from a stopped plugin instance must not stop the next instance of the
+// same plugin file 30 s after the original run.
 //
 //   scripts/e2e-headless.sh e2e/adv_verify_pl_07.test.mjs      (about 90 s)
 //

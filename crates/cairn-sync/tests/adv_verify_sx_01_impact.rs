@@ -1,10 +1,11 @@
-//! Impact checks for FINDING-017 (one bad pull record blocks all sync).
-//! Questions checked: does it lose data, can the user recover, what can a key
-//! holder already do with valid revisions, and can honest devices hit the
-//! same root cause (no per-record isolation in the pull loop)?
+//! Impact checks for FINDING-017 (one bad pull record blocked all sync).
+//! Questions checked: is data lost, does sync recover, what can a key
+//! holder already do with valid revisions, and do honest devices keep
+//! syncing in a case that used to hit the same root cause (no per-record
+//! isolation in the pull loop)?
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_sx_01_impact -- --ignored --nocapture
+//!   cargo test -p cairn-sync --test adv_verify_sx_01_impact -- --nocapture
 
 use std::fs;
 use std::path::PathBuf;
@@ -128,11 +129,12 @@ impl Device {
     }
 }
 
-/// Bad record AFTER a good one (higher seq): the good file is pulled, but
-/// the push phase never runs, and the user's only recovery action in the UI
-/// (disconnect + set up again) does not help. Local data is never touched.
+/// Bad record AFTER a good one (higher seq): local data is never touched,
+/// and after the user's recovery action in the UI (disconnect + set up
+/// again) sync works and the local note reaches the server. (With the
+/// defect, the push phase never ran and reconnecting did not help.)
 #[test]
-fn reconnect_does_not_recover_and_local_data_is_kept() {
+fn reconnect_recovers_and_local_data_is_kept() {
     let srv = server();
     let kh = KeyHolder::create(&srv);
     assert!(matches!(kh.put("bbbbbbbbbbbbbbbb", None, "Good.md", b"hello", false), PutOutcome::Stored(_)));
@@ -160,8 +162,8 @@ fn reconnect_does_not_recover_and_local_data_is_kept() {
 
 /// Context: a key holder can already do worse with fully
 /// valid revisions. Deleting every file on the server makes the honest
-/// device delete them locally (to the trash). So the DoS gives an attacker
-/// who holds the key no new power over the data.
+/// device delete them locally (to the trash). So the DoS of FINDING-017
+/// gave an attacker who holds the key no new power over the data.
 #[test]
 fn key_holder_can_already_delete_everything_with_valid_revisions() {
     let srv = server();
@@ -183,10 +185,10 @@ fn key_holder_can_already_delete_everything_with_valid_revisions() {
 
 /// Honest devices, no attacker: a plain file named `Archive` (an attachment
 /// without extension) on one device and a folder `Archive/` on another.
-/// The device that syncs second can no longer sync anything: its other new
-/// note is never pushed, every retry fails the same way.
+/// The device that syncs second keeps syncing: every retry succeeds and its
+/// other new note is pushed.
 #[test]
-fn honest_file_folder_clash_stops_all_sync() {
+fn honest_file_folder_clash_does_not_stop_sync() {
     let srv = server();
     let _kh = KeyHolder::create(&srv);
     let mut a = Device::new(&srv, "laptop", &[("Archive/a.md", b"inside the folder")]);

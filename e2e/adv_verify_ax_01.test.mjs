@@ -1,10 +1,11 @@
-// Reproduction for FINDING-102 (file tree has no keyboard navigation).
+// Regression tests for FINDING-102 (the file tree had no keyboard navigation).
 // Unlike the other reproduction (adv_a11y_keyboard.test.mjs), this one also
 // proves that the keys
 // actually reach the focused tree (a keydown listener on the tree logs them,
-// focus is checked after every key) and runs a control: F2 does work once a
-// row was clicked with the mouse, so the delivery path is fine and the gap is
-// only that no key ever moves/sets the focused/selected row.
+// focus is checked after every key) and that they focus or select a row,
+// expand a folder, open a note and start a rename. A second test starts from
+// a row clicked with the mouse: the arrows move on from it and F2 renames the
+// row they reach.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_01.test.mjs
 
@@ -38,7 +39,7 @@ const state = () =>
       keysSeen: window.__v01keys ?? [],
     };`);
 
-test("FINDING-102: keys reach the focused tree but none of them focus, select, expand, open or rename a row", async () => {
+test("FINDING-102: keys reach the focused tree and focus or select a row, expand a folder, open a note and start a rename", async () => {
   await app.reset();
   const rows = await app.exec(`return [...document.querySelectorAll('[data-testid=tree-row]')].map(r => r.dataset.path)`);
   console.log("rows:", JSON.stringify(rows));

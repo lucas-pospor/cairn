@@ -7,7 +7,7 @@
 //! the tablet's state for the affected paths before and after each sync.
 //! Set SR14_LOG=1 to print the log.
 //!
-//! `remote_new_file_at_path_of_locally_renamed_file` is a minimal,
+//! `conflict_name_reuses_path_of_locally_renamed_file` is a minimal,
 //! deterministic two-device reproduction of the mechanism found with the log.
 //!
 //! cargo test -p cairn-sync --test adv_verify_sr_14
@@ -264,11 +264,11 @@ fn state_of(d: &Device) -> Vec<(String, String, u64)> {
 /// 4. The tablet syncs. B is new to the tablet and its path is taken locally,
 ///    so `conflict_path("att/a.bin")` runs; Q is free on disk (step 2)
 ///    so B is written to Q and tracked at Q, while A1 is still tracked at Q.
-///    In the push, classify() attributes the file at Q to A1 (Modified: A1's
-///    content is replaced by B's on the server) and B is force-pushed at Q too;
-///    `r/moved.bin` is uploaded as a brand-new file.
+///    With the defect, the push's classify() attributed the file at Q to A1
+///    (Modified: A1's content was replaced by B's on the server) and B was
+///    force-pushed at Q too; `r/moved.bin` was uploaded as a brand-new file.
 ///
-/// The push's scan gives a path that two tracked files have
+/// Now the push's scan gives a path that two tracked files have
 /// to the one whose content is there (B), so A1 is found renamed to
 /// `r/moved.bin` and that rename is pushed.
 #[test]

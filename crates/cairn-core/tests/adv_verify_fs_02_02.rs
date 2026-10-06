@@ -1,8 +1,8 @@
-//! Reproduction for FINDING-011, the parts adv_fs_names.rs does not reach:
-//! deleting an NFD-named note, and creating a note inside a folder whose
-//! name is NFD.
+//! Regression tests for FINDING-011, the parts adv_fs_names.rs does not
+//! reach: deleting an NFD-named note, and creating a note inside a folder
+//! whose name is NFD.
 //!
-//!   cargo test -p cairn-core --test adv_verify_fs_02_02 -- --ignored
+//!   cargo test -p cairn-core --test adv_verify_fs_02_02
 
 use std::fs;
 use std::path::Path;

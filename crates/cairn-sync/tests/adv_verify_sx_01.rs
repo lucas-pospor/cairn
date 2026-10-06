@@ -1,16 +1,15 @@
-//! Reproduction for FINDING-017 (one hostile pull record blocks
+//! Regression tests for FINDING-017 (one hostile pull record blocked
 //! all sync, permanently, for every device).
 //!
-//! The basic test (adv_sync_security.rs::one_bad_pull_record_blocks_all_sync)
-//! only checks the first sync of a fresh device. These tests check the
-//! stronger claims: the failure repeats on every later sync (the cursor never
-//! moves past the bad head), it also hits a device that was already in sync
-//! before the bad record appeared (its later edits never reach the server),
-//! a hidden-path record behaves the same, and the same lack of per-record
-//! isolation turns a single local write failure into a stop for all files.
+//! The basic test in adv_sync_security.rs only checks the first sync of a
+//! fresh device. These tests check the stronger cases: every later sync
+//! works too, on every device; a device that was already in sync before the
+//! bad record appeared keeps pushing its changes; a hidden-path record is
+//! handled the same way; and a single local write failure does not stop the
+//! other files.
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_sx_01 -- --ignored
+//!   cargo test -p cairn-sync --test adv_verify_sx_01
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -111,11 +110,11 @@ impl Device {
     }
 }
 
-/// The failure is permanent: every later sync re-reads the same bad head and
-/// fails again; the cursor never moves; the local note never gets pushed;
-/// a second fresh device is stuck in exactly the same way.
+/// Every sync skips the one bad record: the good note is pulled, the local
+/// note is pushed, and a second fresh device is not stuck either. (With the
+/// defect, every later sync re-read the same bad head and failed again.)
 #[test]
-fn bad_record_blocks_sync_permanently_for_every_device() {
+fn bad_record_does_not_block_sync_for_any_device() {
     let srv = server();
     let kh = KeyHolder::create(&srv);
     kh.put_new("aaaaaaaaaaaaaaaa", "../escape.md", b"pwn");
@@ -142,10 +141,10 @@ fn bad_record_blocks_sync_permanently_for_every_device() {
     assert_eq!(b_err, "None", "a second device is stuck too");
 }
 
-/// A device that was fully in sync before the bad record appeared: from then
-/// on, its edits and new notes never reach the server.
+/// A device that was fully in sync before the bad record appeared keeps
+/// syncing: its new notes still reach the server.
 #[test]
-fn in_sync_device_stops_pushing_after_bad_record() {
+fn in_sync_device_keeps_pushing_after_bad_record() {
     let srv = server();
     let kh = KeyHolder::create(&srv);
     kh.put_new("bbbbbbbbbbbbbbbb", "Good.md", b"hello");
@@ -165,11 +164,11 @@ fn in_sync_device_stops_pushing_after_bad_record() {
     assert!(kh.server_paths().iter().any(|p| p == "New.md"), "New.md never pushed");
 }
 
-/// Not malice: the same missing per-record isolation turns one local write
-/// failure (a read-only folder on this device) into a stop for every other
-/// file, both pulls and pushes. (Recoverable once the folder is fixed.)
+/// Not malice: one local write failure (a read-only folder on this device)
+/// does not stop the other files, pulls or pushes. (With the defect, the
+/// missing per-record isolation stopped them all until the folder was fixed.)
 #[test]
-fn one_local_write_failure_blocks_all_other_files() {
+fn one_local_write_failure_does_not_block_other_files() {
     use std::os::unix::fs::PermissionsExt;
     let srv = server();
     let mut a = Device::new(&srv, "laptop", &[("Archive/old.md", b"old")]);

@@ -1,7 +1,7 @@
-//! Reproduction for FINDING-014: a "push this rename" intent that lives only
-//! in memory for one round, while apply_remote has already recorded the
+//! Regression tests for FINDING-014: a "push this rename" intent lived only
+//! in memory for one round, while apply_remote had already recorded the
 //! LOCAL path as if it were the server's path in state.json. When the round
-//! does not get to push it, the rename is never uploaded.
+//! did not get to push it, the rename was never uploaded.
 //!
 //! 1. A version of adv_sync_semantics.rs
 //!    `user_rename_survives_a_restarted_round`: the phone's last step must
@@ -10,11 +10,12 @@
 //!    create a new note. Here the phone edits the note under whatever name
 //!    it currently has.
 //! 2. A variant with no faults at all: the 409 comes from another device
-//!    editing the SAME renamed note during the laptop's sync. The next round
-//!    sees the note as Unchanged and applies the remote head's path, so the
-//!    laptop user's rename is undone inside that one sync.
+//!    editing the SAME renamed note during the laptop's sync. With the
+//!    defect, the next round saw the note as Unchanged and applied the
+//!    remote head's path, so the laptop user's rename was undone inside
+//!    that one sync.
 //!
-//!   cargo test -p cairn-sync --test adv_verify_ss_09 -- --ignored
+//!   cargo test -p cairn-sync --test adv_verify_ss_09
 
 #[path = "adv_sync_semantics_common.rs"]
 mod common;

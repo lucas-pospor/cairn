@@ -30,7 +30,7 @@ async function clickLinkIn(app, css) {
 }
 
 test(
-  "FINDING-007: clicking an external link inside an embedded note in Live Preview also navigates the app window to that site",
+  "FINDING-007: clicking an external link inside an embedded note in Live Preview does not navigate the app window away",
   async () => {
     await withApp(
       { "Host.md": "top line\n\n![[Inner]]\n\nend\n", "Inner.md": "Inner says: [example](https://example.com/from-embed)\n" },
@@ -75,7 +75,7 @@ test("the app window refuses to navigate away from the app, even when a script a
 });
 
 test(
-  "FINDING-041: a relative Markdown link ([t](Other.md)) in a Live Preview table or embed reloads the app window instead of opening the note",
+  "FINDING-041: a relative Markdown link ([t](Other.md)) in a Live Preview table or embed opens the note instead of reloading the app window",
   async () => {
     const results = {};
     for (const [what, files, css] of [
@@ -107,7 +107,7 @@ test(
 );
 
 test(
-  "FINDING-101: double-clicking a word on a line with hidden syntax selects a different word (the line re-renders between the two clicks)",
+  "FINDING-101: double-clicking a word on a line with hidden syntax selects that word",
   async () => {
     const src = "first line here\n**Bold** and [[Target|alias]] then target word\nlast line\n";
     await withApp({ "D.md": src, "Target.md": "x\n" }, async (app) => {
@@ -137,7 +137,7 @@ test(
 );
 
 test(
-  "FINDING-200: an unknown defaultMode in .cairn/settings.json (e.g. \"graph\") opens every note as an empty pane",
+  "FINDING-200: an unknown defaultMode in .cairn/settings.json (e.g. \"graph\") still shows the note's editor",
   async () => {
   await withApp({ "N.md": "body text\n", ".cairn/settings.json": JSON.stringify({ defaultMode: "graph" }) }, async (app) => {
     await app.open("N.md");
@@ -149,7 +149,7 @@ test(
 );
 
 test(
-  "FINDING-201: Shift+click on a rendered link (to extend the selection) opens the link and replaces the current note",
+  "FINDING-201: Shift+click on a rendered link extends the selection instead of opening the link",
   async () => {
     const src = "first line\nsee [[Target]] here\nlast line\n";
     await withApp({ "S.md": src, "Target.md": "# Target\n" }, async (app) => {

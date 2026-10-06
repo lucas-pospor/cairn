@@ -1,19 +1,17 @@
-//! Reproduction for FINDING-065 (a pulled path containing NUL
-//! aborts all sync; `vpath::normalize` does not reject interior NUL).
+//! Regression tests for FINDING-065 (a pulled path containing NUL aborted
+//! all sync; `vpath::normalize` did not reject interior NUL).
 //!
-//! The basic test (adv_sync_security.rs::nul_in_pulled_path_blocks_sync)
-//! checks one sync of a fresh device. These tests check:
-//!   * the core validators (`vpath::normalize`, `Vault::write_file`) accept
-//!     NUL, so the record is not refused as an unsafe path; it fails later as
-//!     a local I/O error from the OS, a different error class from the
-//!     engine's own "unsafe path" rejection;
-//!   * the failure is permanent for a device that was already in sync (the
-//!     cursor never moves, its new note is never pushed);
-//!   * the same validator gap covers over-long names (ENAMETOOLONG), which
-//!     abort sync the same way.
+//! The basic test in adv_sync_security.rs checks one sync of a fresh device.
+//! These tests check:
+//!   * the core validators (`vpath::normalize`, `Vault::write_file`) reject
+//!     NUL as an invalid path, instead of letting it fail later as a local
+//!     I/O error from the OS;
+//!   * a device that was already in sync keeps syncing (a good file uploaded
+//!     after the record is pulled, its new note is pushed);
+//!   * an over-long name (ENAMETOOLONG) does not abort sync either.
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_sx_04 -- --ignored --nocapture
+//!   cargo test -p cairn-sync --test adv_verify_sx_04 -- --nocapture
 
 use std::fs;
 use std::path::PathBuf;
@@ -115,13 +113,13 @@ impl Device {
     }
 }
 
-/// The validators that are supposed to decide "this path can never be a
-/// vault file" accept NUL. `validate_name` (used for names the user types)
-/// rejects control characters; `normalize` (used for paths from sync, the
-/// watcher and the UI) does not. `Vault::write_file` therefore reports an
-/// OS I/O error, not `InvalidPath`.
+/// The validators that decide "this path can never be a vault file" reject
+/// NUL: `validate_name` (used for names the user types) rejects control
+/// characters, and `normalize` (used for paths from sync, the watcher and
+/// the UI) rejects NUL, so `Vault::write_file` reports `InvalidPath`, not an
+/// OS I/O error.
 #[test]
-fn core_validators_accept_nul() {
+fn core_validators_reject_nul() {
     let n = vpath::normalize("a\u{0}b.md");
     let nl = vpath::normalize("a\nb.md");
     let long = vpath::normalize(&format!("{}.md", "x".repeat(300)));
@@ -140,13 +138,13 @@ fn core_validators_accept_nul() {
     assert!(n.is_err(), "normalize kept the NUL: {n:?}");
 }
 
-/// A device that was in sync before the NUL record appeared: the record is
-/// not caught by the engine's "unsafe path" check (that would be a
-/// `SyncError::Server`); it fails as a local I/O error on write, every later
-/// sync fails the same way, the cursor never moves, a good file uploaded
-/// after it is never pulled and the device's new note is never pushed.
+/// A device that was in sync before the NUL record appeared keeps syncing:
+/// every later sync succeeds, a good file uploaded after the record is
+/// pulled and the device's new note is pushed. (With the defect, the record
+/// got past the engine's "unsafe path" check and failed as a local I/O error
+/// on write, and every later sync failed the same way.)
 #[test]
-fn nul_record_blocks_in_sync_device_permanently() {
+fn nul_record_does_not_block_in_sync_device() {
     let srv = server();
     let kh = KeyHolder::create(&srv);
     kh.put_new("bbbbbbbbbbbbbbbb", "Good.md", b"hello");
@@ -176,11 +174,12 @@ fn nul_record_blocks_in_sync_device_permanently() {
     assert!(kh.server_paths().iter().any(|p| p == "New.md"), "New.md never pushed");
 }
 
-/// Same validator gap, different byte: an over-long file name (no NUL, valid
-/// UTF-8) passes `normalize` and fails at write with ENAMETOOLONG, aborting
-/// the round exactly like the NUL path.
+/// Same kind of record, different byte: an over-long file name (no NUL,
+/// valid UTF-8) does not abort the round and the good file is still pulled.
+/// (With the defect, its failure at write with ENAMETOOLONG aborted the
+/// round, like the NUL path.)
 #[test]
-fn overlong_name_record_blocks_sync() {
+fn overlong_name_record_does_not_block_sync() {
     let srv = server();
     let kh = KeyHolder::create(&srv);
     let long = format!("{}.md", "\u{65e5}".repeat(100)); // 100 CJK chars = 300 UTF-8 bytes

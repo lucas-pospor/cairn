@@ -1,14 +1,14 @@
-// Reproduction for FINDING-048 without any test hook: an in-app flow where
+// Regression test for FINDING-048 without any test hook: an in-app flow where
 // a structural change is followed within a few ms by a save.
 //
 // Clicking a broken wikilink in Live Preview creates the note
 // (create_note emits a "created" batch) and then openNote() flushes the
 // current tab (app.svelte.ts). If that tab still has unsaved typing (the
 // 600 ms autosave has not fired yet), write_note emits a "modified" batch a few
-// ms later. The defect: handleChanges (app.svelte.ts) replaces the pending
-// structural refresh timer with a content-only one, so the new note exists
-// on disk and in the backend index but never appears in the tree / quick
-// switcher, and the link that created it keeps its "unresolved" style.
+// ms later. With the defect, handleChanges (app.svelte.ts) replaced the
+// pending structural refresh timer with a content-only one, so the new note
+// existed on disk and in the backend index but never appeared in the tree /
+// quick switcher, and the link that created it kept its "unresolved" style.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_13.test.mjs
 

@@ -1,7 +1,8 @@
-// FINDING-146 (app level): a running sync cannot be cancelled.
-// SyncManager::disconnect() and with_engine() (version history) lock
-// `running`, which sync_now() holds for the whole engine.sync(); the engine
-// has no cancellation, and HttpTransport's timeout is 60 s per request.
+// FINDING-146 (app level): a running sync could not be cancelled. With the
+// defect, SyncManager::disconnect() and with_engine() (version history) waited
+// on `running`, which sync_now() held for the whole engine.sync(); the engine
+// had no cancellation, and HttpTransport's timeout is 60 s per request. The
+// test checks that both actions below respond within 5 s.
 //
 // Flow, through the real UI: connect sync through a small proxy in front of a
 // real cairn-server. Then make the proxy stop answering the changes feed (a

@@ -1,12 +1,12 @@
-//! Reproduction for FINDING-003: scope of the case-only
+//! Regression tests for FINDING-003: scope of the case-only
 //! rename overwrite on a case-sensitive file system (Linux, Android app
 //! storage).
 //!
 //! * The precondition (two names that differ only in case) can be made from
 //!   inside Cairn itself; no outside tool is needed.
-//! * Only a FILE target is at risk. A case-twin folder that has contents
-//!   makes rename(2) fail (ENOTEMPTY), so whole folders are safe; an empty
-//!   twin folder is replaced, which loses nothing.
+//! * Only a FILE target was at risk. A case-twin folder that has contents
+//!   made rename(2) fail (ENOTEMPTY), so whole folders were safe; an empty
+//!   twin folder was replaced, which lost nothing.
 //! * An overwritten file would not be moved anywhere: `StdFs::rename` never
 //!   goes through `remove()`, so neither the vault `.trash` nor the system
 //!   trash would see it. The rename must therefore be refused.
@@ -61,8 +61,8 @@ fn precondition_case_twins_can_be_made_inside_cairn() {
     assert!(!d.path().join("projects").exists());
 }
 
-/// Control (passes): a case-only FOLDER rename onto a non-empty twin folder
-/// fails in rename(2) and both folders keep their notes.
+/// Control: a case-only FOLDER rename onto a non-empty twin folder fails
+/// and both folders keep their notes.
 #[test]
 fn folder_case_rename_onto_nonempty_twin_fails_safely() {
     let (d, v) = vault_with(&[("Projects/a.md", "A\n"), ("projects/b.md", "B\n")], TrashMode::Vault);
@@ -73,8 +73,8 @@ fn folder_case_rename_onto_nonempty_twin_fails_safely() {
     assert_eq!(fs::read_to_string(d.path().join("projects/b.md")).unwrap(), "B\n");
 }
 
-/// Control (passes): a file renamed onto a twin that is a folder also fails
-/// (EISDIR); the folder and its notes survive.
+/// Control: a file renamed onto a twin that is a folder also fails; the
+/// folder and its notes survive.
 #[test]
 fn file_case_rename_onto_twin_folder_fails_safely() {
     let (d, v) = vault_with(&[("Todo", "file\n"), ("todo/x.md", "X\n")], TrashMode::Vault);
@@ -91,7 +91,7 @@ fn file_case_rename_onto_twin_folder_fails_safely() {
 /// overwrite would leave it nowhere, `.trash` included, behind a plain
 /// success.
 #[test]
-fn overwritten_target_is_not_trashed_in_any_mode() {
+fn case_rename_onto_other_file_is_refused_in_any_mode() {
     let mut bad = Vec::new();
     for mode in [TrashMode::System, TrashMode::Vault, TrashMode::Permanent] {
         let (d, v) = vault_with(&[("a.md", "lower\n"), ("A.md", "UPPER precious\n")], mode);

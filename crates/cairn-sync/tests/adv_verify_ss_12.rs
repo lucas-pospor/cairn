@@ -1,7 +1,7 @@
-//! Reproduction for FINDING-063: two devices that upload a new file at
-//! the same path in overlapping syncs both rename the other's file to a
-//! conflict copy, so nobody keeps the name, and identical files are not
-//! merged.
+//! Regression tests for FINDING-063: two devices that upload a new file at
+//! the same path in overlapping syncs used to both rename the other's file
+//! to a conflict copy, so nobody kept the name, and identical files were
+//! not merged.
 //!
 //! The simplest case has the phone sync before the laptop's first
 //! upload. This file shows the case a user is more likely to hit: the

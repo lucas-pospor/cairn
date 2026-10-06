@@ -293,7 +293,7 @@ async function nameRoundTrip(vaultId, notes) {
 // FINDING-172, by design: the phone's storage cannot hold both
 // names, so it keeps the first and refuses the second, which is listed under
 // "files not synced"; the pull goes on, and no device renames either note.
-test("SAF: two desktop notes whose names differ only in case both survive on the case-insensitive phone storage", async () => {
+test("SAF: of two desktop notes whose names differ only in case, the phone stores one and lists the other under files not synced; the desktop keeps both", async () => {
   const notes = { "Notes.md": "UPPER case note\n", "notes.md": "lower case note\n" };
   const { first, second, phoneFiles, deskFiles } = await nameRoundTrip("case-saf", notes);
   assert.deepEqual(deskFiles, ["Notes.md", "Seed.md", "notes.md"], "the phone must not rename or delete the desktop's notes");

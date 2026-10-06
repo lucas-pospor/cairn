@@ -1,16 +1,17 @@
-// Reproduction for FINDING-110 (tab bar: the focused close button of an
-// inactive tab is invisible; no arrow keys or Space on tabs).
+// Regression test for FINDING-110 (tab bar: the focused close button of an
+// inactive tab was invisible; no arrow keys or Space on tabs).
 //
 // Beyond the other reproduction (adv_a11y_keyboard.test.mjs, which reads
 // computed opacity), this one:
 // - moves the pointer away from the tab bar first, so :hover cannot be what
 //   shows or hides anything;
-// - reaches the close button with real Tab presses from the file tree and
-//   compares screen pixels around the close button (padded for a focus ring)
-//   with focus on the tab vs focus on its close button: identical pixels
-//   mean the focus move is not visible at all;
-// - shows the consequence: Enter on that invisible focused control closes the
-//   inactive tab;
+// - moves focus from the file tree with real Tab and arrow presses and, if
+//   Tab reaches the close button, compares screen pixels around it (padded
+//   for a focus ring) with focus on the tab vs focus on its close button:
+//   identical pixels mean the focus move is not visible at all;
+// - if Tab lands on that close button, checks that Enter there does not
+//   close the inactive tab (with the defect, Enter on the invisible control
+//   closed it);
 // - checks ArrowRight / Space on a focused role=tab with real key events.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_09.test.mjs
@@ -57,7 +58,7 @@ function crop(img, r, scale, pad = 5) {
   return out;
 }
 
-test("FINDING-110: Tab onto an inactive tab's close button shows nothing on screen; Space/arrows do nothing", async () => {
+test("FINDING-110: a focused inactive tab (or its close button) shows visible focus; Space/arrows work on tabs", async () => {
   await twoTabs();
   const problems = [];
   const log = [];

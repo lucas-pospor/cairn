@@ -1,4 +1,4 @@
-// Reproduction for FINDING-205 ("status changes are silent").
+// Regression tests for FINDING-205 (status changes were silent).
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_verify_ax_19.test.mjs
 //
@@ -9,8 +9,8 @@
 // role=alert conflict banner (EditorPane.svelte). This file checks the
 // transitions that matter instead:
 //   1. held up: a save conflict is announced (role=alert banner appears);
-//   2. FINDING-205: a sync failure is not announced anywhere: the status bar
-//      text changes to "Sync error" but no live region, toast or alert says so.
+//   2. FINDING-205: a sync failure is announced: besides the status bar text
+//      changing to "Sync error", a live region says so.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -61,7 +61,7 @@ test("held up: a save conflict is announced (the conflict banner is role=alert a
   await app.s.waitFor(`return !document.querySelector('[data-testid=conflict-banner]')`);
 });
 
-test("FINDING-205: a sync failure is silent: the status bar says 'Sync error' but nothing is announced", async () => {
+test("FINDING-205: a sync failure is announced, not only shown as 'Sync error' in the status bar", async () => {
   await app.reset();
   const port = 19000 + Math.floor(Math.random() * 900);
   const url = `http://127.0.0.1:${port}`;

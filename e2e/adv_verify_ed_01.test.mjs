@@ -15,7 +15,7 @@ import { withApp, eventually, sleep, Key } from "./adv_editor_lib.mjs";
 const LONG = "first line\n" + Array.from({ length: 300 }, (_, i) => `filler line ${i} with some words in it`).join("\n") + "\n";
 
 test(
-  "FINDING-037: undo reverts an off-screen external change; the cursor area shows no change",
+  "FINDING-037: Ctrl+Z after an off-screen external change keeps the external line on disk",
   async () => {
     await withApp({ "Long.md": LONG }, async (app, env) => {
       await app.open("Long.md");

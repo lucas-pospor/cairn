@@ -162,10 +162,11 @@ test("app storage: Back right after editing a 12 MB note never truncates the fil
 });
 
 // A SIGKILL between StdFs::write's temp-file write and its rename leaves the
-// temp file behind. Sweeping kills across a 16 MB save can produce one
-// (".TmpNote.md.cairn-tmp-<pid>", 16 MB, still there after a restart and a
-// rescan), but hitting the window takes luck, so this test plants the same leftover a kill produces (the name uses
-// the dead process's pid) and checks whether Cairn ever cleans it up.
+// temp file behind. Sweeping kills across a 16 MB save produced one when temp
+// names were derived from the note (".TmpNote.md.cairn-tmp-<pid>", 16 MB), but
+// hitting the window takes luck, so this test plants such a leftover (the name
+// uses the dead process's pid) and checks that Cairn removes it after a
+// restart.
 test("app storage: a kill during a save leaves no stray copy of the note behind", async () => {
   await note("Stray.md", "stray base\n");
   const deadPid = kill9(); // the process dies; pretend it was in the middle of saving Stray.md

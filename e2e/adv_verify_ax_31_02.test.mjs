@@ -1,16 +1,17 @@
-// Reproduction for FINDING-008 (see also adv_verify_ax_31.test.mjs)
+// Regression tests for FINDING-008 (see also adv_verify_ax_31.test.mjs)
 // checking the harm done: what a keyboard user who presses Ctrl+G and
 // starts typing a node name (expecting the graph's find box) does to the
 // note behind the graph, whether they can see it, and whether Ctrl+Z or
 // anything else brings it back.
 //
-// The defect: focus stays on <body>; "tom" goes nowhere visible (the
-// graph's find box stays empty) and the single Backspace erases the whole
-// hidden note, which autosave writes to disk as "". Back on the note tab
-// the editor shows the empty note and one Ctrl+Z restores it (and autosave
-// writes it back). Once the tab is closed (or the app quit), the undo
-// history is gone and the note stays empty on disk; nothing else keeps a
-// copy unless sync version history is set up.
+// With the defect, focus stayed on <body>; "tom" went nowhere visible (the
+// graph's find box stayed empty) and the single Backspace erased the whole
+// hidden note, which autosave wrote to disk as "". Back on the note tab
+// the editor showed the empty note and one Ctrl+Z restored it (and autosave
+// wrote it back). Once the tab was closed (or the app quit), the undo
+// history was gone and the note stayed empty on disk; nothing else kept a
+// copy unless sync version history was set up. The tests check that the
+// note on disk does not change.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_31_02.test.mjs
 
@@ -86,7 +87,7 @@ test("FINDING-008 impact: Ctrl+G, type a node name, one Backspace; what reaches 
   assert.equal(diskHidden, BODY, "the hidden note must not change");
 });
 
-test("FINDING-008 impact: after the hidden edit is autosaved, closing the tab loses the undo history; reopening shows the damaged note", async () => {
+test("FINDING-008 impact: typing behind the graph, then closing and reopening the tab, leaves the note unchanged on disk", async () => {
   await app.reset();
   const file = "Garden close.md";
   const out = [];

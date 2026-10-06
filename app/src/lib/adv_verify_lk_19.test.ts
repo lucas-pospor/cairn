@@ -18,18 +18,18 @@ const lpTagRe = (() => {
 const src = "notes #हिंदी and #ที่นี่";
 
 describe("FINDING-089 (UI side)", () => {
-  it("FINDING-089: reading view renders '#हिंदी' as the truncated tag '#ह'", () => {
+  it("FINDING-089: reading view renders '#हिंदी' as the whole tag, not the truncated '#ह'", () => {
     const html = renderUnsafe(src, { links: null });
     const tags = [...html.matchAll(/data-tag="([^"]*)"/g)].map((m) => m[1]);
     expect(tags).toEqual(["हिंदी", "ที่นี่"]);
   });
 
-  it("FINDING-089: Live Preview decorates only '#ह' of '#हिंदी'", () => {
+  it("FINDING-089: Live Preview decorates all of '#हिंदी', not only '#ह'", () => {
     const tags = [...src.matchAll(lpTagRe)].map((m) => m[2]);
     expect(tags).toEqual(["हिंदी", "ที่นี่"]);
   });
 
-  it("control: what the UI actually produces today", () => {
+  it("control: logs the tags the reading view and Live Preview produce", () => {
     const html = renderUnsafe(src, { links: null });
     const tags = [...html.matchAll(/data-tag="([^"]*)"/g)].map((m) => m[1]);
     console.log("preview tags", tags, "lp tags", [...src.matchAll(lpTagRe)].map((m) => m[2]));

@@ -145,9 +145,9 @@ fn sigkill_after_pulled_edit_into_locally_renamed_note_does_not_duplicate() {
 /// pull: apply_remote already saved the remote content as the merge base
 /// (save_base, a plain fs::write outside state.json), so after the
 /// restart merge(base = theirs, ours, theirs) is clean and no second copy is
-/// made. The duplicate conflict copy needs the kill to land between the copy
-/// write and save_base of that same head, a
-/// window of microseconds (what the in-process PanicAfter hook hits).
+/// made. With the defect, the duplicate conflict copy needed the kill to land
+/// between the copy write and save_base of that same head, a window of
+/// microseconds (what the in-process PanicAfter hook hits).
 #[test]
 fn sigkill_at_end_of_pull_after_conflict_copy_does_not_duplicate_it() {
     let srv = server();
@@ -169,7 +169,7 @@ fn sigkill_at_end_of_pull_after_conflict_copy_does_not_duplicate_it() {
 }
 
 /// Control: the same kill point with only a remote edit (no rename) is
-/// harmless, so the failures above are not an artifact of the kill method.
+/// harmless, so a failure above would not be an artifact of the kill method.
 #[test]
 fn control_sigkill_after_pulled_plain_edit_is_harmless() {
     let srv = server();

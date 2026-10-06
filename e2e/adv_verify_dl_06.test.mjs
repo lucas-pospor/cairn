@@ -1,8 +1,8 @@
-// Reproduction for FINDING-045:
-// the editor drops CR from every line break when a note is loaded, so the first
-// autosave rewrites CRLF, lone-CR and mixed files to LF. Also pins down where
-// the conversion happens (editor, not the core) and that merely opening a CRLF
-// note does not rewrite it.
+// Regression tests for FINDING-045:
+// the editor drops CR from every line break when a note is loaded, and the first
+// autosave used to rewrite CRLF, lone-CR and mixed files to LF; an edit now
+// keeps them. Also pins down where the conversion happens (editor, not the
+// core) and that merely opening a CRLF note does not rewrite it.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_06.test.mjs
 

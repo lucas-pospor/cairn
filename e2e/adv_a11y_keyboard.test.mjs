@@ -218,7 +218,7 @@ test("keyboard: Outline panel is reachable with Tab and Enter on a heading moves
 // ---------------------------------------------------------------------------
 // Findings.
 
-test("FINDING-102: file tree has no keyboard navigation (arrows, Enter, Space, Right do nothing)", async () => {
+test("FINDING-102: the file tree works from the keyboard (ArrowDown moves, ArrowRight expands, F2 starts a rename, Enter opens the note)", async () => {
   await app.reset();
   // The tree is a Tab stop; get there with Tab like a keyboard user would.
   await tabUntil(`return document.activeElement?.dataset.testid === 'file-tree'`, 20);
@@ -259,7 +259,7 @@ test("FINDING-102: file tree has no keyboard navigation (arrows, Enter, Space, R
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-103: no keyboard path to move a note or to rename/delete a folder", async () => {
+test("FINDING-103: there is a keyboard path to move a note and to rename or delete a folder", async () => {
   await app.reset();
   const problems = [];
   app.write("Journal/Upper.md", "upper\n");
@@ -309,7 +309,7 @@ test("FINDING-103: no keyboard path to move a note or to rename/delete a folder"
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-104: Settings does not take focus; typing after Ctrl+, edits the hidden note and autosaves it", async () => {
+test("FINDING-104: Settings takes focus; typing after Ctrl+, does not edit the note behind it and Escape gives focus back to the editor", async () => {
   await app.reset();
   app.write("Settings typing.md", "original text\n");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Settings typing.md"]')`);
@@ -330,7 +330,7 @@ test("FINDING-104: Settings does not take focus; typing after Ctrl+, edits the h
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-104: with a note open, Settings cannot be reached from the keyboard: Tab / Shift+Tab indent the hidden note, Escape closes Settings", async () => {
+test("FINDING-104: with a note open, Tab after Ctrl+, reaches Settings and does not indent the note behind it", async () => {
   await app.reset();
   app.write("Settings tab.md", "first line\n");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Settings tab.md"]')`);
@@ -357,7 +357,7 @@ test("FINDING-104: with a note open, Settings cannot be reached from the keyboar
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-105: global hotkeys run behind the Settings modal (hidden quick switcher, hidden new note)", async () => {
+test("FINDING-105: global hotkeys do not act behind the Settings modal (no quick switcher under it, no new note behind it)", async () => {
   await app.reset();
   const problems = [];
   try {
@@ -396,7 +396,7 @@ test("FINDING-105: global hotkeys run behind the Settings modal (hidden quick sw
 
 // Ctrl+P inside the switcher is its "previous result" key (FINDING-208; Linux,
 // Windows), so no palette opens; two Escapes must still leave nothing.
-test("FINDING-106: Ctrl+P over the quick switcher stacks two overlays; after Escape the switcher is orphaned and Escape no longer closes it", async () => {
+test("FINDING-106: after Ctrl+P over the quick switcher, two Escapes leave no overlay open", async () => {
   await app.reset();
   await app.chord(K.ctrl, "o");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'switcher-input'`);
@@ -412,7 +412,7 @@ test("FINDING-106: Ctrl+P over the quick switcher stacks two overlays; after Esc
   assert.ok(!st.switcher && !st.palette, `two Escapes left overlays open (both were open at once: ${both}): ${JSON.stringify(st)}`);
 });
 
-test("FINDING-107: confirm dialog does not trap focus; Tab moves behind it and Escape then stops working", async () => {
+test("FINDING-107: the confirm dialog traps focus: Tab stays inside it and Escape closes it", async () => {
   await app.reset();
   app.write("Trap target.md", "keep me\n");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Trap target.md"]')`);
@@ -431,7 +431,7 @@ test("FINDING-107: confirm dialog does not trap focus; Tab moves behind it and E
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-107: quick switcher does not trap focus; Tab reaches the workspace behind it and Escape then stops working", async () => {
+test("FINDING-107: the quick switcher traps focus: Tab stays inside it and Escape closes it", async () => {
   await app.reset();
   await app.chord(K.ctrl, "o");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'switcher-input'`);
@@ -518,7 +518,7 @@ test("FINDING-106: Escape from an overlay that replaced another by hotkey gives 
   assert.deepEqual(results, []);
 });
 
-test("FINDING-109: focus is not restored after closing overlays; it lands on <body>", async () => {
+test("FINDING-109: closing an overlay gives focus back to the editor, not to <body>", async () => {
   await app.reset();
   await app.openNote("welcome", "Welcome.md");
   const refocus = () => app.exec(`document.querySelector('.cm-editor').__cairnView.focus(); return 1`);
@@ -604,7 +604,7 @@ test("keyboard: the palette opened right after a note opens keeps focus when the
   assert.match(f, /palette-input/, "the editor took focus from the open palette");
 });
 
-test("FINDING-110: tab bar keyboard support: invisible focused close buttons, no arrow keys or Space", async () => {
+test("FINDING-110: tab bar keyboard support: no invisible focused close button, ArrowRight moves to the next tab, Space activates a tab", async () => {
   await app.reset();
   await app.openNote("ideas", "Ideas.md");
   await app.chord(K.ctrl, "o");
@@ -685,7 +685,7 @@ test("FINDING-110, FINDING-216: tab bar keys: the open tab is the one Tab stop, 
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-111: context menu is not keyboard operable (no focus, no arrow keys)", async () => {
+test("FINDING-111: the context menu works from the keyboard (focus on open, arrows, Home/End, Escape, Tab and Enter)", async () => {
   await app.reset();
   // Open it first: WebKitWebDriver ends a right click with a left click
   // (mouseup and click with button 0), which would open the note and send
@@ -764,7 +764,7 @@ test("FINDING-111: context menu is not keyboard operable (no focus, no arrow key
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-112: narrow layout drawers (window <= 760px): no focus move, no Escape, no aria-expanded", async () => {
+test("FINDING-112: narrow layout drawers (window <= 760px): opening one moves focus into it and sets aria-expanded, Tab stays inside, Escape closes it", async () => {
   await app.reset();
   const problems = [];
   try {
@@ -976,13 +976,13 @@ test("FINDING-112: widening the window while a drawer has focus, when that sideb
   }
 });
 
-test("FINDING-113: the focused file tree shows no focus indicator", async () => {
+test("FINDING-113: the focused file tree shows a focus indicator", async () => {
   await app.reset();
   const r = await app.exec(`const t = document.querySelector('[data-testid=file-tree]'); return { tabindex: t.tabIndex, ...__ax.focusStyle(t), rowsFocusable: [...t.querySelectorAll('[role=treeitem]')].some(r => r.tabIndex >= 0) }`);
   assert.ok(r.indicator || r.rowsFocusable, `tree is a Tab stop (tabindex ${r.tabindex}) with outline:none and no :focus style; rows are never focusable: ${JSON.stringify(r)}`);
 });
 
-test("FINDING-202: after the window was narrow, both sidebars stay hidden when it is widened again", async () => {
+test("FINDING-202: after the window was narrow, both sidebars come back when it is widened again", async () => {
   await app.reset();
   try {
     await app.s.cmd("POST", "/window/rect", { width: 700, height: 700 });
@@ -998,7 +998,7 @@ test("FINDING-202: after the window was narrow, both sidebars stay hidden when i
 });
 
 
-test("FINDING-118: the 'Move to…' folder chooser takes no focus and ignores Escape", async () => {
+test("FINDING-118: the 'Move to…' folder chooser takes focus and closes with Escape", async () => {
   await app.reset();
   await rightClick(`[data-testid=tree-row][data-path="Welcome.md"]`);
   await app.s.waitFor(`return !!document.querySelector('[role=menu]')`);
@@ -1042,7 +1042,7 @@ test("FINDING-030: picking a folder in the 'Move to…' chooser moves the note",
   assert.equal(app.read("Projects/Chosen.md"), "chosen\n");
 });
 
-test("FINDING-208: Ctrl+N inside the quick switcher (its 'next result' key) creates Untitled.md on disk instead", async () => {
+test("FINDING-208: Ctrl+N inside the quick switcher (its 'next result' key) moves to the next result and creates no note", async () => {
   await app.reset();
   fs.rmSync(app.p("Untitled.md"), { force: true });
   let st;
@@ -1065,7 +1065,7 @@ test("FINDING-208: Ctrl+N inside the quick switcher (its 'next result' key) crea
   assert.ok(!st.untitledOnDisk && st.highlighted === "1", `Ctrl+N in the switcher should move to result 1: ${JSON.stringify(st)}`);
 });
 
-test("FINDING-209: Escape in a confirm opened from Settings also closes Settings; Escape does nothing while a CSS snippet is being edited", async () => {
+test("FINDING-209: Escape in a confirm opened from Settings leaves Settings open; Escape while a CSS snippet is being edited closes the snippet editor or Settings", async () => {
   await app.reset();
   const problems = [];
   await app.exec(`document.querySelector('[data-testid=open-settings]').click(); return 1`);
@@ -1097,7 +1097,7 @@ test("FINDING-209: Escape in a confirm opened from Settings also closes Settings
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-210: graph view cannot be used from the keyboard: a found node cannot be opened", async () => {
+test("FINDING-210: graph view from the keyboard: typing after Ctrl+G leaves the note alone, the canvas is focusable and a found node opens with Enter", async () => {
   await app.reset();
   const before = app.read("Ideas.md");
   await app.openNote("ideas", "Ideas.md");
@@ -1140,7 +1140,7 @@ test("FINDING-210: on the focused graph, the arrow keys pick a note (announced) 
   await eventually(async () => (await app.activeTab()) === "Ideas.md", { message: "Ideas opened from the graph" });
 });
 
-test("FINDING-113: focus-indicator sweep: focusable elements that show no change when focused", async () => {
+test("FINDING-113: focus-indicator sweep: every focusable element shows a change when focused", async () => {
   await app.reset();
   await app.openNote("welcome", "Welcome.md");
   await app.chord(K.ctrl, "o");
@@ -1160,7 +1160,7 @@ test("FINDING-113: focus-indicator sweep: focusable elements that show no change
 });
 
 
-test("FINDING-008: typing while the graph view or Settings is shown silently edits and saves the hidden note (even with focus on a button)", async () => {
+test("FINDING-008: typing while reading view, the graph view or Settings is shown does not edit the hidden note (also with focus on a button)", async () => {
   await app.reset();
   const problems = [];
   for (const [label, key] of [["reading view (Ctrl+E)", "e"], ["graph view (Ctrl+G)", "g"]]) {
@@ -1221,7 +1221,7 @@ test("FINDING-008: typing while the graph view or Settings is shown silently edi
 });
 
 // Last: needs a sync server and leaves sync configured until it disconnects.
-test("FINDING-108: version history modal neither takes focus nor closes with Escape", async () => {
+test("FINDING-108: the version history modal takes focus, is aria-modal and closes with Escape", async () => {
   await app.reset();
   const port = 19000 + Math.floor(Math.random() * 900);
   const url = `http://127.0.0.1:${port}`;

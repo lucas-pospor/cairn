@@ -1,7 +1,7 @@
-//! Reproduction of the sync consequence described by
-//! FINDING-136: content-only rename matching moves the file id of a
+//! Regression tests for the sync consequence described by
+//! FINDING-136: content-only rename matching moved the file id of a
 //! deleted note onto an unrelated new note with the same content, so a
-//! concurrent remote edit of the deleted note lands in the unrelated note
+//! concurrent remote edit of the deleted note landed in the unrelated note
 //! instead of following "edit beats delete" (PLAN section 3).
 //!
 //! The matching that matters for sync is the sync engine's own
@@ -47,7 +47,7 @@ fn outcome(d: &Device) -> String {
 }
 
 #[test]
-fn fs16_remote_edit_follows_unrelated_identical_note() {
+fn fs16_remote_edit_does_not_follow_unrelated_identical_note() {
     let mut problems = Vec::new();
     for phone_first in [true, false] {
         let srv = server();

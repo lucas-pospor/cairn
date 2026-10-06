@@ -1,10 +1,9 @@
-//! Reproduction for FINDING-084: one device replaces a folder with a file
-//! of the same name (no concurrent clash). This is a cairn-sync defect, not
-//! only an Android SAF one: a receiving desktop device that writes the file
-//! before the folder is gone fails every later sync ("Old: Is a
-//! directory"). The pull applies
-//! deletions first, so the folder is gone before the file is written, and
-//! the file arrives in the same sync.
+//! Regression tests for FINDING-084: one device replaces a folder with a file
+//! of the same name (no concurrent clash). This was a cairn-sync defect, not
+//! only an Android SAF one: a receiving desktop device that wrote the file
+//! before the folder was gone failed every later sync ("Old: Is a
+//! directory"). The pull now applies deletions first, so the folder is gone
+//! before the file is written, and the file arrives in the same sync.
 //!
 //!   cargo test -p cairn-sync --test adv_verify_af_06
 

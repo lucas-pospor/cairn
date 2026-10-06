@@ -1,7 +1,7 @@
 // Adversarial tests for full-text search.
 //
 //   cargo test -p cairn-core --test adv_search
-//   cargo test -p cairn-core --test adv_search -- --ignored     (FINDING tests)
+//   cargo test -p cairn-core --test adv_search finding_     (FINDING tests only)
 
 use std::fs;
 use std::sync::Arc;
@@ -185,11 +185,11 @@ fn held_long_queries_are_fast_enough() {
 // Findings
 // ---------------------------------------------------------------------------
 
-/// Each query word expands to at most 256 dictionary terms (MAX_EXPANSION),
-/// in alphabetical order. With more than 256 indexed words sharing a prefix,
-/// notes whose word sorts later are silently missing from the results.
+/// Each query word expands to every dictionary term it is a prefix of. With
+/// the former cap of 256 terms (MAX_EXPANSION, in alphabetical order), notes
+/// whose word sorted later were silently missing from the results.
 #[test]
-fn finding_prefix_expansion_cap_drops_results() {
+fn finding_prefix_expansion_drops_no_results() {
     let mut files = Vec::new();
     for i in 0..300 {
         files.push((format!("n{i:03}.md"), format!("pre{i:03}xyz something")));
@@ -202,13 +202,13 @@ fn finding_prefix_expansion_cap_drops_results() {
     assert_eq!(paths(idx.search("pre something", 1000)).len(), 300);
 }
 
-/// The search dictionary never forgets a term. Words that existed only in
-/// earlier versions of a note (every autosave while typing indexes the
-/// partial words) stay as dead terms and still use up the 256-term prefix
-/// budget, so a long editing session makes prefix search miss notes that a
-/// fresh open finds. (Dictionary and postings vectors also grow without bound.)
+/// The search dictionary drops a term once no note has it. Words that existed
+/// only in earlier versions of a note (every autosave while typing indexes
+/// the partial words) used to stay as dead terms and use up the 256-term
+/// prefix budget; after a long editing session, prefix search must still find
+/// the notes a fresh open finds.
 #[test]
-fn finding_dead_terms_hide_results_incremental_vs_fresh() {
+fn finding_dead_terms_hide_no_results_incremental_vs_fresh() {
     let (d, v) = vault(&[("target.md", "the prezzz plan")]);
     v.create_note("draft.md", "").unwrap();
     // Simulate autosave while typing 81 words starting with "pre": each save
@@ -241,9 +241,9 @@ fn finding_dead_terms_hide_results_incremental_vs_fresh() {
     assert_eq!(paths(v.search("pre", 10)), vec!["target.md"], "the long-running index must find it too");
 }
 
-/// Tokens are runs of alphanumeric characters, so Chinese/Japanese text
-/// without spaces is one huge token and only its first characters can be
-/// searched; any word in the middle of a sentence is not found.
+/// Chinese/Japanese text without spaces is indexed as pairs of characters,
+/// so a word in the middle of a sentence is found (as one huge token, only
+/// its first characters could be searched).
 #[test]
 fn finding_cjk_search() {
     let idx = index(&[("ja.md", "今日は東京で会議があります。"), ("zh.md", "我们明天去北京开会。")]);
@@ -252,18 +252,18 @@ fn finding_cjk_search() {
     assert_eq!(paths(idx.search("北京", 10)), vec!["zh.md"]);
 }
 
-/// `path:` takes one whitespace-free word, and a quoted value is treated as
-/// a phrase, so a folder with a space in its name cannot be used as a filter.
+/// `path:` takes a quoted value as one filter, not as a phrase, so a folder
+/// with a space in its name can be used as a filter.
 #[test]
 fn finding_path_filter_with_spaces() {
     let idx = index(&[("My Projects/a.md", "garden"), ("My/b.md", "garden"), ("Projects/c.md", "garden")]);
     assert_eq!(paths(idx.search("garden path:\"my projects\"", 10)), vec!["My Projects/a.md"]);
 }
 
-/// Text and queries are only lowercased, never normalized: NFD text (macOS
-/// file names pasted into notes, some input methods) does not match an NFC
+/// Text and queries are normalized as well as lowercased: NFD text (macOS
+/// file names pasted into notes, some input methods) matches an NFC
 /// query, "İstanbul" lowercases to "i̇stanbul" (with U+0307) so "istanbul"
-/// does not find it, and an emoji-only query is dropped entirely.
+/// would miss it if the dot stayed, and an emoji-only query is searched.
 #[test]
 fn finding_search_unicode_normalization() {
     let idx = index(&[("nfd.md", "Cafe\u{301} cre\u{300}me"), ("tr.md", "İstanbul trip"), ("e.md", "party 🎉 time")]);
@@ -272,19 +272,19 @@ fn finding_search_unicode_normalization() {
     assert_eq!(paths(idx.search("🎉", 10)), vec!["e.md"], "emoji");
 }
 
-/// Same root cause in the parser: the tag regex stops at the combining accent
-/// of NFD text, so "#café" typed in NFD becomes the tag "cafe" (a different,
-/// truncated tag from the NFC "#café").
+/// The same in the parser: the tag regex does not stop at the combining accent
+/// of NFD text, so "#café" typed in NFD is the same tag as the NFC "#café"
+/// (not the truncated tag "cafe").
 #[test]
-fn finding_nfd_tags_truncated() {
+fn finding_nfd_tags_not_truncated() {
     let p = cairn_core::parse::parse("#cafe\u{301} and #caf\u{e9}");
     assert_eq!(p.tags, vec!["café"]);
 }
 
 /// Frontmatter list items become tags verbatim, spaces included
-/// (`tags: [my tag]` gives the tag "my tag"), but the tag search the UI runs
-/// when that tag is clicked (`tag:my tag`, from the properties panel) splits
-/// at the space and finds nothing. Inline tags cannot contain spaces at all.
+/// (`tags: [my tag]` gives the tag "my tag"), and the tag search the UI runs
+/// when that tag is clicked quotes the value (`tag:"my tag"`), so it finds
+/// the note. Inline tags cannot contain spaces at all.
 #[test]
 fn finding_frontmatter_tag_with_space() {
     // b.md has the words but not the tag: a quoted phrase would find it.
@@ -297,11 +297,11 @@ fn finding_frontmatter_tag_with_space() {
 }
 
 /// Ranking sanity in a realistic vault: a long note titled "Garden" against a
-/// short note that mentions the word once. The title boost is a flat +3 per
-/// query word, while BM25 favours short documents, so in a vault of a few
-/// hundred notes the passing mention wins.
+/// short note that mentions the word once. BM25 favours short documents, so
+/// the title boost is weighted like a body match and the titled note wins (a
+/// flat +3 per query word let the passing mention win).
 #[test]
-fn finding_title_match_loses_to_passing_mention() {
+fn finding_title_match_beats_passing_mention() {
     let mut files: Vec<(String, String)> = Vec::new();
     let mut r = Rng(42);
     let vocab = ["river", "stone", "harvest", "lamp", "cloud", "paper", "window", "music", "bread", "train", "letter", "mountain"];

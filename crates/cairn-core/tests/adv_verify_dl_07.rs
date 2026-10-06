@@ -72,7 +72,7 @@ fn now_ms() -> i64 {
 }
 
 #[test]
-fn dl07_coarse_mtime_fs_same_size_edit_is_overwritten() {
+fn dl07_coarse_mtime_fs_same_size_edit_is_not_overwritten() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("Tasks.md"), "- [ ] buy milk\n- [ ] call bob\n").unwrap();
     let v = Vault::open(Arc::new(CoarseFs { inner: StdFs::new(d.path(), TrashMode::Vault).unwrap(), gran_ms: 2000 })).unwrap();

@@ -1,5 +1,6 @@
-//! Reproductions for FINDING-147 (device name copied into conflict copy
-//! names unsanitized; a name the receiving file system refuses stops sync).
+//! Regression tests for FINDING-147 (the device name was copied into
+//! conflict copy names unsanitized, and a name the receiving file system
+//! refused stopped sync).
 //!
 //! * `conflict_copy_name_obeys_cairns_own_name_rules`: an engine that builds
 //!   conflict names from the device name with only `/ \ :` replaced makes

@@ -1,4 +1,4 @@
-// Reproductions for FINDING-131 (in-app delete closes dirty tabs
+// Regression tests for FINDING-131 (in-app delete closed dirty tabs
 // with skipSave before calling deleteEntry).
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_dl_14.test.mjs
@@ -6,12 +6,13 @@
 // 1. Control (expected to pass): the autosave timer (600 ms) keeps running
 //    while the confirm dialog is open, so a user who takes longer than 600 ms
 //    from the last keystroke to clicking "Delete" gets the latest text in the
-//    trash. The latest text is lost only when the whole delete + confirm
-//    happens within 600 ms of the last keystroke.
+//    trash. (With the defect, the latest text was lost when the whole
+//    delete + confirm happened within 600 ms of the last keystroke.)
 // 2. Failed delete: in a read-only folder the autosave has already failed
 //    with a "Could not save" toast, so the tab is the only copy of the
-//    edits. Deleting the note still closes that tab before the delete is
-//    attempted; the delete then fails and the edits are gone.
+//    edits. When the delete fails too, that tab must stay open; with the
+//    defect, it was closed before the delete was attempted and the edits
+//    were gone.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -58,7 +59,7 @@ test("control: when the confirm dialog stays open past the autosave delay, the t
 });
 
 test(
-  "read-only folder: autosave already failed, then a failed in-app delete still discards the tab and its edits",
+  "read-only folder: autosave already failed, then a failed in-app delete keeps the tab open",
   async () => {
     const v = env.vault("v", { "ro/Del.md": "saved text\n", "Z.md": "z\n" });
     const app = await env.launch(v);

@@ -1,9 +1,10 @@
-//! Reproduction for FINDING-046 (the scanner trusts size + whole-millisecond
-//! mtime; `write_note` with a base hash checks the bytes on disk).
+//! Regression tests for FINDING-046 (the scanner trusts size +
+//! whole-millisecond mtime; `write_note` with a base hash checks the bytes
+//! on disk).
 //!
 //! Two questions that decide how bad this is:
 //!
-//! 1. `dl07_02_mtime_preserving_copy_on_fine_fs_is_detected` (control, passes):
+//! 1. `dl07_02_mtime_preserving_copy_on_fine_fs_is_detected` (control):
 //!    rsync -t / cp -p / tar / unzip are the usual triggers. On a normal
 //!    file system those tools copy the *source's* mtime, which is not Cairn's
 //!    last-save mtime unless the source was written in the same millisecond.
@@ -11,8 +12,8 @@
 //!    stale autosave gets a conflict. Only a forged mtime (utimes) or a
 //!    coarse-mtime file system gets past the scanner.
 //!
-//! 2. `dl07_02_collision_stays_invisible_and_a_later_edit_reverts_it`
-//!    (reproduction): on a 1 s mtime file system (sshfs/SFTP, HFS+,
+//! 2. `dl07_02_later_edit_does_not_revert_an_invisible_collision`
+//!    (regression test): on a 1 s mtime file system (sshfs/SFTP, HFS+,
 //!    simulated by truncating StdFs mtimes, no utimes calls) a same-size
 //!    external edit that lands in the same second as an autosave stays
 //!    invisible after the second has passed: a full rescan sees nothing and
@@ -109,7 +110,7 @@ fn dl07_02_mtime_preserving_copy_on_fine_fs_is_detected() {
 }
 
 #[test]
-fn dl07_02_collision_stays_invisible_and_a_later_edit_reverts_it() {
+fn dl07_02_later_edit_does_not_revert_an_invisible_collision() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("Shopping.md"), "- [ ] buy milk\n- [ ] call bob\n").unwrap();
     let v = Vault::open(Arc::new(CoarseFs { inner: StdFs::new(d.path(), TrashMode::Vault).unwrap(), gran_ms: 1000 }))

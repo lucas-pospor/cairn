@@ -1,19 +1,17 @@
-//! Reproduction for FINDING-018 (one undecryptable blob in the
-//! changes feed stops all sync).
+//! Regression test for FINDING-018 (one undecryptable blob in the
+//! changes feed stopped all sync).
 //!
-//! The basic test (adv_sync_security.rs::one_undecryptable_blob_blocks_all_sync)
-//! checks the first sync of a fresh device, and its attacker holds the vault
-//! key (although the garbage PUT does not use it). These tests check the
-//! stronger claims:
-//!   * the attacker needs only the bearer token, not the passphrase/key;
-//!   * overwriting the head of an EXISTING, already-synced file is enough;
-//!   * every device that was in sync stops syncing: its later local edits
-//!     never reach the server, and every retry fails the same way (the
-//!     cursor never moves past the bad head);
-//!   * local notes are NOT lost or modified (no data loss, only a stop).
+//! The basic test in adv_sync_security.rs checks the first sync of a fresh
+//! device, and its attacker holds the vault key (although the garbage PUT
+//! does not use it). This test checks the stronger case:
+//!   * the attacker has only the bearer token, not the passphrase/key;
+//!   * it overwrites the head of an EXISTING, already-synced file;
+//!   * every device keeps syncing: every retry succeeds, the laptop's later
+//!     local edit reaches the server, and a new device can sync;
+//!   * local notes are NOT lost or modified.
 //!
 //! Run with:
-//!   cargo test -p cairn-sync --test adv_verify_sx_02 -- --ignored --nocapture
+//!   cargo test -p cairn-sync --test adv_verify_sx_02 -- --nocapture
 
 use std::fs;
 use std::path::PathBuf;
@@ -74,7 +72,7 @@ impl Device {
 /// its own database): it overwrites the head of one existing file with a
 /// blob it cannot have encrypted. No vault key, no passphrase.
 #[test]
-fn token_only_garbage_head_stops_every_device() {
+fn token_only_garbage_head_stops_no_device() {
     let srv = server();
 
     // Two honest devices in sync.

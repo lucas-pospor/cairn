@@ -1,9 +1,11 @@
-// FINDING-056 (app level): reopening the same vault while its
-// sync is running starts a second SyncEngine on the same state folder.
-// open_vault calls old.stop(), which only sets a flag; the old sync keeps
-// running while the new SyncManager loads the (half-written) state and starts
-// its own first sync 2 s later. Both upload the same new notes under
-// different file ids, so every other device gets a conflict copy of each.
+// FINDING-056 (app level): reopening the same vault while its sync was
+// running started a second SyncEngine on the same state folder.
+// open_vault called old.stop(), which only set a flag; the old sync kept
+// running while the new SyncManager loaded the (half-written) state and
+// started its own first sync 2 s later. Both uploaded the same new notes under
+// different file ids, so every other device got a conflict copy of each. The
+// test checks that each note reaches the server once and the second device
+// gets no conflict copies.
 //
 // Flow, all through the real UI: connect sync, drop many new notes into the
 // vault (the watcher starts a sync), and while the status bar says "syncing"

@@ -1,10 +1,10 @@
 //! Adversarial tests: file names created outside Cairn: Unicode
 //! normalization, singleton decompositions, backslashes, non-UTF-8 bytes.
 //!
-//! Tests named `fsNN_*` reproduce a finding and are `#[ignore]`d while the
-//! bug exists. Run one with:
-//!   cargo test -p cairn-core --test adv_fs_names -- --ignored --exact <name>
-//! Run the passing coverage with:
+//! Tests named `fsNN_*` are regression tests for fixed findings.
+//! Run one with:
+//!   cargo test -p cairn-core --test adv_fs_names -- --exact <name>
+//! Run them all with:
 //!   cargo test -p cairn-core --test adv_fs_names
 
 use std::fs;
@@ -51,7 +51,7 @@ fn nfd_vault() -> (tempfile::TempDir, Vault) {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs02_nfd_note_cannot_be_read() {
+fn fs02_nfd_note_can_be_read() {
     let (_d, v) = nfd_vault();
     assert_eq!(entries(&v), vec![NFC]); // listed under its NFC identity
     let r = v.read_note(NFC);
@@ -60,7 +60,7 @@ fn fs02_nfd_note_cannot_be_read() {
 }
 
 #[test]
-fn fs02_nfd_folder_contents_are_invisible() {
+fn fs02_nfd_folder_contents_are_listed() {
     let d = tempfile::tempdir().unwrap();
     fs::create_dir(d.path().join("Re\u{301}sume\u{301}")).unwrap();
     fs::write(d.path().join("Re\u{301}sume\u{301}/inside.md"), "in folder").unwrap();
@@ -69,7 +69,7 @@ fn fs02_nfd_folder_contents_are_invisible() {
 }
 
 #[test]
-fn fs02_saving_nfd_note_creates_duplicate_file() {
+fn fs02_saving_nfd_note_creates_no_duplicate_file() {
     let (d, v) = nfd_vault();
     let w = v.write_note(NFC, "edited in cairn", None);
     assert!(w.is_ok());
@@ -77,7 +77,7 @@ fn fs02_saving_nfd_note_creates_duplicate_file() {
 }
 
 #[test]
-fn fs02_nfd_note_cannot_be_renamed_or_deleted() {
+fn fs02_nfd_note_can_be_renamed_and_deleted() {
     let (d, v) = nfd_vault();
     let r = v.rename(NFC, "other.md");
     assert!(r.is_ok(), "rename: {r:?}");
@@ -88,7 +88,7 @@ fn fs02_nfd_note_cannot_be_renamed_or_deleted() {
 }
 
 #[test]
-fn fs02_watcher_hint_reports_phantom_delete_and_create() {
+fn fs02_watcher_hint_reports_no_phantom_changes() {
     let (d, v) = nfd_vault();
     // The watcher maps the OS path through StdFs::to_vault_path (NFC).
     let mapper = StdFs::new(d.path(), TrashMode::Vault).unwrap();
@@ -99,7 +99,7 @@ fn fs02_watcher_hint_reports_phantom_delete_and_create() {
 }
 
 #[test]
-fn fs02_nfc_nfd_twins_resurrect_after_delete() {
+fn fs02_nfc_nfd_twins_do_not_resurrect_after_delete() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join(NFC), "nfc twin").unwrap();
     fs::write(d.path().join(NFD), "nfd twin").unwrap();
@@ -133,7 +133,7 @@ fn a_twin_is_renamed_and_deleted_on_its_own() {
 }
 
 #[test]
-fn fs02_singleton_decomposition_names_cannot_be_read() {
+fn fs02_singleton_decomposition_names_can_be_read() {
     let d = tempfile::tempdir().unwrap();
     // Each of these changes under NFC even though it is a single code point.
     let names = ["\u{212a}elvin.md", "10 \u{2126}.md", "\u{f91d}.md"];
@@ -181,7 +181,7 @@ fn precomposed_emoji_and_zero_width_names_round_trip() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn fs18_backslash_names_map_to_wrong_paths() {
+fn fs18_backslash_names_do_not_map_to_wrong_paths() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("back\\slash.md"), "b").unwrap();
     fs::write(d.path().join("\\"), "root?").unwrap();

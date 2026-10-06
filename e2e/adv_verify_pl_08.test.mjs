@@ -1,4 +1,4 @@
-// Reproduction for FINDING-071 (notes.write overwrites existing
+// Regression test for FINDING-071 (notes.write overwrote existing
 // Markdown files inside hidden folders), against the real app.
 //
 //   scripts/e2e-headless.sh e2e/adv_verify_pl_08.test.mjs
@@ -7,8 +7,9 @@
 // targets a deleted note's recovery copy in the vault trash (.trash/), a
 // Markdown file in .cairn/ and one in .github/. Creating a new file in a hidden
 // folder is refused (control). The test checks the files on disk, and also
-// whether the write pulls the hidden folder into the file tree (the backend
-// emits Created changes for the hidden entries, see FINDING-135).
+// that the write does not pull the hidden folder into the file tree (with the
+// defect the backend emitted Created changes for the hidden entries, see
+// FINDING-135).
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

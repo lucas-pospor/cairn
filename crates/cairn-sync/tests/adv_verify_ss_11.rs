@@ -1,6 +1,6 @@
-//! Reproduction for FINDING-062:
-//! a rename followed by an edit before the next sync is uploaded as a
-//! delete plus a new file.
+//! Regression tests for FINDING-062:
+//! a rename followed by an edit before the next sync must be uploaded as a
+//! rename of the same file, not as a delete plus a new file.
 //!
 //! The FINDING-062 tests in adv_sync_semantics.rs rename with `fs::rename`
 //! (an external rename).

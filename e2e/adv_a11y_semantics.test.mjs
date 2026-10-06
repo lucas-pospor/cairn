@@ -86,7 +86,7 @@ test("semantics: Live Preview checkboxes are named ('To do' / 'Done')", async ()
 // ---------------------------------------------------------------------------
 // Findings: names and roles.
 
-test("FINDING-114: form controls and composite widgets without an accessible name", async () => {
+test("FINDING-114: every form control and composite widget has an accessible name", async () => {
   await app.reset();
   const report = {};
   // Main workspace with a note open, then the Search and Tags panels.
@@ -137,7 +137,7 @@ test("FINDING-114: form controls and composite widgets without an accessible nam
   assert.deepEqual(none, []);
 });
 
-test("FINDING-203: icon buttons repeated per row have identical names (Close, Add hotkey, Remove)", async () => {
+test("FINDING-203: icon buttons repeated per row have distinct names (Close, Add hotkey, Remove)", async () => {
   await app.reset();
   await app.openNote("welcome", "Welcome.md");
   await app.chord(K.ctrl, "o");
@@ -160,7 +160,7 @@ test("FINDING-203: icon buttons repeated per row have identical names (Close, Ad
   assert.deepEqual(dup, []);
 });
 
-test("FINDING-204: selected panel / section is shown by colour only (no aria-pressed, aria-selected or aria-current)", async () => {
+test("FINDING-204: the selected panel / section exposes its state (aria-pressed, aria-selected or aria-current), not only its colour", async () => {
   await app.reset();
   await openSettings("editor");
   const r = await app.exec(`
@@ -176,7 +176,7 @@ test("FINDING-204: selected panel / section is shown by colour only (no aria-pre
   assert.deepEqual(bad, [], `buttons that look selected but expose no state: ${bad.join(", ")}`);
 });
 
-test("FINDING-115: file tree semantics: unnamed tree, flat treeitems without aria-level, aria-selected tracks the open note, not the selection", async () => {
+test("FINDING-115: file tree semantics: a named tree, nested treeitems with a level, aria-selected on the row selected for F2/Delete", async () => {
   await app.reset();
   // Expand a folder with the mouse-equivalent click so there is a nested item.
   await app.exec(`document.querySelector('[data-testid=tree-row][data-path="Projects"]').click(); return 1`);
@@ -204,7 +204,7 @@ test("FINDING-115: file tree semantics: unnamed tree, flat treeitems without ari
   assert.deepEqual(problems, []);
 });
 
-test("FINDING-116: quick switcher and palette do not expose the highlighted result (no combobox / aria-activedescendant)", async () => {
+test("FINDING-116: quick switcher and palette expose the highlighted result (aria-activedescendant on the input)", async () => {
   await app.reset();
   const out = {};
   for (const [hot, inputId] of [["o", "switcher-input"], ["p", "palette-input"]]) {
@@ -231,7 +231,7 @@ test("FINDING-116: quick switcher and palette do not expose the highlighted resu
 // itself: it says "Syncing…" a few seconds after every edit. The status bar
 // must carry a live region for the sync changes that matter;
 // adv_verify_ax_19 checks that a sync error reaches it.
-test("FINDING-205: status changes are silent: save state and sync status are not live regions", async () => {
+test("FINDING-205: the status bar has a live region for sync status", async () => {
   await app.reset();
   const port = 19000 + Math.floor(Math.random() * 900);
   const url = `http://127.0.0.1:${port}`;
@@ -283,7 +283,7 @@ test("FINDING-205: status changes are silent: save state and sync status are not
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-122: the Delete confirm does not expose its message: focus lands on 'Delete' and the dialog has no aria-describedby", async () => {
+test("FINDING-122: the Delete confirm exposes its message through aria-describedby", async () => {
   await app.reset();
   await app.openNote("ideas", "Ideas.md");
   await app.palette("delete current");
@@ -298,7 +298,7 @@ test("FINDING-122: the Delete confirm does not expose its message: focus lands o
   assert.ok(r.describedby.some((t) => t && t.includes("Ideas")), `a screen reader hears "${r.name} dialog, ${r.focused}" but not "${r.message}"`);
 });
 
-test("FINDING-213: workspace structure: no main landmark, unlabelled sidebars, no headings, window title never names the note", async () => {
+test("FINDING-213: workspace structure: a main landmark, labelled sidebars, headings outside the note and a document title that names the note", async () => {
   await app.reset();
   await app.openNote("ideas", "Ideas.md");
   const r = await app.exec(`
@@ -347,7 +347,7 @@ test("FINDING-114, FINDING-213: the editor's name and the window title follow th
   });
 });
 
-test("FINDING-107: quick switcher, palette and Settings are role=dialog without aria-modal (the page behind stays in the reading order)", async () => {
+test("FINDING-107: quick switcher, palette and Settings are modal dialogs (aria-modal=true)", async () => {
   await app.reset();
   const out = {};
   for (const [label, open, css] of [
@@ -425,7 +425,7 @@ async function contrastScenes(theme) {
 const summarize = (scenes) =>
   Object.entries(scenes).flatMap(([scene, r]) => Object.entries(r).map(([k, v]) => `[${scene}] ${k}: ${v.join(" | ")}`));
 
-test("FINDING-117: light theme: muted, faint, tag, unresolved-link and placeholder text below WCAG AA", async () => {
+test("FINDING-117: light theme: muted, faint, tag, unresolved-link and placeholder text meet WCAG AA", async () => {
   const scenes = await contrastScenes("light");
   const lines = summarize(scenes);
   log("light theme contrast failures", lines.join("\n"));
@@ -433,7 +433,7 @@ test("FINDING-117: light theme: muted, faint, tag, unresolved-link and placehold
   assert.deepEqual(lines, []);
 });
 
-test("FINDING-206: dark theme: white text on the red Delete button (~3:1) and faint text below WCAG AA", async () => {
+test("FINDING-206: dark theme: text on the red Delete button and faint text meet WCAG AA", async () => {
   const scenes = await contrastScenes("dark");
   const lines = summarize(scenes);
   log("dark theme contrast failures", lines.join("\n"));
@@ -445,7 +445,7 @@ test("FINDING-206: dark theme: white text on the red Delete button (~3:1) and fa
 /** In-page helper: contrast of the colour in `css` (a colour, or a box-shadow) against what is behind `el`. */
 const EDGE = `const edge = (el, css) => { const m = css.match(/rgba?\\([^)]*\\)/); const bg = __ax.bgOf(el); return m ? Math.round(__ax.ratio(__ax.over(__ax.parse(m[0]), bg), bg) * 100) / 100 : 0; };`;
 
-test("FINDING-207: non-text contrast: input borders, the selected-row outline and placeholders are nearly invisible", async () => {
+test("FINDING-207: non-text contrast: input borders and the selected-row outline reach 3:1, placeholders 4.5:1", async () => {
   await app.reset();
   app.write("Empty.md", "");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Empty.md"]')`);

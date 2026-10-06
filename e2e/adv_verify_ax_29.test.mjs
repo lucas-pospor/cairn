@@ -1,10 +1,12 @@
-// Reproduction for FINDING-121 ("Open" on the Welcome screen
-// silently creates a vault for a path that does not exist).
+// Regression test for FINDING-121 ("Open" on the Welcome screen
+// silently created a vault for a path that did not exist).
 //
-// The typed-path form calls app.openVault(path, create = true), and nothing
-// expands "~". Typing a path the way Linux users usually write it,
-// "~/Something/Notes", creates a literal folder named "~" in the app's
-// working directory and opens it as a new empty vault, with no question asked.
+// With the defect, the typed-path form called
+// app.openVault(path, create = true), and nothing expanded "~". Typing a
+// path the way Linux users usually write it, "~/Something/Notes", created a
+// literal folder named "~" in the app's working directory and opened it as a
+// new empty vault, with no question asked. The test checks that no literal
+// "~" folder is created and no vault is opened.
 //
 // Run: scripts/e2e-headless.sh e2e/adv_verify_ax_29.test.mjs
 
@@ -45,7 +47,7 @@ async function openTyped(p) {
   );
 }
 
-test("FINDING-121: typing '~/…/Notes' and pressing Open creates a literal '~' folder in the app's working directory and opens it as an empty vault", async () => {
+test("FINDING-121: typing '~/…/Notes' and pressing Open neither creates a literal '~' folder in the app's working directory nor opens an empty vault", async () => {
   const cwd = appCwd();
   assert.ok(cwd, "found the app process");
   const unique = `cairn-ax29-verify-${process.pid}`;

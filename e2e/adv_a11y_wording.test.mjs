@@ -1,6 +1,6 @@
 // Accessibility audit, part 3: wording and feedback. Triggers the error paths
 // a user can hit (bad vault paths, permission errors, sync failures) and
-// checks what text the app shows, plus a few misleading messages.
+// checks what text the app shows, plus a few messages that used to mislead.
 //
 // Run:  scripts/e2e-headless.sh e2e/adv_a11y_wording.test.mjs
 // One:  scripts/e2e-headless.sh --test-name-pattern 'FINDING-119' e2e/adv_a11y_wording.test.mjs
@@ -108,7 +108,7 @@ async function toWelcome() {
 
 // ---------------------------------------------------------------------------
 
-test("FINDING-119: clicking an attachment in the tree says opening attachments 'is not supported yet', and nothing opens it", async () => {
+test("FINDING-119: clicking an attachment in the tree hands it to the system's default app (no 'is not supported yet' message)", async () => {
   await app.reset();
   fs.rmSync(launched, { force: true });
   await app.exec(`document.querySelector('[data-testid=tree-row][data-path="pic.png"]').click(); return 1`);
@@ -126,7 +126,7 @@ test("FINDING-119: clicking an attachment in the tree says opening attachments '
   assert.ok(opened && fs.realpathSync(opened) === fs.realpathSync(app.p("pic.png")), "clicking the attachment did not hand it to the system's default app");
 });
 
-test("FINDING-120: a failed save shows the raw OS error ('Permission denied (os error 13)')", async () => {
+test("FINDING-120: a failed save shows a plain message, not the raw OS error ('Permission denied (os error 13)')", async () => {
   await app.reset();
   await app.openNote("locked note", "Locked/Locked note.md");
   fs.chmodSync(app.p("Locked"), 0o555);
@@ -142,7 +142,7 @@ test("FINDING-120: a failed save shows the raw OS error ('Permission denied (os 
   assert.doesNotMatch(msg, RAW);
 });
 
-test("FINDING-120: sync setup errors are raw HTTP-client strings", async () => {
+test("FINDING-120: sync setup errors are plain messages, not raw HTTP-client strings", async () => {
   await app.reset();
   const out = {};
   const dead = await freePort();
@@ -167,7 +167,7 @@ test("FINDING-120: sync setup errors are raw HTTP-client strings", async () => {
   assert.deepEqual(raw, []);
 });
 
-test("FINDING-211: empty-state and tooltip hints hard-code Ctrl+N / Ctrl+O and ignore rebound hotkeys", async () => {
+test("FINDING-211: empty-state and tooltip hints stop saying Ctrl+N once 'Create new note' is rebound", async () => {
   await app.reset();
   // Rebind "Create new note" with the Settings recorder: + then Ctrl+Alt+J, then remove Ctrl+N.
   await app.exec(`document.querySelector('[data-testid=open-settings]').click(); return 1`);
@@ -206,7 +206,7 @@ test("FINDING-211: empty-state and tooltip hints hard-code Ctrl+N / Ctrl+O and i
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-212: renaming a note to a name with '/' reports 'Not found: …' instead of explaining", async () => {
+test("FINDING-212: renaming a note to a name with '/' does not report a misleading 'Not found: …'", async () => {
   await app.reset();
   app.write("Slash me.md", "slash\n");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Slash me.md"]')`);
@@ -223,7 +223,7 @@ test("FINDING-212: renaming a note to a name with '/' reports 'Not found: …' i
 
 // ----- Welcome screen (closes the vault; reopens it at the end) -----
 
-test("FINDING-114: Welcome screen: the folder-path box is named only by its placeholder; 'Remove from list' buttons do not say which vault", async () => {
+test("FINDING-114: Welcome screen: the folder-path box has a name beyond its placeholder and 'Remove from list' buttons say which vault", async () => {
   await app.reset();
   await toWelcome();
   const r = await app.exec(`return __ax.audit(document.querySelector('main.welcome')).map(a => a.el + ' => ' + JSON.stringify(a.name))`);
@@ -234,7 +234,7 @@ test("FINDING-114: Welcome screen: the folder-path box is named only by its plac
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-120: opening a file or an unreadable folder as a vault shows misleading or raw errors", async () => {
+test("FINDING-120: opening a file or an unreadable folder as a vault shows a clear error, not a misleading or raw one", async () => {
   await app.reset().catch(() => {});
   if (!(await app.exec(`return !!document.querySelector('[data-testid=vault-path]')`))) await toWelcome();
   const file = path.join(app.tmp, "a-file.txt");
@@ -261,7 +261,7 @@ test("FINDING-120: opening a file or an unreadable folder as a vault shows misle
   assert.deepEqual(bad, []);
 });
 
-test("FINDING-121: 'Open' on the Welcome screen silently creates a new empty vault for a mistyped path", async () => {
+test("FINDING-121: 'Open' on the Welcome screen asks before creating a new vault for a mistyped path", async () => {
   if (!(await app.exec(`return !!document.querySelector('[data-testid=vault-path]')`))) await toWelcome();
   const typo = path.join(app.tmp, "vualt");
   assert.ok(!fs.existsSync(typo));

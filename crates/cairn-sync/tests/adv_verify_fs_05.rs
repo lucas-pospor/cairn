@@ -1,15 +1,15 @@
-//! Reproduction for FINDING-012 (symlink loops followed by
+//! Regression tests for FINDING-012 (symlink loops were followed by
 //! `StdFs::list_into`, crates/cairn-core/src/fs.rs, with no visited-directory
-//! check; a depth > 64 guard never fires because the kernel stops at 40
-//! symlinks first, and that ELOOP on `fs::metadata` is silently skipped).
+//! check; a depth > 64 guard never fired because the kernel stops at 40
+//! symlinks first, and that ELOOP on `fs::metadata` was silently skipped).
 //!
-//! Following the links, one `loop -> .` link turns one note into 41 notes
-//! that are uploaded and arrive on the other device as 41 real files. When
-//! the user on the other device cleans up the 40 duplicate files, those
-//! deletes are pulled by the first device and applied to `loop/note.md`,
+//! Following the links, one `loop -> .` link turned one note into 41 notes
+//! that were uploaded and arrived on the other device as 41 real files. When
+//! the user on the other device cleaned up the 40 duplicate files, those
+//! deletes were pulled by the first device and applied to `loop/note.md`,
 //! `loop/loop/note.md`, ... which all resolve through the link to the one
-//! real `note.md`, so the only copy of the note is moved to the trash, and
-//! that delete then propagates back. The link is not listed, so only the
+//! real `note.md`, so the only copy of the note was moved to the trash, and
+//! that delete then propagated back. Now the link is not listed, so only the
 //! real note is synced.
 //!
 //!   cargo test -p cairn-sync --test adv_verify_fs_05 -- --nocapture
@@ -22,7 +22,7 @@ use std::os::unix::fs::symlink;
 use common::*;
 
 #[test]
-fn fs05_cleaning_up_loop_duplicates_on_other_device_trashes_real_note() {
+fn fs05_loop_link_syncs_no_duplicates_and_keeps_real_note() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("note.md", "my only note\n")]);
     laptop.sync_ok();

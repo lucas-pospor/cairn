@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe("FINDING-068", () => {
-  it("FINDING-068: Reload twice in the same tick (stopAll+sync, stopAll+sync) leaves a worker that neither sync([]) nor stopAll() can reach", async () => {
+  it("FINDING-068: after Reload twice in the same tick (stopAll+sync, stopAll+sync), sync([]) and stopAll() leave no worker running", async () => {
     const h = host();
     await h.sync(["a.js"]); // enabled
     // reloadPlugins() x2, as SettingsModal.svelte does
