@@ -70,6 +70,9 @@ function fakeHost(files: string[], opts: { open?: string | null; choose?: string
       throw new Error("Templates creates no notes");
     },
     openNote: async () => {},
+    uniquePath: async () => {
+      throw new Error("Templates creates no notes");
+    },
     toast: (m) => void toasts.push(m),
     now: () => NOW,
   };

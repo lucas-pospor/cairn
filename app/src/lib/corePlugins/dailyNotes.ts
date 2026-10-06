@@ -5,7 +5,7 @@
 import { errorMessage } from "../types";
 import { option, type CoreHost, type CorePlugin } from "./core";
 import { formatDate } from "./dates";
-import { cleanFolder, createOrOpen, noteOption, notePath, notePathProblem } from "./files";
+import { createOrOpen, folderCheck, noteOption, notePath, notePathProblem, templateCheck } from "./files";
 import { fillTemplate, templateValues } from "./templates";
 
 export const DEFAULT_FORMAT = "YYYY-MM-DD";
@@ -44,11 +44,7 @@ export const dailyNotes: CorePlugin = {
       label: "Folder",
       description: "Where new daily notes go. Empty means the vault root.",
       placeholder: "Vault root",
-      check(value) {
-        const folder = cleanFolder(value);
-        const problem = folder && notePathProblem(folder);
-        return problem ? { problem } : {};
-      },
+      check: folderCheck,
     },
     {
       key: "format",
@@ -66,10 +62,7 @@ export const dailyNotes: CorePlugin = {
       label: "Template",
       description: "A note that each new daily note starts from. Empty means none.",
       placeholder: "None",
-      check(value, host) {
-        const template = noteOption(value);
-        return !template || host.files().includes(template) ? {} : { problem: `There is no note at ${template}.` };
-      },
+      check: templateCheck,
     },
   ],
   commands: [{ id: "today", name: "Open today's note", run: openToday }],

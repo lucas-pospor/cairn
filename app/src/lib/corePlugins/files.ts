@@ -50,6 +50,19 @@ export function notePathProblem(path: string): string | null {
   return null;
 }
 
+/** The Settings check of a folder that new notes go into: why it cannot hold them, if it cannot. */
+export function folderCheck(value: string): { problem?: string } {
+  const folder = cleanFolder(value);
+  const problem = folder && notePathProblem(folder);
+  return problem ? { problem } : {};
+}
+
+/** The Settings check of a template option: the note must be there. */
+export function templateCheck(value: string, host: CoreHost): { problem?: string } {
+  const template = noteOption(value);
+  return !template || host.files().includes(template) ? {} : { problem: `There is no note at ${template}.` };
+}
+
 /**
  * Create the note at `path` with `content`, and open it. Nothing is ever written
  * over: when a note is already there (sync or another app made it a moment ago,

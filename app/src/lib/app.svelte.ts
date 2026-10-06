@@ -172,6 +172,7 @@ class App {
       await this.refreshEntries();
     },
     openNote: (path, newTab = false) => this.openNote(path, { newTab }),
+    uniquePath: (dir, base) => backend.uniquePath(dir, base, "md"),
     toast: (m, kind) => this.toast(m, kind),
     now: () => new Date(),
   };

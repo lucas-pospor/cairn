@@ -77,6 +77,8 @@ test("lists each core plugin with its switch", async () => {
   assert.deepEqual(rows, [
     ["daily-notes", "Daily notes", true],
     ["templates", "Templates", true],
+    // Off by default; the wrong value in settings.json reads as the default.
+    ["unique-note", "Unique note creator", false],
   ]);
   await app.closeSettings();
 });

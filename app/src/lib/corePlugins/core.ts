@@ -47,6 +47,8 @@ export interface CoreHost {
    */
   createNote(path: string, content: string): Promise<void>;
   openNote(path: string, newTab?: boolean): Promise<void>;
+  /** The first free path `dir/base.md`, `dir/base 1.md`, `dir/base 2.md`... */
+  uniquePath(dir: string, base: string): Promise<string>;
   toast(message: string, kind?: "info" | "error"): void;
   now(): Date;
 }

@@ -39,6 +39,9 @@ function fakeHost(files: Record<string, string>) {
       created.push([p, content]);
     },
     openNote: async (p) => void opened.push(p),
+    uniquePath: async () => {
+      throw new Error("Daily notes asks for no other name");
+    },
     toast: (m) => void toasts.push(m),
     now: () => NOW,
   };
