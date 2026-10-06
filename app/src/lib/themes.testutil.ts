@@ -51,9 +51,16 @@ export interface Palette {
   id: string;
   name: string;
   scheme: "light" | "dark";
+  /** The contrast its text must keep (themes.ts). */
+  minContrast: number;
   tokens: Record<string, string>;
-  /** The system-dark copy of a dark theme, which must equal `tokens`. */
+  /** The width and colour of its rings (--ring, --ring-color), as written. */
+  ring: string | undefined;
+  ringColor: string | undefined;
+  /** The system-dark copy of a dark theme, which must equal `tokens` and the ring. */
   systemCopy?: Record<string, string>;
+  systemRing?: string;
+  systemRingColor?: string;
 }
 
 /**
@@ -63,17 +70,22 @@ export interface Palette {
  */
 export function palettes(): Palette[] {
   return THEMES.map((t) => {
+    const about = { id: t.id, name: t.name, scheme: t.scheme, minContrast: t.minContrast };
     if (t.scheme === "light") {
-      const selector = t.id === DEFAULT_THEME.light ? ":root" : `:root:where([data-light-theme="${t.id}"])`;
-      return { id: t.id, name: t.name, scheme: t.scheme, tokens: colours(rule(selector, null)) };
+      const r = rule(t.id === DEFAULT_THEME.light ? ":root" : `:root:where([data-light-theme="${t.id}"])`, null);
+      return { ...about, tokens: colours(r), ring: r.decls["--ring"], ringColor: r.decls["--ring-color"] };
     }
     const only = t.id === DEFAULT_THEME.dark ? "" : `:where([data-dark-theme="${t.id}"])`;
+    const forced = rule(`:root[data-theme="dark"]${only}`, null);
+    const system = rule(`:root:not([data-theme="light"])${only}`, DARK_MEDIA);
     return {
-      id: t.id,
-      name: t.name,
-      scheme: t.scheme,
-      tokens: colours(rule(`:root[data-theme="dark"]${only}`, null)),
-      systemCopy: colours(rule(`:root:not([data-theme="light"])${only}`, DARK_MEDIA)),
+      ...about,
+      tokens: colours(forced),
+      ring: forced.decls["--ring"],
+      ringColor: forced.decls["--ring-color"],
+      systemCopy: colours(system),
+      systemRing: system.decls["--ring"],
+      systemRingColor: system.decls["--ring-color"],
     };
   });
 }

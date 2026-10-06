@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { AxApp, K, SERVER, EVIDENCE, eventually, sleep, decodePng, regionContrast } from "./adv_a11y_lib.mjs";
+import { AxApp, K, SERVER, EVIDENCE, eventually, sleep, decodePng, regionContrast, minContrast } from "./adv_a11y_lib.mjs";
 
 const app = new AxApp("cairn-ax-sem-");
 
@@ -370,10 +370,10 @@ test("FINDING-107: quick switcher, palette and Settings are modal dialogs (aria-
 // Findings: contrast.
 
 /** Audit text and icon contrast of everything visible, grouped by colour pair. */
-async function contrastReport() {
+async function contrastReportAt(min) {
   return app.exec(`
     const out = {};
-    for (const c of __ax.contrast(document.body)) {
+    for (const c of __ax.contrast(document.body, ${min})) {
       if (c.pass) continue;
       const k = c.fg + ' on ' + c.bg + ' = ' + c.ratio + ':1 (needs ' + c.need + ')';
       (out[k] ||= new Set()).add(c.el.replace(/^(\\w+)\\./, '$1.') + ' "' + c.text + '"');
@@ -390,6 +390,7 @@ async function contrastScenes(theme, name) {
   await app.reset();
   await app.setTheme(theme, name);
   const label = name ?? theme;
+  const contrastReport = () => contrastReportAt(minContrast(name));
   const scenes = {};
   // A code block with every syntax colour: keyword, comment, type (class name), function, number, string.
   const code = "```js\n// a comment\nclass Box { size = 42; grow(n) { return \"big\"; } }\n```\n\n";
@@ -465,8 +466,8 @@ test("FINDING-206: dark theme: text on the red Delete button and faint text meet
   assert.deepEqual(lines, []);
 });
 
-for (const [theme, name] of [["light", "marble"], ["dark", "graphite"]]) {
-  test(`${name} theme: all text meets WCAG AA`, async () => {
+for (const [theme, name] of [["light", "marble"], ["dark", "graphite"], ["light", "high-contrast-light"], ["dark", "high-contrast-dark"]]) {
+  test(`${name} theme: all text meets WCAG ${minContrast(name) >= 7 ? "AAA" : "AA"}`, async () => {
     const scenes = await contrastScenes(theme, name);
     const lines = summarize(scenes);
     log(`${name} theme contrast failures`, lines.join("\n"));
@@ -485,7 +486,7 @@ test("FINDING-207: non-text contrast: input borders and the selected-row outline
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Empty.md"]')`);
   const out = {};
   await app.openNote("empty", "Empty.md");
-  for (const [theme, name] of [["light"], ["dark"], ["light", "marble"], ["dark", "graphite"]]) {
+  for (const [theme, name] of [["light"], ["dark"], ["light", "marble"], ["dark", "graphite"], ["light", "high-contrast-light"], ["dark", "high-contrast-dark"]]) {
     await app.setTheme(theme, name);
     const label = name ?? theme;
     await app.s.waitFor(`return !!document.querySelector('.cm-placeholder')`, { message: "editor placeholder shown" });
@@ -528,8 +529,9 @@ test("FINDING-207: non-text contrast: input borders and the selected-row outline
   for (const [theme, o] of Object.entries(out)) {
     if (o.textInputBorder < 3) bad.push(`${theme}: text input border ${o.textInputBorder}:1 (needs 3)`);
     if (o.selectedRowOutline < 3) bad.push(`${theme}: outline of the tree row selected for F2/Delete ${o.selectedRowOutline}:1 (needs 3)`);
-    if (o.editorPlaceholderRatio < 4.5) bad.push(`${theme}: editor placeholder "Start writing…" ${o.editorPlaceholder}:1`);
-    if (o.searchPlaceholder.ratio < 4.5) bad.push(`${theme}: "Search notes" placeholder ${o.searchPlaceholder.fg} on ${o.searchPlaceholder.bg} = ${o.searchPlaceholder.ratio}:1 (screenshot)`);
+    const min = minContrast(theme);
+    if (o.editorPlaceholderRatio < min) bad.push(`${theme}: editor placeholder "Start writing…" ${o.editorPlaceholder}:1 (needs ${min})`);
+    if (o.searchPlaceholder.ratio < min) bad.push(`${theme}: "Search notes" placeholder ${o.searchPlaceholder.fg} on ${o.searchPlaceholder.bg} = ${o.searchPlaceholder.ratio}:1 (screenshot, needs ${min})`);
   }
   assert.deepEqual(bad, []);
 });

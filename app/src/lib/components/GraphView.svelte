@@ -8,6 +8,7 @@
   import { backend } from "../backend";
   import { settings } from "../settings.svelte";
   import { displayName } from "../paths";
+  import { drawNodeHover } from "../graphHover";
   import type { GraphData } from "../types";
   import Icon from "./Icon.svelte";
 
@@ -48,6 +49,8 @@
       edge: css("--border", "#ccc"),
       label: css("--text", "#222"),
       dim: css("--bg-active", "#ddd"),
+      box: css("--bg-input", "#fff"),
+      outline: css("--border-strong", "#888"),
     };
   }
 
@@ -68,13 +71,14 @@
     const nodes = changed("note", "unresolved");
     const edges = changed("edge");
     const label = changed("label");
-    const reducers = changed("active", "dim");
+    // The reducers and the hover box read these when sigma draws.
+    const redraw = changed("active", "dim", "box", "outline");
     drawn = theme = c;
     // Only the colour changes, which tells sigma it need not index the graph again.
     if (nodes) graph.updateEachNodeAttributes((_, a) => ({ ...a, color: a.kind === "note" ? c.note : c.unresolved }), { attributes: ["color"] });
     if (edges) graph.updateEachEdgeAttributes((_, a) => ({ ...a, color: c.edge }), { attributes: ["color"] });
     if (label) renderer?.setSetting("labelColor", { color: c.label });
-    else if (reducers && !nodes && !edges) renderer?.refresh({ skipIndexation: true });
+    else if (redraw && !nodes && !edges) renderer?.refresh({ skipIndexation: true });
   }
 
   function nodeSize(degree: number) {
@@ -221,6 +225,7 @@
       labelColor: { color: colors().label },
       labelFont: getComputedStyle(document.body).fontFamily,
       labelSize: 12,
+      defaultDrawNodeHover: (context, data, s) => drawNodeHover(context, data, s, theme),
       defaultEdgeType: "line",
       zIndex: true,
       nodeReducer: (node, data) => {

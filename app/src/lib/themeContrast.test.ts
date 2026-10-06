@@ -1,8 +1,11 @@
 // WCAG contrast of every theme in app.css. Each foreground below is listed with
-// the backgrounds it is drawn on somewhere in the app; text needs 4.5:1, and
+// the backgrounds it is drawn on somewhere in the app; text needs the theme's
+// minContrast (themes.ts: 4.5:1, or 7:1 in the high-contrast themes), and
 // input borders, focus rings and icons 3:1. A background written "--x N% over --y"
 // is color-mix(in srgb, var(--x) N%, transparent) laid over --y, as the CSS does.
-// Colours that CodeMirror and sigma draw themselves are not covered here.
+// CodeMirror's bracket and special character colours and the graph's hover box
+// are set from these tokens in app.css and graphHover.ts; the colours that
+// CodeMirror and sigma draw themselves otherwise are not covered here.
 //
 // Run: cd app && npx vitest run src/lib/themeContrast.test.ts
 
@@ -84,6 +87,7 @@ const TEXT: Record<string, Record<string, string>> = {
     "--bg-input": "error toasts, Delete in menus",
     "--accent-soft": "Delete in menus, focused",
     "--danger 20% over --bg": "the sync error in Settings",
+    "--bg-code": "special characters in code",
   },
 };
 for (const tok of ["--tok-keyword", "--tok-string", "--tok-number", "--tok-comment", "--tok-fn", "--tok-type"])
@@ -107,8 +111,10 @@ const UI: Record<string, Record<string, string>> = {
   "--border-strong": {
     "--bg": "input borders",
     "--bg-side": "input borders in sidebars",
-    "--bg-input": "input borders, inner side",
+    "--bg-input": "input borders, inner side; the outline of the graph's hover box",
     "--bg-hover": "the ring of the selected file row, hovered",
+    "--bg-code": "the outline of a matching bracket in code",
+    "--accent-soft": "the outline of a matching bracket, inner side",
   },
   "--accent": {
     "--bg-input": "focused input border",
@@ -117,6 +123,18 @@ const UI: Record<string, Record<string, string>> = {
   },
   "--text-muted": { "--bg-input": "close button on toasts" },
   "--text-faint": { "--bg-hover": "chevrons on hovered rows" },
+  "--danger": { "--bg-code": "the outline of a bracket with no match in code" },
+};
+
+/**
+ * In the high-contrast themes, also the parts the others show by a faint
+ * colour: borders between panes, the scrollbar, and the rings (--ring) in the
+ * accent around selected rows, pressed buttons and focused controls.
+ */
+const UI_HIGH: Record<string, Record<string, string>> = {
+  "--border": { "--bg": "pane borders", "--bg-side": "sidebar borders", "--bg-input": "menu and dialog borders", "--bg-hover": "button borders", "--bg-code": "code block borders" },
+  "--scrollbar": { "--bg": "scrollbars", "--bg-side": "scrollbars in sidebars", "--bg-input": "scrollbars in menus", "--bg-code": "scrollbars in code blocks" },
+  "--accent": { "--bg": "focus rings", "--bg-side": "focus rings and pressed buttons in sidebars", "--bg-hover": "focus rings on hovered buttons", "--accent-soft": "the ring of a selected row" },
 };
 
 /** Contrast of a primary button's label while hovered (filter: brightness(1.06)). */
@@ -125,10 +143,12 @@ function hoveredButton(tokens: Record<string, string>): number {
   return contrast(bright("--accent-text"), bright("--accent"));
 }
 
-/** Every pair below its minimum, as "fg on bg (where): ratio". */
-function failures(tokens: Record<string, string>, only?: (fg: string, bg: string) => boolean): string[] {
+/** Every pair below its minimum, as "fg on bg (where): ratio"; text needs `text`. */
+function failures(tokens: Record<string, string>, text: number, only?: (fg: string, bg: string) => boolean): string[] {
   const bad: string[] = [];
-  for (const [table, min] of [[TEXT, 4.5], [UI, 3]] as const)
+  const tables: [Record<string, Record<string, string>>, number][] = [[TEXT, text], [UI, 3]];
+  if (text >= 7) tables.push([UI_HIGH, 3]);
+  for (const [table, min] of tables)
     for (const [fg, bgs] of Object.entries(table))
       for (const [bg, where] of Object.entries(bgs)) {
         if (only && !only(fg, bg)) continue;
@@ -140,29 +160,36 @@ function failures(tokens: Record<string, string>, only?: (fg: string, bg: string
 
 describe("theme contrast", () => {
   for (const p of palettes()) {
-    it(`the ${p.name} theme sets every colour, once`, () => {
+    const level = p.minContrast >= 7 ? "AAA" : "AA";
+
+    it(`the ${p.name} theme sets every colour and the ring width, once`, () => {
       expect(Object.keys(p.tokens).sort()).toEqual(Object.keys(palettes()[0].tokens).sort());
-      if (p.systemCopy) expect(p.systemCopy, "the copy used when the system is dark").toEqual(p.tokens);
+      // Rings only in the high-contrast themes; a dark theme sets them too, or a light theme's would show.
+      expect([p.ring, p.ringColor]).toEqual(level === "AAA" ? ["2px", "var(--accent)"] : ["0px", "transparent"]);
+      if (p.systemCopy) {
+        expect(p.systemCopy, "the copy used when the system is dark").toEqual(p.tokens);
+        expect([p.systemRing, p.systemRingColor]).toEqual([p.ring, p.ringColor]);
+      }
     });
 
-    it(`the ${p.name} theme meets WCAG AA`, () => {
-      expect(failures(p.tokens)).toEqual([]);
+    it(`the ${p.name} theme meets WCAG ${level}`, () => {
+      expect(failures(p.tokens, p.minContrast)).toEqual([]);
     });
 
     it(`the ${p.name} theme: a primary button stays readable when hovered (brightness 1.06)`, () => {
-      expect(hoveredButton(p.tokens)).toBeGreaterThanOrEqual(4.5);
+      expect(hoveredButton(p.tokens)).toBeGreaterThanOrEqual(p.minContrast);
     });
 
-    it(`the ${p.name} theme: a custom accent is adjusted until it meets WCAG AA wherever the accent is used`, () => {
+    it(`the ${p.name} theme: a custom accent is adjusted until it meets WCAG ${level} wherever the accent is used`, () => {
       const levels = [0, 37, 73, 110, 146, 183, 219, 255];
       const bad: string[] = [];
       for (const r of levels)
         for (const g of levels)
           for (const b of levels) {
-            const d = deriveAccent([r, g, b], accentTheme(p.tokens));
+            const d = deriveAccent([r, g, b], accentTheme(p.tokens), p.minContrast);
             const tokens = { ...p.tokens, "--accent": d.accent, "--link": d.accent, "--accent-text": d.text, "--accent-soft": d.soft };
-            const fails = failures(tokens, (fg, bg) => /--accent|--link/.test(`${fg} ${bg}`));
-            if (hoveredButton(tokens) < 4.5) fails.push("hovered primary button");
+            const fails = failures(tokens, p.minContrast, (fg, bg) => /--accent|--link/.test(`${fg} ${bg}`));
+            if (hoveredButton(tokens) < p.minContrast) fails.push("hovered primary button");
             bad.push(...fails.map((f) => `${hex([r, g, b])}: ${f}`));
           }
       expect(bad).toEqual([]);
@@ -174,6 +201,14 @@ describe("theme contrast", () => {
       const { swatch } = THEMES.find((t) => t.id === p.id)!;
       expect(swatch, p.name).toEqual({ bg: p.tokens["--bg"], side: p.tokens["--bg-side"], text: p.tokens["--text"], accent: p.tokens["--accent"] });
     }
+  });
+
+  it("only the high-contrast themes are held to 7:1, and each scheme has one", () => {
+    expect(THEMES.filter((t) => t.minContrast >= 7).map((t) => [t.id, t.scheme])).toEqual([
+      ["high-contrast-light", "light"],
+      ["high-contrast-dark", "dark"],
+    ]);
+    expect(THEMES.filter((t) => t.minContrast < 7).every((t) => t.minContrast === 4.5)).toBe(true);
   });
 
   it("Graphite's backgrounds, borders and text are pure grey, with no tint", () => {

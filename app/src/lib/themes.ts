@@ -16,13 +16,21 @@ export interface ThemeInfo {
   scheme: Scheme;
   /** --bg, --bg-side, --text and --accent, for the swatch in Settings. */
   swatch: { bg: string; side: string; text: string; accent: string };
+  /**
+   * The contrast its text keeps against every background it is drawn on, a
+   * custom accent included: 4.5 (WCAG AA) or 7 (AAA). Borders, focus rings
+   * and icons keep 3 in every theme.
+   */
+  minContrast: number;
 }
 
 export const THEMES: readonly ThemeInfo[] = [
-  { id: "limestone", name: "Limestone", scheme: "light", swatch: { bg: "#fbfaf7", side: "#f3f1ec", text: "#24292b", accent: "#a84529" } },
-  { id: "marble", name: "Marble", scheme: "light", swatch: { bg: "#ffffff", side: "#f1f4f8", text: "#1b2738", accent: "#1f5bbf" } },
-  { id: "slate", name: "Slate", scheme: "dark", swatch: { bg: "#1d2022", side: "#181b1d", text: "#dfe3e0", accent: "#e5774f" } },
-  { id: "graphite", name: "Graphite", scheme: "dark", swatch: { bg: "#1e1e1e", side: "#191919", text: "#e0e0e0", accent: "#e5774f" } },
+  { id: "limestone", name: "Limestone", scheme: "light", minContrast: 4.5, swatch: { bg: "#fbfaf7", side: "#f3f1ec", text: "#24292b", accent: "#a84529" } },
+  { id: "marble", name: "Marble", scheme: "light", minContrast: 4.5, swatch: { bg: "#ffffff", side: "#f1f4f8", text: "#1b2738", accent: "#1f5bbf" } },
+  { id: "high-contrast-light", name: "High contrast light", scheme: "light", minContrast: 7, swatch: { bg: "#ffffff", side: "#f4f4f4", text: "#000000", accent: "#0b3fa8" } },
+  { id: "slate", name: "Slate", scheme: "dark", minContrast: 4.5, swatch: { bg: "#1d2022", side: "#181b1d", text: "#dfe3e0", accent: "#e5774f" } },
+  { id: "graphite", name: "Graphite", scheme: "dark", minContrast: 4.5, swatch: { bg: "#1e1e1e", side: "#191919", text: "#e0e0e0", accent: "#e5774f" } },
+  { id: "high-contrast-dark", name: "High contrast dark", scheme: "dark", minContrast: 7, swatch: { bg: "#000000", side: "#0e0e0e", text: "#ffffff", accent: "#ffb48c" } },
 ];
 
 /** The themes used when none is chosen; versions before these settings have only these two. */

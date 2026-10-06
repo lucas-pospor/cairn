@@ -3,7 +3,9 @@
 // in .cairn/settings.json, the choice comes back after a restart, "System" uses
 // the light and dark theme picked under it, a theme this version does not know
 // is kept in the file, and the editor's search highlights matches in the
-// theme's colours.
+// theme's colours. The high-contrast themes draw rings where the others show
+// a tint, and CodeMirror's bracket, special character and drop cursor colours
+// and the graph's hover box follow every theme.
 // Screenshots of each theme, wide and narrow, go to e2e/.tmp/themes/.
 //
 //   scripts/e2e-headless.sh e2e/themes.test.mjs
@@ -21,13 +23,17 @@ import { launch, freshEnv, eventually, sleep, Key } from "./adv_editor_lib.mjs";
 const SHOTS = path.join(import.meta.dirname, ".tmp", "themes");
 const SETTINGS = ".cairn/settings.json";
 
-// Some colours of each theme, as app.css sets them.
+// Some colours of each theme, as app.css sets them, in the order of the Theme
+// list, and the contrast its text keeps (4.5:1, or 7:1 in the high-contrast themes).
 const THEMES = {
-  limestone: { scheme: "light", name: "Limestone", bg: "#fbfaf7", side: "#f3f1ec", text: "#24292b", accent: "#a84529" },
-  marble: { scheme: "light", name: "Marble", bg: "#ffffff", side: "#f1f4f8", text: "#1b2738", accent: "#1f5bbf" },
-  slate: { scheme: "dark", name: "Slate", bg: "#1d2022", side: "#181b1d", text: "#dfe3e0", accent: "#e5774f" },
-  graphite: { scheme: "dark", name: "Graphite", bg: "#1e1e1e", side: "#191919", text: "#e0e0e0", accent: "#e5774f" },
+  limestone: { scheme: "light", name: "Limestone", bg: "#fbfaf7", side: "#f3f1ec", text: "#24292b", accent: "#a84529", min: 4.5 },
+  marble: { scheme: "light", name: "Marble", bg: "#ffffff", side: "#f1f4f8", text: "#1b2738", accent: "#1f5bbf", min: 4.5 },
+  "high-contrast-light": { scheme: "light", name: "High contrast light", bg: "#ffffff", side: "#f4f4f4", text: "#000000", accent: "#0b3fa8", min: 7 },
+  slate: { scheme: "dark", name: "Slate", bg: "#1d2022", side: "#181b1d", text: "#dfe3e0", accent: "#e5774f", min: 4.5 },
+  graphite: { scheme: "dark", name: "Graphite", bg: "#1e1e1e", side: "#191919", text: "#e0e0e0", accent: "#e5774f", min: 4.5 },
+  "high-contrast-dark": { scheme: "dark", name: "High contrast dark", bg: "#000000", side: "#0e0e0e", text: "#ffffff", accent: "#ffb48c", min: 7 },
 };
+const IDS = Object.keys(THEMES);
 
 const NOTES = {
   "Garden.md":
@@ -200,7 +206,7 @@ test("choosing each theme applies its colours and saves it; the graph takes the 
     await app.exec(`document.querySelector('[data-testid=open-graph]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=graph-view] .canvas').__sigma?.getNodeDisplayData('Garden.md')`, { timeout: 10000 });
     // Each pick a change: Limestone is shown at the start.
-    for (const id of ["marble", "graphite", "slate", "limestone"]) {
+    for (const id of ["marble", "graphite", "high-contrast-light", "high-contrast-dark", "slate", "limestone"]) {
       const t = THEMES[id];
       await openAppearance(app);
       await pickTheme(app, id);
@@ -359,7 +365,14 @@ test("a theme this version does not know shows the default and stays in the file
 });
 
 // deriveAccent (accent.ts) for #f2c200: the accent and its tint in each theme.
-const DERIVED = { limestone: ["#796100", "#f1eee3"], marble: ["#7e6500", "#ece8d9"], slate: ["#f2c200", "#2e2d1f"], graphite: ["#f2c200", "#2f2b1c"] };
+const DERIVED = {
+  limestone: ["#796100", "#f1eee3"],
+  marble: ["#7e6500", "#ece8d9"],
+  "high-contrast-light": ["#5c4a00", "#edebe3"],
+  slate: ["#f2c200", "#2e2d1f"],
+  graphite: ["#f2c200", "#2f2b1c"],
+  "high-contrast-dark": ["#f2c200", "#2c2300"],
+};
 
 test("a custom accent stays readable in every theme", async () => {
   const e = env({ theme: "light", accent: "#f2c200" });
@@ -381,7 +394,7 @@ test("a custom accent stays readable in every theme", async () => {
       );
       for (const [fg, bg] of [["accent", "bg"], ["accent", "side"], ["accent", "hover"], ["accent", "soft"], ["link", "bg"], ["text", "accent"]]) {
         const ratio = contrast(r[fg], r[bg]);
-        if (ratio < 4.5) bad.push(`${id}: --${fg} ${r[fg]} on ${r[bg]} = ${ratio.toFixed(2)}`);
+        if (ratio < THEMES[id].min) bad.push(`${id}: --${fg} ${r[fg]} on ${r[bg]} = ${ratio.toFixed(2)}, needs ${THEMES[id].min}`);
       }
     }
     assert.deepEqual(bad, []);
@@ -405,7 +418,7 @@ test("the editor's search (Ctrl+F) highlights matches in each theme's own colour
   try {
     await openNote(app, "Garden.md");
     const out = {};
-    for (const id of ["limestone", "marble", "slate", "graphite"]) {
+    for (const id of IDS) {
       await useTheme(app, id);
       await app.exec(`document.querySelector('.cm-content').focus(); return 1`);
       await app.s.keys({ chord: [Key.ctrl, "f"] });
@@ -433,13 +446,13 @@ test("the editor's search (Ctrl+F) highlights matches in each theme's own colour
   }
 });
 
-test("each theme, wide and narrow: screenshots, and the Theme list fits a phone-sized window", async () => {
+test("each theme, wide and narrow: screenshots, and the Theme list fits a wide and a phone-sized window", async () => {
   const e = env({ theme: "light" });
   const app = await start(e);
   try {
     await openNote(app, "Garden.md");
     const narrow = {};
-    for (const id of ["limestone", "marble", "slate", "graphite"]) {
+    for (const id of IDS) {
       const t = THEMES[id];
       await openAppearance(app);
       await pickTheme(app, id);
@@ -447,8 +460,30 @@ test("each theme, wide and narrow: screenshots, and the Theme list fits a phone-
       await closeSettings(app);
       await sleep(300);
       await shot(app, `${id}-wide`);
+      // The Theme row's lists and swatch, and the Light and Dark lists under System: inside the section, and off the row's description.
+      const fit = () =>
+        app.exec(
+          `const sec = document.querySelector('[data-testid=settings] section'), w = sec.getBoundingClientRect().right;
+           const controls = [...document.querySelectorAll('[data-testid=settings] .theme-pick select, [data-testid=settings] .theme-pick .swatch, [data-testid=settings] .theme-pick label')];
+           const name = (el) => el.dataset.testid ?? el.textContent.trim();
+           const out = controls.filter(el => { const b = el.getBoundingClientRect(); return b.left < 0 || b.right > w; }).map(name);
+           const desc = document.createRange(); desc.selectNodeContents(document.querySelector('[data-testid=theme-select]').closest('.row').querySelector('p'));
+           const lines = [...desc.getClientRects()];
+           const over = controls.filter(el => { const b = el.getBoundingClientRect(); return lines.some(l => b.left < l.right && l.left < b.right && b.top < l.bottom && l.top < b.bottom); }).map(name);
+           return { innerWidth, overflow: sec.scrollWidth > sec.clientWidth + 1, outside: out, overDescription: over, lists: document.querySelectorAll('[data-testid=settings] .theme-pick select').length };`,
+        );
+      const fitBoth = async () => {
+        const one = await fit();
+        await pickTheme(app, "system");
+        await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-dark-select]')`, { message: "Light and Dark lists" });
+        const sys = await fit();
+        await pickTheme(app, id);
+        await app.s.waitFor(`return !document.querySelector('[data-testid=theme-dark-select]')`, { message: `${t.name} again` });
+        return { innerWidth: one.innerWidth, overflow: one.overflow || sys.overflow, outside: [...one.outside, ...sys.outside], overDescription: [...one.overDescription, ...sys.overDescription], lists: [one.lists, sys.lists] };
+      };
       await openAppearance(app);
       await shot(app, `${id}-wide-settings`);
+      narrow[`${id} wide`] = await fitBoth();
       await closeSettings(app);
       // A 480 px window (the smallest the desktop app allows) zoomed to about 375 CSS px, a phone's width.
       await app.s.cmd("POST", "/window/rect", { width: 480, height: 820 });
@@ -458,23 +493,6 @@ test("each theme, wide and narrow: screenshots, and the Theme list fits a phone-
       await shot(app, `${id}-narrow`);
       await openAppearance(app);
       await sleep(200);
-      // The Theme row's lists and swatch, and the Light and Dark lists under System, inside the section.
-      const fit = () =>
-        app.exec(
-          `const sec = document.querySelector('[data-testid=settings] section'), w = sec.getBoundingClientRect().right;
-           const out = [...document.querySelectorAll('[data-testid=settings] .theme-pick select, [data-testid=settings] .theme-pick .swatch, [data-testid=settings] .theme-pick label')]
-             .filter(el => { const b = el.getBoundingClientRect(); return b.left < 0 || b.right > w; }).map(el => el.dataset.testid ?? el.textContent.trim());
-           return { innerWidth, overflow: sec.scrollWidth > sec.clientWidth + 1, outside: out, lists: document.querySelectorAll('[data-testid=settings] .theme-pick select').length };`,
-        );
-      const fitBoth = async () => {
-        const one = await fit();
-        await pickTheme(app, "system");
-        await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-dark-select]')`, { message: "Light and Dark lists" });
-        const sys = await fit();
-        await pickTheme(app, id);
-        await app.s.waitFor(`return !document.querySelector('[data-testid=theme-dark-select]')`, { message: `${t.name} again` });
-        return { innerWidth: one.innerWidth, overflow: one.overflow || sys.overflow, outside: [...one.outside, ...sys.outside], lists: [one.lists, sys.lists] };
-      };
       narrow[`${id} 375`] = await fitBoth();
       await shot(app, `${id}-narrow-settings`);
       // 320 CSS px, the width WCAG reflow asks for.
@@ -494,7 +512,127 @@ test("each theme, wide and narrow: screenshots, and the Theme list fits a phone-
       await app.s.cmd("POST", "/window/maximize", {});
       await eventually(() => app.exec(`return innerWidth > 760`), { message: "wide window" });
     }
-    for (const [id, n] of Object.entries(narrow)) assert.deepEqual({ overflow: n.overflow, outside: n.outside, lists: n.lists }, { overflow: false, outside: [], lists: [1, 3] }, `${id} at ${n.innerWidth}px`);
+    for (const [id, n] of Object.entries(narrow))
+      assert.deepEqual({ overflow: n.overflow, outside: n.outside, overDescription: n.overDescription, lists: n.lists }, { overflow: false, outside: [], overDescription: [], lists: [1, 3] }, `${id} at ${n.innerWidth}px`);
+  } finally {
+    await app.stop();
+  }
+});
+
+/** The spread of the first box-shadow in a computed value ("rgb(…) 0px 0px 0px 2px inset"), and its colour. */
+const RING = `const ring = (css) => { if (!css || css === 'none') return null; const m = css.match(/^(rgba?\\([^)]*\\)) (-?[\\d.]+)px (-?[\\d.]+)px (-?[\\d.]+)px (-?[\\d.]+)px/); return m && { colour: m[1], x: +m[2], y: +m[3], spread: +m[5] }; };
+  const paint = (prop, css) => { const p = document.createElement('span'); p.style[prop] = css; document.body.append(p); const v = getComputedStyle(p)[prop]; p.remove(); return v; };`;
+
+test("the high-contrast themes draw rings where the other themes show a tint alone", async () => {
+  const e = env({ theme: "light" });
+  const app = await start(e);
+  try {
+    await openNote(app, "Garden.md");
+    const out = {};
+    for (const id of IDS) {
+      await useTheme(app, id);
+      // The Settings section shown, not focused (focus draws a ring of its own).
+      await openAppearance(app);
+      const section = await app.exec(`${RING} const b = document.querySelector('[data-testid=settings] nav button.on'); b.blur(); return ring(getComputedStyle(b).boxShadow)`);
+      await closeSettings(app);
+      // The command palette's highlighted entry.
+      await app.s.keys({ chord: [Key.ctrl, "p"] });
+      await app.s.waitFor(`return !!document.querySelector('[data-testid=palette-item].sel')`, { message: "palette open" });
+      const palette = await app.exec(`${RING} return ring(getComputedStyle(document.querySelector('[data-testid=palette-item].sel')).boxShadow)`);
+      await app.s.keys(Key.escape);
+      await app.s.waitFor(`return !document.querySelector('[data-testid=palette-item]')`, { message: "palette closed" });
+      out[id] = await app.exec(
+        `${RING}
+         const pressed = document.querySelector('.icon-btn.on');
+         return {
+           ring: getComputedStyle(document.documentElement).getPropertyValue('--ring').trim(),
+           accent: paint('color', 'var(--accent)'),
+           palette: arguments[0],
+           // A bar under a pressed panel button (the open left panel's tab).
+           pressed: pressed && ring(getComputedStyle(pressed).boxShadow),
+           // The open note's row in the file tree.
+           openNote: ring(getComputedStyle(document.querySelector('[data-testid=tree-row].active')).boxShadow),
+           unresolvedLink: [...document.querySelectorAll('.outlink.unresolved')].map((l) => getComputedStyle(l).textDecorationStyle).join() || null,
+           section: arguments[1],
+         };`,
+        palette,
+        section,
+      );
+    }
+    for (const [id, o] of Object.entries(out)) {
+      const width = THEMES[id].min >= 7 ? 2 : 0;
+      const around = { colour: o.accent, x: 0, y: 0, spread: width };
+      assert.deepEqual(
+        { ring: o.ring, palette: o.palette, openNote: o.openNote, section: o.section, pressed: o.pressed, unresolvedLink: o.unresolvedLink },
+        // WebDriver returns -0 as 0.
+        { ring: `${width}px`, palette: around, openNote: around, section: around, pressed: { colour: o.accent, x: 0, y: width ? -width : 0, spread: 0 }, unresolvedLink: "dashed" },
+        id,
+      );
+    }
+  } finally {
+    await app.stop();
+  }
+});
+
+test("a matching bracket, special characters, the drop cursor and the graph's hover box take each theme's colours", async () => {
+  const e = env({ theme: "light" });
+  e.vault.write("Code.md", "(ab)\u0007 x\n");
+  const app = await start(e);
+  try {
+    await openNote(app, "Code.md");
+    // The headless window never has system focus, and CodeMirror shows the bracket match only while focused.
+    await app.exec(`document.hasFocus = () => true; return 1`);
+    const out = {};
+    for (const id of IDS) {
+      await useTheme(app, id);
+      await openNote(app, "Code.md");
+      await app.exec(`const v = document.querySelector('.cm-editor').__cairnView; v.focus(); v.dispatch({ selection: { anchor: 1 } }); return 1`);
+      await app.s.waitFor(`return !!document.querySelector('.cm-editor.cm-focused .cm-matchingBracket')`, { message: `${id}: bracket match` });
+      // Dragging text over the note shows the drop cursor.
+      await app.exec(
+        `const c = document.querySelector('.cm-content'), b = c.querySelector('.cm-line').getBoundingClientRect();
+         c.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: b.x + 4, clientY: b.y + b.height / 2, dataTransfer: new DataTransfer() })); return 1`,
+      );
+      await app.s.waitFor(`return !!document.querySelector('.cm-dropCursor')`, { message: `${id}: drop cursor` });
+      out[id] = await app.exec(
+        `${RING}
+         const cs = (css) => getComputedStyle(document.querySelector(css));
+         const got = { bracket: cs('.cm-matchingBracket').backgroundColor, bracketOutline: cs('.cm-matchingBracket').outlineColor,
+           special: cs('.cm-specialChar').color, drop: cs('.cm-dropCursor').borderLeftColor };
+         const want = { bracket: paint('backgroundColor', 'var(--accent-soft)'), bracketOutline: paint('color', 'var(--border-strong)'),
+           special: paint('color', 'var(--danger)'), drop: paint('color', 'var(--accent)') };
+         return { got, want };`,
+      );
+      await app.exec(`document.querySelector('.cm-content').dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: document.body })); return 1`);
+    }
+    // The graph's hover box: sigma's function for it, run on a canvas of our own, in each theme.
+    await app.exec(`document.querySelector('[data-testid=open-graph]').click(); return 1`);
+    await app.s.waitFor(`return !!document.querySelector('[data-testid=graph-view] .canvas').__sigma?.getNodeDisplayData('Garden.md')`, { timeout: 10000 });
+    for (const id of IDS) {
+      await useTheme(app, id);
+      await eventually(
+        async () => {
+          const box = await app.exec(
+            `${RING}
+             const r = document.querySelector('[data-testid=graph-view] .canvas').__sigma;
+             const c = document.createElement('canvas'); c.width = 200; c.height = 40;
+             const ctx = c.getContext('2d');
+             r.getSetting('defaultDrawNodeHover')(ctx, { x: 20, y: 20, size: 4, label: 'Beans', color: '#888888' }, r.getSettings());
+             // Inside the box, below the label's baseline.
+             const [R, G, B] = ctx.getImageData(34, 26, 1, 1).data;
+             return { got: 'rgb(' + R + ', ' + G + ', ' + B + ')', want: paint('color', 'var(--bg-input)') };`,
+          );
+          out[id].got.hoverBox = box.got;
+          out[id].want.hoverBox = box.want;
+          return box.got === box.want;
+        },
+        { message: `${id}: hover box` },
+      ).catch((err) => {
+        // Never read, or read in another colour: the comparison below fails and shows which.
+        out[id].got.hoverBox ??= `not drawn: ${err.message}`;
+      });
+    }
+    for (const [id, o] of Object.entries(out)) assert.deepEqual(o.got, o.want, id);
   } finally {
     await app.stop();
   }

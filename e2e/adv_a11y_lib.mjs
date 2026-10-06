@@ -21,6 +21,8 @@ export const ROOT = path.resolve(import.meta.dirname, "..");
 export const APP = path.join(ROOT, "target/debug/cairn");
 export const SERVER = path.join(ROOT, "target/debug/cairn-server");
 export const EVIDENCE = path.join(import.meta.dirname, ".tmp", "AX");
+/** The contrast text needs in a theme (themes.ts minContrast): 7 (WCAG AAA) in the high-contrast themes, else 4.5 (AA). */
+export const minContrast = (name) => (String(name ?? "").startsWith("high-contrast") ? 7 : 4.5);
 
 /** WebDriver key codes. */
 export const K = {
@@ -331,8 +333,9 @@ window.__ax = (() => {
     return s;
   }
   // Every visible element that directly holds text: effective colours after
-  // alpha compositing, ratio and the WCAG AA threshold for its size.
-  function contrast(root) {
+  // alpha compositing, ratio and the threshold for its size: min (4.5 for WCAG
+  // AA, 7 for AAA), or for large text 3 (AA) or 4.5 (AAA).
+  function contrast(root, min = 4.5) {
     const out = [];
     const seen = new Set();
     const walker = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT);
@@ -350,7 +353,7 @@ window.__ax = (() => {
       const eff = over(fg, bg);
       const size = parseFloat(cs.fontSize), weight = Number(cs.fontWeight) || 400;
       const large = size >= 24 || (size >= 18.66 && weight >= 700);
-      const need = large ? 3 : 4.5;
+      const need = large ? (min > 4.5 ? 4.5 : 3) : min;
       const r = ratio(eff, bg);
       out.push({ el: label(el), text: n.textContent.trim().slice(0, 40), fg: hex(eff), bg: hex(bg), ratio: Math.round(r * 100) / 100, need, size, pass: r >= need });
     }

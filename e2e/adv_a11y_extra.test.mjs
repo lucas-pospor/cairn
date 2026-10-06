@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
-import { AxApp, K, SERVER, EVIDENCE, eventually, sleep } from "./adv_a11y_lib.mjs";
+import { AxApp, K, SERVER, EVIDENCE, eventually, sleep, minContrast } from "./adv_a11y_lib.mjs";
 import { pickThemeMode } from "./theme_mode.mjs";
 
 const app = new AxApp("cairn-ax-extra-");
@@ -602,22 +602,27 @@ async function contrastFailures() {
     return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].slice(0, 5)]));`);
 }
 
+/** The lines of `scenes` whose ratio ("= N") is below `min`. */
+const belowIn = (scenes, min) =>
+  Object.entries(scenes).flatMap(([k, v]) => (v ?? []).filter((l) => /= (\d+(\.\d+)?)/.test(l) && Number(l.match(/= (\d+(\.\d+)?)/)[1]) < min).map((l) => `${k}: ${l}`));
+
 async function stateScenes(theme, name) {
   await app.reset();
   await app.setTheme(theme, name);
+  const min = minContrast(name);
   const scenes = {};
   // Selected palette row (shortcut hint on the highlight) and the switcher's
   // "Create note" row when nothing matches (accent text on the highlight).
   await app.chord(K.ctrl, "p");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'palette-input'`);
-  scenes.paletteSelected = await app.exec(`const r = document.querySelector('[data-testid=palette-item].sel kbd'); return r ? __ax.contrast(r).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"') : null`);
+  scenes.paletteSelected = await app.exec(`const r = document.querySelector('[data-testid=palette-item].sel kbd'); return r ? __ax.contrast(r, ${min}).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"') : null`);
   await app.keys(K.esc);
   await app.chord(K.ctrl, "o");
   await app.s.waitFor(`return document.activeElement?.dataset.testid === 'switcher-input'`);
   await app.keys("qqxx");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=switcher-create].sel')`);
-  scenes.switcherCreate = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=switcher-create]')).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"')`);
-  scenes.switcherHints = await app.exec(`return __ax.contrast(document.querySelector('.switcher .hints')).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"').slice(0, 3)`);
+  scenes.switcherCreate = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=switcher-create]'), ${min}).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"')`);
+  scenes.switcherHints = await app.exec(`return __ax.contrast(document.querySelector('.switcher .hints'), ${min}).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"').slice(0, 3)`);
   await app.keys(K.esc);
   // Conflict banner, plus an error toast.
   const label = name ?? theme;
@@ -627,14 +632,14 @@ async function stateScenes(theme, name) {
   await app.keys(" mine");
   app.write(`Conflict ${label}.md`, "theirs\n");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=conflict-banner]')`, { timeout: 6000, message: "conflict banner" });
-  scenes.conflictBanner = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=conflict-banner]')).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + (c.pass ? '' : ' FAIL') + ' "' + c.text + '"')`);
-  scenes.saveStateConflict = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=save-state]')).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + (c.pass ? '' : ' FAIL') + ' "' + c.text + '"')`);
+  scenes.conflictBanner = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=conflict-banner]'), ${min}).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + (c.pass ? '' : ' FAIL') + ' "' + c.text + '"')`);
+  scenes.saveStateConflict = await app.exec(`return __ax.contrast(document.querySelector('[data-testid=save-state]'), ${min}).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + (c.pass ? '' : ' FAIL') + ' "' + c.text + '"')`);
   await app.shot(`AX-contrast-${label}-conflict.png`);
   await app.exec(`document.querySelector('[data-testid=conflict-theirs]').click(); return 1`);
   // Context menu with the red Delete item.
   await app.exec(`const r = document.querySelector('[data-testid=tree-row][data-path="Welcome.md"]'); const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: b.x + 20, clientY: b.y + 5 })); return 1`);
   await app.s.waitFor(`return !!document.querySelector('[role=menu]')`);
-  scenes.contextMenu = await app.exec(`return __ax.contrast(document.querySelector('[role=menu]')).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"')`);
+  scenes.contextMenu = await app.exec(`return __ax.contrast(document.querySelector('[role=menu]'), ${min}).filter(c => !c.pass).map(c => c.fg + ' on ' + c.bg + ' = ' + c.ratio + ' "' + c.text + '"')`);
   await app.keys(K.esc);
   return scenes;
 }
@@ -642,7 +647,7 @@ async function stateScenes(theme, name) {
 test("FINDING-117: light theme, more states: highlighted palette shortcut, switcher 'Create note' row and hint bar, conflict banner and context menu meet AA", async () => {
   const scenes = await stateScenes("light");
   log("light theme, extra states", scenes);
-  const bad = Object.entries(scenes).flatMap(([k, v]) => (v ?? []).filter((l) => /= (\d+(\.\d+)?)/.test(l) && Number(l.match(/= (\d+(\.\d+)?)/)[1]) < 4.5).map((l) => `${k}: ${l}`));
+  const bad = belowIn(scenes, 4.5);
   assert.deepEqual(bad, []);
 });
 
@@ -650,16 +655,16 @@ test("FINDING-206: dark theme, more states: highlighted palette shortcut, switch
   const scenes = await stateScenes("dark");
   await app.setTheme("light");
   log("dark theme, extra states", scenes);
-  const bad = Object.entries(scenes).flatMap(([k, v]) => (v ?? []).filter((l) => /= (\d+(\.\d+)?)/.test(l) && Number(l.match(/= (\d+(\.\d+)?)/)[1]) < 4.5).map((l) => `${k}: ${l}`));
+  const bad = belowIn(scenes, 4.5);
   assert.deepEqual(bad, []);
 });
 
-for (const [theme, name] of [["light", "marble"], ["dark", "graphite"]]) {
-  test(`${name} theme, more states: highlighted palette shortcut, switcher hints, conflict banner and context menu meet AA`, async () => {
+for (const [theme, name] of [["light", "marble"], ["dark", "graphite"], ["light", "high-contrast-light"], ["dark", "high-contrast-dark"]]) {
+  test(`${name} theme, more states: highlighted palette shortcut, switcher hints, conflict banner and context menu meet ${minContrast(name) >= 7 ? "AAA" : "AA"}`, async () => {
     const scenes = await stateScenes(theme, name);
     await app.setTheme("light");
     log(`${name} theme, extra states`, scenes);
-    const bad = Object.entries(scenes).flatMap(([k, v]) => (v ?? []).filter((l) => /= (\d+(\.\d+)?)/.test(l) && Number(l.match(/= (\d+(\.\d+)?)/)[1]) < 4.5).map((l) => `${k}: ${l}`));
+    const bad = belowIn(scenes, minContrast(name));
     assert.deepEqual(bad, []);
   });
 }

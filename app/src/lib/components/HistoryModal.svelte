@@ -175,6 +175,14 @@
   }
   li button.on {
     background: var(--accent-soft);
+    /* In the high-contrast themes, a ring as well as the tint. */
+    box-shadow: inset 0 0 0 var(--ring) var(--accent);
+  }
+  /* Focused as well: the ring that shows the selection, and the focus ring. */
+  li button.on:focus-visible {
+    box-shadow:
+      inset 0 0 0 var(--ring) var(--accent),
+      0 0 0 var(--ring) var(--accent);
   }
   .small {
     font-size: 12px;

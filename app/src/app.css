@@ -24,8 +24,15 @@
   --danger: #b0213f;
   --danger-text: #ffffff;
   --hit: #f6e7ad;
+  --scrollbar: #e0ddd4;
   --shadow: 0 10px 30px rgba(30, 35, 33, 0.18), 0 2px 6px rgba(30, 35, 33, 0.08);
   --radius: 7px;
+  /* The width and colour of the rings that show selected rows, pressed
+     buttons and focus without a tint: only the high-contrast themes draw
+     them. --ring-color is for a ring that must vanish where the width alone
+     would leave one (a second shadow the size of the first). */
+  --ring: 0px;
+  --ring-color: transparent;
 
   --tok-keyword: #8a3f8a;
   --tok-string: #3b723b;
@@ -41,7 +48,7 @@
    blocks below; the rest are picked with data-light-theme and data-dark-theme on
    <html> (themes.ts, settings.svelte.ts). Each has the specificity of the block
    it replaces, so CSS snippets override it in the same way. Light themes apply
-   in dark mode too, but every colour is then overridden by the dark rules. */
+   in dark mode too, but the dark rules then set every colour and --ring again. */
 :root:where([data-light-theme="marble"]) {
   --bg: #ffffff;
   --bg-side: #f1f4f8;
@@ -62,7 +69,10 @@
   --danger: #b4233c;
   --danger-text: #ffffff;
   --hit: #fde89a;
+  --scrollbar: #dce2ea;
   --shadow: 0 10px 30px rgba(20, 32, 54, 0.16), 0 2px 6px rgba(20, 32, 54, 0.08);
+  --ring: 0px;
+  --ring-color: transparent;
 
   --tok-keyword: #8a2f9f;
   --tok-string: #26703f;
@@ -70,6 +80,43 @@
   --tok-comment: #596575;
   --tok-fn: #1b5fb0;
   --tok-type: #0b6d7a;
+}
+
+/* High contrast light and dark: all text at 7:1 or more against every
+   background it is drawn on (WCAG AAA), borders at 3:1, and rings (--ring)
+   around selected rows, pressed buttons and focus, so none of them relies on
+   a tint alone. */
+:root:where([data-light-theme="high-contrast-light"]) {
+  --bg: #ffffff;
+  --bg-side: #f4f4f4;
+  --bg-hover: #e8e8e8;
+  --bg-active: #dadada;
+  --bg-input: #ffffff;
+  --bg-code: #f2f2f2;
+  --border: #707070;
+  --border-strong: #1f1f1f;
+  --text: #000000;
+  --text-muted: #333333;
+  --text-faint: #444444;
+  --accent: #0b3fa8;
+  --accent-soft: #e3ebfb;
+  --accent-text: #ffffff;
+  --link: #0b3fa8;
+  --unresolved: #6b3e00;
+  --danger: #7e0018;
+  --danger-text: #ffffff;
+  --hit: #fff09e;
+  --scrollbar: #707070;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.12);
+  --ring: 2px;
+  --ring-color: var(--accent);
+
+  --tok-keyword: #6a1b9a;
+  --tok-string: #17561c;
+  --tok-number: #7a3300;
+  --tok-comment: #4a4a4a;
+  --tok-fn: #0d469e;
+  --tok-type: #005459;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,7 +128,7 @@
     --bg-input: #23272a;
     --bg-code: #262a2d;
     --border: #2f3438;
-    --border-strong: #6d767c;
+    --border-strong: #6f787e;
     --text: #dfe3e0;
     --text-muted: #9aa29e;
     --text-faint: #909894;
@@ -93,7 +140,10 @@
     --danger: #f07e92;
     --danger-text: #22090f;
     --hit: #342c17;
+    --scrollbar: #2e3337;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --ring: 0px;
+    --ring-color: transparent;
     --tok-keyword: #d19ad1;
     --tok-string: #9cc98f;
     --tok-number: #e0a46b;
@@ -122,13 +172,47 @@
     --danger: #f2849a;
     --danger-text: #22090f;
     --hit: #342c0c;
+    --scrollbar: #303030;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --ring: 0px;
+    --ring-color: transparent;
     --tok-keyword: #d19ad1;
     --tok-string: #9cc98f;
     --tok-number: #e0a46b;
     --tok-comment: #999999;
     --tok-fn: #8db6ea;
     --tok-type: #e2c27a;
+  }
+  :root:not([data-theme="light"]):where([data-dark-theme="high-contrast-dark"]) {
+    --bg: #000000;
+    --bg-side: #0e0e0e;
+    --bg-hover: #1f1f1f;
+    --bg-active: #2e2e2e;
+    --bg-input: #0a0a0a;
+    --bg-code: #151515;
+    --border: #8c8c8c;
+    --border-strong: #c7c7c7;
+    --text: #ffffff;
+    --text-muted: #d9d9d9;
+    --text-faint: #c6c6c6;
+    --accent: #ffb48c;
+    --accent-soft: #33200f;
+    --accent-text: #000000;
+    --link: #ffc2a3;
+    --unresolved: #d4c4b4;
+    --danger: #ff9aa8;
+    --danger-text: #000000;
+    --hit: #3d3300;
+    --scrollbar: #9e9e9e;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --ring: 2px;
+    --ring-color: var(--accent);
+    --tok-keyword: #e8b5ff;
+    --tok-string: #b5e8a0;
+    --tok-number: #ffc58a;
+    --tok-comment: #c5c5c5;
+    --tok-fn: #a8d0ff;
+    --tok-type: #ffe08a;
   }
 }
 
@@ -140,7 +224,7 @@
   --bg-input: #23272a;
   --bg-code: #262a2d;
   --border: #2f3438;
-  --border-strong: #6d767c;
+  --border-strong: #6f787e;
   --text: #dfe3e0;
   --text-muted: #9aa29e;
   --text-faint: #909894;
@@ -152,7 +236,10 @@
   --danger: #f07e92;
   --danger-text: #22090f;
   --hit: #342c17;
+  --scrollbar: #2e3337;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --ring: 0px;
+  --ring-color: transparent;
   --tok-keyword: #d19ad1;
   --tok-string: #9cc98f;
   --tok-number: #e0a46b;
@@ -182,13 +269,48 @@
   --danger: #f2849a;
   --danger-text: #22090f;
   --hit: #342c0c;
+  --scrollbar: #303030;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --ring: 0px;
+  --ring-color: transparent;
   --tok-keyword: #d19ad1;
   --tok-string: #9cc98f;
   --tok-number: #e0a46b;
   --tok-comment: #999999;
   --tok-fn: #8db6ea;
   --tok-type: #e2c27a;
+}
+
+:root[data-theme="dark"]:where([data-dark-theme="high-contrast-dark"]) {
+  --bg: #000000;
+  --bg-side: #0e0e0e;
+  --bg-hover: #1f1f1f;
+  --bg-active: #2e2e2e;
+  --bg-input: #0a0a0a;
+  --bg-code: #151515;
+  --border: #8c8c8c;
+  --border-strong: #c7c7c7;
+  --text: #ffffff;
+  --text-muted: #d9d9d9;
+  --text-faint: #c6c6c6;
+  --accent: #ffb48c;
+  --accent-soft: #33200f;
+  --accent-text: #000000;
+  --link: #ffc2a3;
+  --unresolved: #d4c4b4;
+  --danger: #ff9aa8;
+  --danger-text: #000000;
+  --hit: #3d3300;
+  --scrollbar: #9e9e9e;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --ring: 2px;
+  --ring-color: var(--accent);
+  --tok-keyword: #e8b5ff;
+  --tok-string: #b5e8a0;
+  --tok-number: #ffc58a;
+  --tok-comment: #c5c5c5;
+  --tok-fn: #a8d0ff;
+  --tok-type: #ffe08a;
 }
 
 *,
@@ -278,6 +400,20 @@ textarea {
 }
 .icon-btn.on {
   color: var(--accent);
+  /* In the high-contrast themes, a bar under a pressed button. */
+  box-shadow: inset 0 calc(-1 * var(--ring)) 0 var(--accent);
+}
+
+/* Focus in the high-contrast themes: a ring outside the control, on top of
+   the web view's own. With no specificity, any rule of a control that sets
+   its own box-shadow wins. */
+:where(button, select, input, textarea, a[href], summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  box-shadow: 0 0 0 var(--ring) var(--accent);
+}
+.icon-btn.on:focus-visible {
+  box-shadow:
+    inset 0 calc(-1 * var(--ring)) 0 var(--accent),
+    0 0 0 var(--ring) var(--accent);
 }
 
 .text-input {
@@ -290,7 +426,9 @@ textarea {
 }
 .text-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    0 0 0 calc(3px + var(--ring)) var(--ring-color);
 }
 
 .muted {
@@ -309,7 +447,7 @@ mark.hit {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-active);
+  background: var(--scrollbar);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: content-box;
@@ -447,6 +585,7 @@ mark.hit {
 .cm-tooltip-autocomplete > ul > li[aria-selected] {
   background: var(--accent-soft) !important;
   color: var(--text) !important;
+  box-shadow: inset 0 0 0 var(--ring) var(--accent);
 }
 .cm-completionDetail {
   color: var(--text-faint);
@@ -481,6 +620,20 @@ mark.hit {
 }
 .cm-editor .cm-searchMatch-selected {
   background: var(--hit);
+}
+/* CodeMirror's own colours that do not follow the theme: a teal tint on a
+   matching bracket, a red one on a bracket with no match, and red special
+   characters, below 4.5:1 on some themes. More specific than its rules. */
+.cm-editor.cm-focused .cm-content .cm-matchingBracket {
+  background: var(--accent-soft);
+  outline: 1px solid var(--border-strong);
+}
+.cm-editor.cm-focused .cm-content .cm-nonmatchingBracket {
+  background: none;
+  outline: 1px solid var(--danger);
+}
+.cm-editor .cm-content .cm-specialChar {
+  color: var(--danger);
 }
 
 /* ---------- Live Preview ---------- */

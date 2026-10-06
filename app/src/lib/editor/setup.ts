@@ -354,7 +354,8 @@ const baseTheme = EditorView.theme({
     caretColor: "var(--accent)",
   },
   "&.cm-focused": { outline: "none" },
-  ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
+  // The drop cursor marks where dragged text goes; CodeMirror draws it black, which a dark theme hides.
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
   // CodeMirror's own #888 is too faint on the light theme's --bg.
   ".cm-placeholder": { color: "var(--text-faint)" },
 });

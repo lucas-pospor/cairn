@@ -150,6 +150,8 @@
   }
   .item.sel {
     background: var(--accent-soft);
+    /* In the high-contrast themes, a ring as well as the tint. */
+    box-shadow: inset 0 0 0 var(--ring) var(--accent);
   }
   kbd {
     font-family: var(--font-mono);

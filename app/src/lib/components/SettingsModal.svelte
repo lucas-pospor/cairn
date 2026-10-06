@@ -662,6 +662,14 @@
   nav button.on {
     background: var(--bg-active);
     font-weight: 600;
+    /* In the high-contrast themes, a ring as well as the tint. */
+    box-shadow: inset 0 0 0 var(--ring) var(--accent);
+  }
+  /* Focused as well: the ring that shows the selection, and the focus ring. */
+  nav button.on:focus-visible {
+    box-shadow:
+      inset 0 0 0 var(--ring) var(--accent),
+      0 0 0 var(--ring) var(--accent);
   }
   .grow {
     flex: 1;
@@ -731,6 +739,10 @@
   }
   .narrow {
     width: 200px;
+  }
+  /* As .text-input:focus, which the rule above outranks. */
+  .narrow:focus {
+    border-color: var(--accent);
   }
   input[type="checkbox"] {
     accent-color: var(--accent);

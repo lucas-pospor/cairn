@@ -2,8 +2,9 @@
 // fill of primary buttons and, as a faint tint, behind tags and selected rows.
 // Taken as-is, many colours are unreadable there, so the accent tokens are
 // derived from it: the colour is shaded (light theme) or lightened (dark theme)
-// only as far as WCAG AA (4.5:1) needs on every background accent text is drawn
-// on (highlights included), button text is white or a near-black of the same hue, and the tint stays
+// only as far as the theme's minimum contrast needs (4.5:1, WCAG AA, or 7:1 in
+// the high-contrast themes) on every background accent text is drawn on
+// (highlights included), button text is white or a near-black of the same hue, and the tint stays
 // no further from --bg than the theme's own tint, so text that reads on the
 // theme's tint also reads on it.
 
@@ -42,8 +43,8 @@ export interface AccentTheme {
   soft: Rgb;
 }
 
-/** Values for --accent (and --link), --accent-text and --accent-soft. */
-export function deriveAccent(accent: Rgb, theme: AccentTheme): { accent: string; text: string; soft: string } {
+/** Values for --accent (and --link), --accent-text and --accent-soft; `min` is the theme's minContrast (themes.ts). */
+export function deriveAccent(accent: Rgb, theme: AccentTheme, min = 4.5): { accent: string; text: string; soft: string } {
   const light = contrast(theme.bg, BLACK) > contrast(theme.bg, WHITE);
   // The tint: as much of the accent (up to 22%) as keeps it no further from --bg than the theme's tint.
   const softLimit = contrast(theme.soft, theme.bg);
@@ -58,7 +59,7 @@ export function deriveAccent(accent: Rgb, theme: AccentTheme): { accent: string;
   const under = (bg: Rgb, share: number) => theme.hit.map((v, i) => v * share + bg[i] * (1 - share)) as Rgb;
   const readable = (c: Rgb, soft: Rgb) =>
     [theme.bg, theme.side, theme.hover, theme.code, soft, theme.hit, ...[0.45, 0.7].flatMap((p) => [theme.bg, theme.code, soft].map((bg) => under(bg, p)))].every(
-      (bg) => contrast(c, bg) >= 4.5,
+      (bg) => contrast(c, bg) >= min,
     );
   let c = accent;
   let soft = tint(c);

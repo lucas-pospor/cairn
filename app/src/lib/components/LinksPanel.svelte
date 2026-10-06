@@ -244,8 +244,11 @@
     font-weight: 450;
     color: var(--link);
   }
+  /* Dashed, as in the editor, so it does not differ by colour alone. */
   .outlink.unresolved {
     color: var(--unresolved);
+    text-decoration: underline dashed;
+    text-underline-offset: 3px;
   }
   .dir {
     font-size: 12px;

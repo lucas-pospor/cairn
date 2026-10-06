@@ -3,7 +3,7 @@
 
 import { backend } from "./backend";
 import { deriveAccent, parseRgb } from "./accent";
-import { themeFor } from "./themes";
+import { themeFor, themeInUse } from "./themes";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -191,7 +191,8 @@ class SettingsStore {
     const [c, bg, side, hover, code, hit, soft] = [accent, "var(--bg)", "var(--bg-side)", "var(--bg-hover)", "var(--bg-code)", "var(--hit)", "var(--accent-soft)"].map(rgb);
     probe.remove();
     if (!c || !bg || !side || !hover || !code || !hit || !soft) return;
-    const d = deriveAccent(c, { bg, side, hover, code, hit, soft });
+    const systemDark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+    const d = deriveAccent(c, { bg, side, hover, code, hit, soft }, themeInUse(this.value, systemDark).minContrast);
     root.style.setProperty("--accent", d.accent);
     root.style.setProperty("--link", d.accent);
     root.style.setProperty("--accent-text", d.text);

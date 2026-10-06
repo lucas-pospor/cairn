@@ -147,6 +147,8 @@
   button:hover,
   button:focus-visible {
     background: var(--accent-soft);
+    /* In the high-contrast themes, a ring as well as the tint. */
+    box-shadow: inset 0 0 0 var(--ring) var(--accent);
   }
   button:focus-visible {
     outline: 2px solid var(--accent);
