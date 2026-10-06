@@ -1,0 +1,91 @@
+// The themes as app.css defines them, for tests (themeContrast.test.ts,
+// accent.test.ts). Not used by the app.
+
+import { readFileSync } from "node:fs";
+import type { AccentTheme, Rgb } from "./accent";
+
+// Vitest turns a CSS import into an empty string, even with ?raw.
+const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
+
+export interface Rule {
+  selector: string;
+  /** The enclosing at-rule, if any (e.g. "@media (prefers-color-scheme: dark)"). */
+  within: string | null;
+  decls: Record<string, string>;
+}
+
+/** The style rules of a stylesheet, one level of at-rule nesting deep. */
+export function rules(text: string): Rule[] {
+  const out: Rule[] = [];
+  const src = text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const re = /([^{}]+)\{([^{}]*)\}|([^{}]+)\{|\}/g;
+  let within: string | null = null;
+  for (const m of src.matchAll(re)) {
+    if (m[3] !== undefined) within = m[3].trim();
+    else if (m[1] !== undefined) {
+      const decls: Record<string, string> = {};
+      for (const d of m[2].split(";")) {
+        const i = d.indexOf(":");
+        if (i > 0) decls[d.slice(0, i).trim()] = d.slice(i + 1).trim();
+      }
+      out.push({ selector: m[1].trim(), within, decls });
+    } else within = null;
+  }
+  return out;
+}
+
+const RULES = rules(css);
+const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
+
+/** The colour tokens of a theme rule (fonts, sizes and the shadow left out). */
+const colours = (r: Rule) => Object.fromEntries(Object.entries(r.decls).filter(([, v]) => /^#[0-9a-f]{3,8}$/i.test(v)));
+
+function rule(selector: string, within: string | null): Rule {
+  const found = RULES.filter((r) => r.selector === selector && r.within === within);
+  if (found.length !== 1) throw new Error(`expected one "${selector}" rule${within ? ` in ${within}` : ""} in app.css, found ${found.length}`);
+  return found[0];
+}
+
+export interface Palette {
+  name: string;
+  scheme: "light" | "dark";
+  tokens: Record<string, string>;
+  /** The system-dark copy of a dark theme, which must equal `tokens`. */
+  systemCopy?: Record<string, string>;
+}
+
+/** The light theme is the plain :root; the dark one is written twice, for the system and for a forced dark. */
+export function palettes(): Palette[] {
+  const light = colours(rule(":root", null));
+  const dark = colours(rule(':root[data-theme="dark"]', null));
+  return [
+    { name: "light", scheme: "light", tokens: light },
+    { name: "dark", scheme: "dark", tokens: dark, systemCopy: colours(rule(':root:not([data-theme="light"])', DARK_MEDIA)) },
+  ];
+}
+
+export function hexRgb(value: string): Rgb {
+  const m = value.match(/^#([0-9a-f]{6})$/i);
+  if (!m) throw new Error(`not a #rrggbb colour: ${value}`);
+  return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) as Rgb;
+}
+
+export const hex = (c: Rgb) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+
+/** A colour expression: "--x", or "--x N% over <expression>" for color-mix(in srgb, var(--x) N%, transparent) laid over it. */
+export function resolve(expr: string, tokens: Record<string, string>): Rgb {
+  const m = expr.match(/^(--[\w-]+)(?: (\d+)% over (.+))?$/);
+  if (!m) throw new Error(`cannot read "${expr}"`);
+  if (!(m[1] in tokens)) throw new Error(`no ${m[1]} in the theme`);
+  const top = hexRgb(tokens[m[1]]);
+  if (m[2] === undefined) return top;
+  const share = Number(m[2]) / 100;
+  const below = resolve(m[3], tokens);
+  return top.map((v, i) => v * share + below[i] * (1 - share)) as Rgb;
+}
+
+/** What deriveAccent needs of a theme, as settings.svelte.ts reads it from the page. */
+export function accentTheme(tokens: Record<string, string>): AccentTheme {
+  const t = (name: string) => hexRgb(tokens[name]);
+  return { bg: t("--bg"), side: t("--bg-side"), hover: t("--bg-hover"), code: t("--bg-code"), soft: t("--accent-soft"), hit: t("--hit") };
+}

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { contrast, deriveAccent, parseRgb, type AccentTheme, type Rgb } from "./accent";
+import { accentTheme, palettes } from "./themes.testutil";
 
 const rgb = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as Rgb;
 
-// The theme tokens from app.css.
-const THEMES: Record<string, AccentTheme> = {
-  light: { bg: rgb("#fbfaf7"), side: rgb("#f3f1ec"), soft: rgb("#f9ebe5") },
-  dark: { bg: rgb("#1d2022"), side: rgb("#181b1d"), soft: rgb("#3d2820") },
-};
+// The themes from app.css.
+const THEMES: Record<string, AccentTheme> = Object.fromEntries(palettes().map((p) => [p.name, accentTheme(p.tokens)]));
+const under = (hit: Rgb, bg: Rgb) => hit.map((v, i) => v * 0.45 + bg[i] * 0.55) as Rgb;
+/** Where accent text is drawn: page, sidebar, hovered row, code, the tint, and under a selection match. */
+const surfaces = (theme: AccentTheme, soft: Rgb) => [theme.bg, theme.side, theme.hover, theme.code, soft, under(theme.hit, theme.bg), under(theme.hit, soft)];
 
 describe("deriveAccent (FINDING-219)", () => {
   for (const [name, theme] of Object.entries(THEMES)) {
@@ -15,8 +16,8 @@ describe("deriveAccent (FINDING-219)", () => {
       it(`${accent} in the ${name} theme: accent text, button text and the tint stay readable`, () => {
         const d = deriveAccent(rgb(accent), theme);
         const [c, text, soft] = [rgb(d.accent), rgb(d.text), rgb(d.soft)];
-        // Links and tags on the page, in the sidebar and on the tint.
-        for (const bg of [theme.bg, theme.side, soft]) expect(contrast(c, bg)).toBeGreaterThanOrEqual(4.5);
+        // Links and tags on every background they are drawn on.
+        for (const bg of surfaces(theme, soft)) expect(contrast(c, bg)).toBeGreaterThanOrEqual(4.5);
         // Primary button text.
         expect(contrast(text, c)).toBeGreaterThanOrEqual(4.5);
         // The tint is no further from --bg than the theme's own, so text that reads on that reads on this.
@@ -25,7 +26,7 @@ describe("deriveAccent (FINDING-219)", () => {
     }
   }
 
-  it("every colour on a coarse grid stays readable in both themes", () => {
+  it("every colour on a coarse grid stays readable in every theme", () => {
     const levels = [0, 37, 73, 110, 146, 183, 219, 255];
     const bad: string[] = [];
     for (const [name, theme] of Object.entries(THEMES))
@@ -34,7 +35,7 @@ describe("deriveAccent (FINDING-219)", () => {
           for (const b of levels) {
             const d = deriveAccent([r, g, b], theme);
             const [c, text, soft] = [rgb(d.accent), rgb(d.text), rgb(d.soft)];
-            const worst = Math.min(contrast(c, theme.bg), contrast(c, theme.side), contrast(c, soft), contrast(text, c));
+            const worst = Math.min(...surfaces(theme, soft).map((bg) => contrast(c, bg)), contrast(text, c));
             if (worst < 4.5) bad.push(`${name} rgb(${r}, ${g}, ${b}): ${worst.toFixed(2)}`);
           }
     expect(bad).toEqual([]);

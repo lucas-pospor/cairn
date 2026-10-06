@@ -2,9 +2,10 @@
 // fill of primary buttons and, as a faint tint, behind tags and selected rows.
 // Taken as-is, many colours are unreadable there, so the accent tokens are
 // derived from it: the colour is shaded (light theme) or lightened (dark theme)
-// only as far as WCAG AA (4.5:1) needs, button text is white or a near-black of
-// the same hue, and the tint stays no further from --bg than the theme's own
-// tint, so text that reads on the theme's tint also reads on it.
+// only as far as WCAG AA (4.5:1) needs on every background accent text is drawn
+// on, button text is white or a near-black of the same hue, and the tint stays
+// no further from --bg than the theme's own tint, so text that reads on the
+// theme's tint also reads on it.
 
 export type Rgb = [number, number, number];
 
@@ -31,10 +32,13 @@ const mix = (a: Rgb, b: Rgb, share: number) => a.map((v, i) => Math.round(v * sh
 const hex = (c: Rgb) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 const WHITE: Rgb = [255, 255, 255], BLACK: Rgb = [0, 0, 0];
 
-/** The theme's --bg, --bg-side and its own --accent-soft. */
+/** The theme's --bg, --bg-side, --bg-hover, --bg-code, --hit and its own --accent-soft. */
 export interface AccentTheme {
   bg: Rgb;
   side: Rgb;
+  hover: Rgb;
+  code: Rgb;
+  hit: Rgb;
   soft: Rgb;
 }
 
@@ -48,7 +52,11 @@ export function deriveAccent(accent: Rgb, theme: AccentTheme): { accent: string;
     while (pct > 2 && contrast(mix(c, theme.bg, pct / 100), theme.bg) > softLimit) pct--;
     return mix(c, theme.bg, pct / 100);
   };
-  const readable = (c: Rgb, soft: Rgb) => Math.min(contrast(c, theme.bg), contrast(c, theme.side), contrast(c, soft)) >= 4.5;
+  // Links and tags sit on the page, sidebars, hovered rows, code, the tint, and
+  // under a match of the selected word (--hit at 45%, app.css .cm-selectionMatch).
+  const under = (bg: Rgb) => theme.hit.map((v, i) => v * 0.45 + bg[i] * 0.55) as Rgb;
+  const readable = (c: Rgb, soft: Rgb) =>
+    [theme.bg, theme.side, theme.hover, theme.code, soft, under(theme.bg), under(soft)].every((bg) => contrast(c, bg) >= 4.5);
   let c = accent;
   let soft = tint(c);
   for (let step = 1; !readable(c, soft) && step <= 50; step++) {

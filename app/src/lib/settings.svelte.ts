@@ -176,10 +176,10 @@ class SettingsStore {
       probe.style.color = css;
       return parseRgb(getComputedStyle(probe).color);
     };
-    const [c, bg, side, soft] = [accent, "var(--bg)", "var(--bg-side)", "var(--accent-soft)"].map(rgb);
+    const [c, bg, side, hover, code, hit, soft] = [accent, "var(--bg)", "var(--bg-side)", "var(--bg-hover)", "var(--bg-code)", "var(--hit)", "var(--accent-soft)"].map(rgb);
     probe.remove();
-    if (!c || !bg || !side || !soft) return;
-    const d = deriveAccent(c, { bg, side, soft });
+    if (!c || !bg || !side || !hover || !code || !hit || !soft) return;
+    const d = deriveAccent(c, { bg, side, hover, code, hit, soft });
     root.style.setProperty("--accent", d.accent);
     root.style.setProperty("--link", d.accent);
     root.style.setProperty("--accent-text", d.text);

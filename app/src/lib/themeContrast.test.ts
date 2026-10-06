@@ -6,11 +6,9 @@
 //
 // Run: cd app && npx vitest run src/lib/themeContrast.test.ts
 
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { contrast, type Rgb } from "./accent";
-
-const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
+import { contrast, deriveAccent, type Rgb } from "./accent";
+import { accentTheme, hex, hexRgb, palettes, resolve, rules } from "./themes.testutil";
 
 /** Text: foreground -> background -> where. */
 const TEXT: Record<string, Record<string, string>> = {
@@ -112,83 +110,10 @@ const UI: Record<string, Record<string, string>> = {
   "--text-faint": { "--bg-hover": "chevrons on hovered rows" },
 };
 
-// ---------- reading app.css ----------
-
-interface Rule {
-  selector: string;
-  /** The enclosing at-rule, if any (e.g. "@media (prefers-color-scheme: dark)"). */
-  within: string | null;
-  decls: Record<string, string>;
-}
-
-/** The style rules of a stylesheet, one level of at-rule nesting deep. */
-function rules(text: string): Rule[] {
-  const out: Rule[] = [];
-  const src = text.replace(/\/\*[\s\S]*?\*\//g, "");
-  const re = /([^{}]+)\{([^{}]*)\}|([^{}]+)\{|\}/g;
-  let within: string | null = null;
-  for (const m of src.matchAll(re)) {
-    if (m[3] !== undefined) within = m[3].trim();
-    else if (m[1] !== undefined) {
-      const decls: Record<string, string> = {};
-      for (const d of m[2].split(";")) {
-        const i = d.indexOf(":");
-        if (i > 0) decls[d.slice(0, i).trim()] = d.slice(i + 1).trim();
-      }
-      out.push({ selector: m[1].trim(), within, decls });
-    } else within = null;
-  }
-  return out;
-}
-
-const RULES = rules(css);
-const DARK_MEDIA = "@media (prefers-color-scheme: dark)";
-
-/** The colour tokens of a palette rule (fonts, sizes and the shadow left out). */
-const colours = (r: Rule) => Object.fromEntries(Object.entries(r.decls).filter(([, v]) => /^#[0-9a-f]{3,8}$/i.test(v)));
-
-function rule(selector: string, within: string | null): Rule {
-  const found = RULES.filter((r) => r.selector === selector && r.within === within);
-  if (found.length !== 1) throw new Error(`expected one "${selector}" rule${within ? ` in ${within}` : ""} in app.css, found ${found.length}`);
-  return found[0];
-}
-
-interface Palette {
-  name: string;
-  scheme: "light" | "dark";
-  tokens: Record<string, string>;
-  /** The system-dark copy of a dark theme, which must equal `tokens`. */
-  systemCopy?: Record<string, string>;
-}
-
-/** The light theme is the plain :root; the dark one is written twice, for the system and for a forced dark. */
-function palettes(): Palette[] {
-  const light = colours(rule(":root", null));
-  const dark = colours(rule(':root[data-theme="dark"]', null));
-  return [
-    { name: "light", scheme: "light", tokens: light },
-    { name: "dark", scheme: "dark", tokens: dark, systemCopy: colours(rule(':root:not([data-theme="light"])', DARK_MEDIA)) },
-  ];
-}
-
-// ---------- colours ----------
-
-function hexRgb(value: string): Rgb {
-  const m = value.match(/^#([0-9a-f]{6})$/i);
-  if (!m) throw new Error(`not a #rrggbb colour: ${value}`);
-  return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) as Rgb;
-}
-
-/** A background expression: "--x" or "--x N% over <background>". */
-function resolve(expr: string, tokens: Record<string, string>): Rgb {
-  const m = expr.match(/^(--[\w-]+)(?: (\d+)% over (.+))?$/);
-  if (!m) throw new Error(`cannot read "${expr}"`);
-  if (!(m[1] in tokens)) throw new Error(`no ${m[1]} in the theme`);
-  const top = hexRgb(tokens[m[1]]);
-  if (m[2] === undefined) return top;
-  const share = Number(m[2]) / 100;
-  const below = resolve(m[3], tokens);
-  return top.map((v, i) => v * share + below[i] * (1 - share)) as Rgb;
+/** Contrast of a primary button's label while hovered (filter: brightness(1.06)). */
+function hoveredButton(tokens: Record<string, string>): number {
+  const bright = (v: string) => hexRgb(tokens[v]).map((c) => Math.min(255, c * 1.06)) as Rgb;
+  return contrast(bright("--accent-text"), bright("--accent"));
 }
 
 /** Every pair below its minimum, as "fg on bg (where): ratio". */
@@ -216,8 +141,22 @@ describe("theme contrast", () => {
     });
 
     it(`the ${p.name} theme: a primary button stays readable when hovered (brightness 1.06)`, () => {
-      const bright = (v: string) => hexRgb(p.tokens[v]).map((c) => Math.min(255, c * 1.06)) as Rgb;
-      expect(contrast(bright("--accent-text"), bright("--accent"))).toBeGreaterThanOrEqual(4.5);
+      expect(hoveredButton(p.tokens)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it(`the ${p.name} theme: a custom accent is adjusted until it meets WCAG AA wherever the accent is used`, () => {
+      const levels = [0, 37, 73, 110, 146, 183, 219, 255];
+      const bad: string[] = [];
+      for (const r of levels)
+        for (const g of levels)
+          for (const b of levels) {
+            const d = deriveAccent([r, g, b], accentTheme(p.tokens));
+            const tokens = { ...p.tokens, "--accent": d.accent, "--link": d.accent, "--accent-text": d.text, "--accent-soft": d.soft };
+            const fails = failures(tokens, (fg, bg) => /--accent|--link/.test(`${fg} ${bg}`));
+            if (hoveredButton(tokens) < 4.5) fails.push("hovered primary button");
+            bad.push(...fails.map((f) => `${hex([r, g, b])}: ${f}`));
+          }
+      expect(bad).toEqual([]);
     });
   }
 

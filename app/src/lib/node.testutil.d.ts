@@ -1,6 +1,6 @@
 // Types for the Node built-ins that tests use: node:buffer and node:vm, which
 // adv_verify_pl_09.test.ts uses to run the plugin host's real worker bootstrap
-// under Vitest, and node:fs, which themeContrast.test.ts uses to read app.css
+// under Vitest, and node:fs, which themes.testutil.ts uses to read app.css
 // (Vitest turns a CSS import into an empty string, even with ?raw).
 //
 // The app runs in a webview, so its tsconfig leaves out @types/node on purpose:
