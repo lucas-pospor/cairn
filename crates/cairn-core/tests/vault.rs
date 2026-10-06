@@ -150,6 +150,24 @@ fn create_refuses_names_that_differ_only_in_case() {
     assert!(!fs::read_dir(d.path()).unwrap().any(|e| e.unwrap().file_name() == "dir"));
 }
 
+/// Device names (CON, NUL, COM1, ...) are refused for new notes and folders
+/// and for the user's renames. Sync applies renames from other devices with
+/// `rename`, which takes them (on Windows the file system refuses them).
+#[test]
+fn device_names_are_refused_for_new_entries_and_renames_in_the_app() {
+    let (d, v) = setup(&[("a.md", "a")]);
+    for p in ["con.md", "Nul.md", "aux/x.md"] {
+        assert!(matches!(v.create_note(p, ""), Err(CoreError::InvalidName(_))), "{p}");
+    }
+    assert!(matches!(v.create_folder("COM1"), Err(CoreError::InvalidName(_))));
+    assert!(matches!(v.create_file("lpt1.png", b"x"), Err(CoreError::InvalidName(_))));
+    assert!(matches!(v.check_rename("a.md", "aux.md"), Err(CoreError::InvalidName(_))));
+    if !cfg!(windows) {
+        v.rename("a.md", "aux.md").unwrap();
+        assert!(d.path().join("aux.md").is_file());
+    }
+}
+
 #[test]
 fn renames_in_the_app_refuse_names_that_differ_only_in_case() {
     let (d, v) = setup(&[

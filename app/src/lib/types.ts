@@ -94,7 +94,7 @@ export function errorMessage(e: unknown): string {
       case "alreadyExists":
         return `Something named "${e.detail}" already exists.`;
       case "invalidName":
-        return `"${e.detail}" is not a valid name. Avoid / \\ : * ? " < > | [ ] # ^ and leading dots.`;
+        return `"${e.detail}" is not a valid name. Avoid / \\ : * ? " < > | [ ] # ^, leading dots and names Windows keeps for devices, such as CON or NUL.`;
       case "invalidPath":
         return `Invalid path: ${e.detail}`;
       case "conflict":

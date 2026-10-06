@@ -277,6 +277,15 @@ impl Vault {
         vpath::validate_name(vpath::file_name(path))
     }
 
+    /// `check_new_path` for the new path of a rename, where a device name
+    /// is taken: sync applies renames from other devices with `rename`.
+    fn check_moved_path(path: &str) -> Result<()> {
+        if path.is_empty() || vpath::is_hidden(path) {
+            return Err(CoreError::InvalidPath(path.to_string()));
+        }
+        vpath::validate_any_name(vpath::file_name(path))
+    }
+
     /// Refuse a new `path` when a folder that creating it would add on the
     /// way (`bad:dir` in `bad:dir/x.md`) has a name `validate_name` rejects.
     /// Folders that exist keep whatever name they have.
@@ -552,6 +561,11 @@ impl Vault {
     pub fn check_rename(&self, from: &str, to: &str) -> Result<()> {
         let from = vpath::normalize(from)?;
         let to = vpath::normalize(to)?;
+        // Not to a device name either, which `rename` takes from sync.
+        let name = vpath::file_name(&to);
+        if vpath::is_reserved_name(name) {
+            return Err(CoreError::InvalidName(name.to_string()));
+        }
         Self::check_case_twins(&self.index.read(), &to, Some(&from))
     }
 
@@ -565,7 +579,7 @@ impl Vault {
         if from == to {
             return Ok(Vec::new());
         }
-        Self::check_new_path(&to)?;
+        Self::check_moved_path(&to)?;
         if vpath::is_inside(&to, &from) {
             return Err(CoreError::MoveIntoSelf(from));
         }

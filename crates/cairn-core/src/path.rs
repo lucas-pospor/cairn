@@ -133,8 +133,21 @@ pub fn rebase(p: &str, from: &str, to: &str) -> String {
 pub const FORBIDDEN_NAME_CHARS: &[char] =
     &['/', '\\', ':', '*', '?', '"', '<', '>', '|', '[', ']', '#', '^'];
 
-/// Check a single new file or folder name chosen by the user.
+/// Check a single new file or folder name chosen by the user: the checks
+/// of [`validate_any_name`], and no device name (see [`is_reserved_name`]).
 pub fn validate_name(name: &str) -> Result<()> {
+    validate_any_name(name)?;
+    if is_reserved_name(name) {
+        return Err(CoreError::InvalidName(name.to_string()));
+    }
+    Ok(())
+}
+
+/// Check a name for a file or folder that Cairn makes or moves: not empty,
+/// no space at either end, no dot at the start or the end, and none of
+/// [`FORBIDDEN_NAME_CHARS`] or control characters. Device names are not
+/// checked: sync takes a rename to such a name from another device.
+pub fn validate_any_name(name: &str) -> Result<()> {
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed != name {
         return Err(CoreError::InvalidName(name.to_string()));
@@ -146,6 +159,24 @@ pub fn validate_name(name: &str) -> Result<()> {
         return Err(CoreError::InvalidName(name.to_string()));
     }
     Ok(())
+}
+
+/// True if Windows keeps `name` for a device: CON, PRN, AUX, NUL, COM0 to
+/// COM9 and LPT0 to LPT9 (also with ¹, ² or ³), CONIN$ and CONOUT$, in any
+/// case and with any extension. Many Windows programs, File Explorer among
+/// them, cannot open, rename or delete a file or folder with such a name.
+pub fn is_reserved_name(name: &str) -> bool {
+    // Windows ignores spaces, and only spaces, before the extension.
+    let stem = name.split('.').next().unwrap_or_default().trim_end_matches(' ').to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" => true,
+        s => {
+            let mut rest = s.get(3..).unwrap_or_default().chars();
+            (s.starts_with("COM") || s.starts_with("LPT"))
+                && rest.next().is_some_and(|c| c.is_ascii_digit() || "¹²³".contains(c))
+                && rest.next().is_none()
+        }
+    }
 }
 
 /// `s` with every character [`validate_name`] refuses inside a name
@@ -248,9 +279,15 @@ mod tests {
     fn names() {
         assert!(validate_name("Hello world").is_ok());
         assert!(validate_name("Ünïcödé 日本").is_ok());
-        for bad in ["", " x", "x ", "a/b", "a:b", "[x]", "a#b", ".hidden", "end."] {
+        for bad in ["", " x", "x ", "a/b", "a:b", "[x]", "a#b", ".hidden", "end.", "con", "Nul.md", "aux.tar.gz", "COM1", "lpt9.md", "com²"] {
             assert!(validate_name(bad).is_err(), "{bad} should be rejected");
         }
+        // Device names only as a whole stem, and only spaces before the dot.
+        for ok in ["console.md", "com10.md", "lpt.md", "a nul.md", "nul-notes.md", "com0x", "con\u{3000}.md", "aux\u{a0}.md"] {
+            assert!(validate_name(ok).is_ok(), "{ok} should be allowed");
+        }
+        // Sync takes a device name from another device.
+        assert!(validate_any_name("aux.md").is_ok());
         assert_eq!(sanitize_name_part("Sam's Pixel? [old] #2\t"), "Sam's Pixel- -old- -2-");
         assert_eq!(sanitize_name_part("a/b\\c:d"), "a-b-c-d");
         assert_eq!(sanitize_name_part("cafe\u{301}"), "caf\u{e9}");

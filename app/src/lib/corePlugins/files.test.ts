@@ -52,6 +52,10 @@ describe("notePathProblem", () => {
     expect(notePathProblem("Journal /a.md")).toBe('"Journal " starts or ends with a space.');
     expect(notePathProblem("dots./a.md")).toBe('"dots." ends with a dot.');
     expect(notePathProblem("a\tb.md")).toBe('"a\tb.md" contains a control character.');
+    expect(notePathProblem("con.md")).toBe('"con.md" is a name Windows keeps for a device.');
+    for (const p of ["NUL.md", "Journal/com1.md", "lpt9.md", "com².md", "aux .tar.md"]) expect(notePathProblem(p), p).toMatch(/Windows keeps for a device/);
+    // Only the note's own name, and only spaces before the dot, as in the core.
+    for (const p of ["console.md", "com10.md", "lpt.md", "nul-notes.md", "a nul.md", "Aux/2026-10-06.md", "con\u3000.md", "con\ufeff.md"]) expect(notePathProblem(p), p).toBeNull();
   });
 
   it("refuses a name longer than 255 bytes", () => {

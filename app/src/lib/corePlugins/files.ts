@@ -34,10 +34,15 @@ export function noteOption(value: string): string {
 // What cairn-core (path.rs, validate_name) refuses in the name of a new file or folder.
 const FORBIDDEN = /[\\:*?"<>|[\]#^]/;
 const NAME_MAX = 255;
+// Names Windows keeps for devices, with any extension and spaces before it
+// (path.rs, is_reserved_name). Refused for the note's own name: a folder that
+// is there keeps its name.
+const RESERVED = /^(con|prn|aux|nul|conin\$|conout\$|(com|lpt)[0-9¹²³]) *$/i;
 
 /** Why a new note cannot be created at `path`, as the core sees it, or null when it can. */
 export function notePathProblem(path: string): string | null {
-  for (const part of path.split("/")) {
+  const parts = path.split("/");
+  for (const [i, part] of parts.entries()) {
     if (!part) return "A folder name in it is empty.";
     if (part.trim() !== part) return `"${part}" starts or ends with a space.`;
     if (part.startsWith(".")) return `"${part}" starts with a dot, which would hide it.`;
@@ -45,6 +50,7 @@ export function notePathProblem(path: string): string | null {
     if (bad) return `"${part}" contains ${bad}, which names cannot contain.`;
     if (/\p{Cc}/u.test(part)) return `"${part}" contains a control character.`;
     if (part.endsWith(".")) return `"${part}" ends with a dot.`;
+    if (i === parts.length - 1 && RESERVED.test(part.split(".")[0])) return `"${part}" is a name Windows keeps for a device.`;
     if (new TextEncoder().encode(part).length > NAME_MAX) return `"${part.slice(0, 20)}…" is too long for a file name.`;
   }
   return null;
