@@ -18,6 +18,8 @@ import { toggleWrap, toggleTask, insertWikilink } from "./editor/format";
 import { lineBreaksOf, textWithLineBreaks } from "./editor/lineBreaks";
 import { isMobile, narrowQuery } from "./platform";
 import { PluginHost } from "./plugins";
+import { coreCommands, type CoreHost } from "./corePlugins/core";
+import { CORE_PLUGINS } from "./corePlugins";
 
 export type ViewMode = "live" | "source" | "preview" | "split";
 
@@ -73,7 +75,7 @@ export interface Toast {
   ms: number;
 }
 
-export type SettingsSection = "appearance" | "editor" | "files" | "sync" | "plugins" | "hotkeys";
+export type SettingsSection = "appearance" | "editor" | "files" | "sync" | "core-plugins" | "plugins" | "hotkeys";
 
 export type Dialog =
   | { kind: "prompt"; title: string; value: string; okLabel: string; selectStem?: boolean; resolve: (v: string | null) => void }
@@ -146,6 +148,14 @@ class App {
     notice: (m) => this.toast(m, "info", 0),
     disable: (file) => settings.update({ plugins: settings.value.plugins.filter((f) => f !== file) }),
   });
+
+  /** What core plugins can see and do (corePlugins/core.ts). */
+  readonly coreHost: CoreHost = {
+    files: () => this.filePaths,
+    folders: () => this.entries.filter((e) => e.kind === "dir").map((e) => e.path),
+    toast: (m, kind) => this.toast(m, kind),
+    now: () => new Date(),
+  };
 
   view: EditorView | null = null;
   /** The tab whose document the editor view currently shows. */
@@ -1095,6 +1105,7 @@ class App {
       { id: "editor:task", name: "Toggle checkbox", run: this.editorCmd(toggleTask), defaultKeys: ["Mod+L"], available: editor },
       { id: "editor:link", name: "Insert internal link", run: this.editorCmd(insertWikilink), defaultKeys: ["Mod+K"], available: editor },
       { id: "editor:follow-link", name: "Follow link under cursor", run: this.editorCmd((v) => this.followLink(v)), defaultKeys: ["Alt+Enter"], available: editor },
+      ...coreCommands(CORE_PLUGINS, this.coreHost),
     ]);
   }
 

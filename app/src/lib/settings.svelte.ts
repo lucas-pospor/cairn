@@ -22,6 +22,11 @@ export interface Settings {
   spellcheck: boolean;
   /** Enabled plugin files in `.cairn/plugins`. */
   plugins: string[];
+  /**
+   * Core plugins: the switches and options the user changed, by plugin id (see
+   * corePlugins/core.ts). Kept as read, whatever it holds, and not written until set.
+   */
+  corePlugins?: unknown;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -11,6 +11,8 @@
   import Icon from "./Icon.svelte";
   import type { PluginInfo } from "../plugins";
   import { errorMessage } from "../types";
+  import { CORE_PLUGINS } from "../corePlugins";
+  import { option, pluginOn as corePluginOn, setOption, setPluginOn, type CorePlugin } from "../corePlugins/core";
 
   const PERMISSION_TEXT: Record<string, string> = {
     read: "read all notes",
@@ -118,11 +120,33 @@
     set("snippets", on ? [...s.snippets, name] : s.snippets.filter((n) => n !== name));
   }
 
+  // ----- core plugins -----
+  // What is typed in an option field, by "<plugin id>.<key>": the example under it follows the
+  // typing, and the value is saved when the field changes (or when Settings closes).
+  let drafts = $state<Record<string, string>>({});
+
+  function saveOption(p: CorePlugin, key: string, value: string) {
+    delete drafts[`${p.id}.${key}`];
+    if (value.trim() !== option(p, key)) setOption(p, key, value.trim());
+  }
+
+  function saveDrafts() {
+    for (const [k, value] of Object.entries(drafts)) {
+      const i = k.indexOf(".");
+      const p = CORE_PLUGINS.find((x) => x.id === k.slice(0, i));
+      if (p) saveOption(p, k.slice(i + 1), value);
+    }
+  }
+
   // ----- hotkeys -----
   let hotkeyFilter = $state("");
   let recordingFor = $state<string | null>(null);
-  // Every command, also those that need an open note: they can be bound at any time.
-  const allCommands = commands.registered().sort((a, b) => a.name.localeCompare(b.name));
+  // Every command, also those that need an open note: they can be bound at any time. Those of
+  // core plugins that are off are left out, and come back when the plugin is turned on.
+  const allCommands = $derived.by(() => {
+    void s.corePlugins;
+    return commands.bindable().sort((a, b) => a.name.localeCompare(b.name));
+  });
   let shownCommands = $derived(allCommands.filter((c) => c.name.toLowerCase().includes(hotkeyFilter.toLowerCase())));
   let version = $state(0); // bumped after changes to overrides
 
@@ -260,6 +284,7 @@
       window.removeEventListener("keydown", onKey, true);
       setRecordingHotkey(false);
       offBack();
+      saveDrafts();
     };
   });
 </script>
@@ -274,7 +299,7 @@
   <div class="settings" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1" bind:this={dialog} use:modal={{ close: escape, opener }} data-testid="settings">
     <nav>
       <h2>Settings</h2>
-      {#each [["appearance", "Appearance"], ["editor", "Editor"], ["files", "Files and links"], ["sync", "Sync"], ["plugins", "Plugins"], ["hotkeys", "Hotkeys"]] as [id, label]}
+      {#each [["appearance", "Appearance"], ["editor", "Editor"], ["files", "Files and links"], ["sync", "Sync"], ["core-plugins", "Core plugins"], ["plugins", "Plugins"], ["hotkeys", "Hotkeys"]] as [id, label]}
         <button
           class:on={section === id}
           aria-current={section === id ? "page" : undefined}
@@ -443,6 +468,55 @@
             </div>
           </form>
         {/if}
+      {:else if section === "core-plugins"}
+        <h3>Core plugins</h3>
+        <p class="muted">Optional features that come with Cairn. They need no approval, and their settings are saved in this vault.</p>
+        {#each CORE_PLUGINS as p (p.id)}
+          {@const on = corePluginOn(p)}
+          <div class="row" data-testid="core-plugin-row" data-id={p.id}>
+            <div><b id="{uid}-cp-{p.id}">{p.name}</b><p id="{uid}-cp-{p.id}-d">{p.description}</p></div>
+            <input
+              type="checkbox"
+              aria-labelledby="{uid}-cp-{p.id}"
+              aria-describedby="{uid}-cp-{p.id}-d"
+              checked={on}
+              onchange={(e) => setPluginOn(p, e.currentTarget.checked)}
+              data-testid="core-plugin-toggle"
+            />
+          </div>
+          {#if on}
+            {#each p.options as o (o.key)}
+              {@const k = `${p.id}.${o.key}`}
+              {@const value = drafts[k] ?? option(p, o.key)}
+              {@const check = o.check?.(value.trim(), app.coreHost)}
+              {@const id = `${uid}-cp-${p.id}-${o.key}`}
+              <div class="row option" data-testid="core-plugin-option" data-id={p.id} data-key={o.key}>
+                <div>
+                  <b id={id}>{o.label}</b>
+                  <p id="{id}-d">{o.description}</p>
+                  {#if check?.problem}
+                    <p class="err" id="{id}-c" data-testid="core-plugin-problem">{check.problem}</p>
+                  {:else if check?.example}
+                    <p id="{id}-c" data-testid="core-plugin-example">{check.example}</p>
+                  {/if}
+                </div>
+                <input
+                  class="text-input narrow"
+                  aria-labelledby={id}
+                  aria-describedby="{id}-d{check?.problem || check?.example ? ` ${id}-c` : ''}"
+                  {value}
+                  placeholder={o.placeholder}
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                  oninput={(e) => (drafts[k] = e.currentTarget.value)}
+                  onchange={(e) => saveOption(p, o.key, e.currentTarget.value)}
+                  data-testid="core-plugin-input"
+                />
+              </div>
+            {/each}
+          {/if}
+        {/each}
       {:else if section === "plugins"}
         <h3>Plugins</h3>
         <p class="muted">
@@ -600,6 +674,9 @@
   }
   .row.snippet {
     padding: 6px 0;
+  }
+  .row.option {
+    padding-left: 20px;
   }
   .skipped code {
     overflow-wrap: anywhere;

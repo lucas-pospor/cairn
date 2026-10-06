@@ -11,6 +11,11 @@ export interface Command {
   defaultKeys?: string[];
   /** Hidden from the palette when false. */
   available?: () => boolean;
+  /**
+   * False while the core plugin the command belongs to is off: it is then left out of
+   * the palette and the hotkey list, and its keys do nothing (they stay saved).
+   */
+  enabled?: () => boolean;
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -85,6 +90,8 @@ export function displayCombo(combo: string): string {
     .join("");
 }
 
+const canRun = (c: Command) => (c.enabled?.() ?? true) && (c.available?.() ?? true);
+
 export class CommandRegistry {
   private commands = new Map<string, Command>();
   private overrides: Record<string, string[]> = {};
@@ -104,12 +111,17 @@ export class CommandRegistry {
 
   /** The commands that can run now (the palette's list). */
   all(): Command[] {
-    return this.registered().filter((c) => c.available?.() ?? true);
+    return this.registered().filter((c) => canRun(c));
   }
 
-  /** Every command, whether it can run now or not (the hotkey list). */
+  /** Every command, whether it can run now or not. */
   registered(): Command[] {
     return [...this.commands.values()];
+  }
+
+  /** The commands the hotkey list shows: also those that cannot run now, but not those of core plugins that are off. */
+  bindable(): Command[] {
+    return this.registered().filter((c) => c.enabled?.() ?? true);
   }
 
   get(id: string) {
@@ -128,12 +140,15 @@ export class CommandRegistry {
   /** Command bound to a combo, honoring overrides. */
   lookup(combo: string): Command | null {
     for (const c of this.commands.values()) {
-      if (this.keysFor(c.id).includes(combo) && (c.available?.() ?? true)) return c;
+      if (this.keysFor(c.id).includes(combo) && canRun(c)) return c;
     }
     return null;
   }
 
-  /** Other commands already using a combo (for conflict warnings). */
+  /**
+   * Other commands already using a combo (for conflict warnings). Those of core plugins
+   * that are off count too, so the combo does not run two commands once they are on again.
+   */
   conflicts(combo: string, exceptId: string): Command[] {
     return [...this.commands.values()].filter((c) => c.id !== exceptId && this.keysFor(c.id).includes(combo));
   }
