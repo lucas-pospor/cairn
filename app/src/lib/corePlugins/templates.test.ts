@@ -66,6 +66,10 @@ function fakeHost(files: string[], opts: { open?: string | null; choose?: string
       choices.push(options);
       return opts.choose === undefined ? (options[0]?.value ?? null) : opts.choose;
     },
+    createNote: async () => {
+      throw new Error("Templates creates no notes");
+    },
+    openNote: async () => {},
     toast: (m) => void toasts.push(m),
     now: () => NOW,
   };
@@ -171,19 +175,20 @@ describe("Insert template", () => {
 describe("Settings examples", () => {
   const [folder, date, time] = templates.options;
   const { host } = fakeHost(["Templates/A.md", "Templates/B/C.md", "Notes/x.md"]);
+  const get = () => "";
 
   it("counts the templates in the folder, or says what is wrong with it", () => {
-    expect(folder.check?.("Templates", host)).toEqual({ example: "2 templates" });
-    expect(folder.check?.("Templates/B", host)).toEqual({ example: "1 template" });
-    expect(folder.check?.("Notes/", host)).toEqual({ example: "1 template" });
-    expect(folder.check?.("Missing", host)).toEqual({ example: "There is no folder named Missing yet." });
-    expect(folder.check?.("", host)).toEqual({ problem: "Choose a folder to use templates." });
-    expect(folder.check?.(".cairn/templates", host)?.problem).toMatch(/start with a dot/);
+    expect(folder.check?.("Templates", host, get)).toEqual({ example: "2 templates" });
+    expect(folder.check?.("Templates/B", host, get)).toEqual({ example: "1 template" });
+    expect(folder.check?.("Notes/", host, get)).toEqual({ example: "1 template" });
+    expect(folder.check?.("Missing", host, get)).toEqual({ example: "There is no folder named Missing yet." });
+    expect(folder.check?.("", host, get)).toEqual({ problem: "Choose a folder to use templates." });
+    expect(folder.check?.(".cairn/templates", host, get)?.problem).toMatch(/start with a dot/);
   });
 
   it("shows today's date and the time in the chosen formats", () => {
-    expect(date.check?.("dddd D MMMM", host)).toEqual({ example: "Today: Monday 5 October" });
-    expect(date.check?.("", host)).toEqual({ example: "Today: 2026-10-05" });
-    expect(time.check?.("h:mm a", host)).toEqual({ example: "Now: 9:04 am" });
+    expect(date.check?.("dddd D MMMM", host, get)).toEqual({ example: "Today: Monday 5 October" });
+    expect(date.check?.("", host, get)).toEqual({ example: "Today: 2026-10-05" });
+    expect(time.check?.("h:mm a", host, get)).toEqual({ example: "Now: 9:04 am" });
   });
 });

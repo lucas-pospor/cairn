@@ -488,7 +488,7 @@
             {#each p.options as o (o.key)}
               {@const k = `${p.id}.${o.key}`}
               {@const value = drafts[k] ?? option(p, o.key)}
-              {@const check = o.check?.(value.trim(), app.coreHost)}
+              {@const check = o.check?.(value.trim(), app.coreHost, (key) => (drafts[`${p.id}.${key}`] ?? option(p, key)).trim())}
               {@const id = `${uid}-cp-${p.id}-${o.key}`}
               <div class="row option" data-testid="core-plugin-option" data-id={p.id} data-key={o.key}>
                 <div>

@@ -1,6 +1,7 @@
-// The core plugins, in the order Settings > Core plugins lists them.
+// The core plugins, in the order Settings > Core plugins lists them (by name).
 
 import type { CorePlugin } from "./core";
+import { dailyNotes } from "./dailyNotes";
 import { templates } from "./templates";
 
-export const CORE_PLUGINS: CorePlugin[] = [templates];
+export const CORE_PLUGINS: CorePlugin[] = [dailyNotes, templates];

@@ -74,7 +74,10 @@ test("lists each core plugin with its switch", async () => {
   const rows = await app.exec(
     `return [...document.querySelectorAll('[data-testid=core-plugin-row]')].map((r) => [r.dataset.id, r.querySelector('b').textContent, r.querySelector('[data-testid=core-plugin-toggle]').checked])`,
   );
-  assert.deepEqual(rows, [["templates", "Templates", true]]);
+  assert.deepEqual(rows, [
+    ["daily-notes", "Daily notes", true],
+    ["templates", "Templates", true],
+  ]);
   await app.closeSettings();
 });
 

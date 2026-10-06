@@ -18,6 +18,8 @@
   import { recordingHotkey } from "../hotkeyRecorder";
   import { closeOnBack } from "../back";
   import { drawer } from "../modal";
+  import { pluginOn } from "../corePlugins/core";
+  import { dailyNotes } from "../corePlugins/dailyNotes";
 
   const load = (k: string, d: number) => {
     try {
@@ -128,6 +130,9 @@
         ><Icon name="tag" /></button
       >
       <span class="grow"></span>
+      {#if pluginOn(dailyNotes)}
+        <button class="icon-btn" title="Open today's note" onclick={() => commands.run("daily-notes:today")} data-testid="open-today"><Icon name="calendar" /></button>
+      {/if}
       <button class="icon-btn" title="Graph view" onclick={() => app.openGraph()} data-testid="open-graph"><Icon name="graph" /></button>
       <button class="icon-btn" title="Command palette" onclick={() => app.openOverlay("palette")}><Icon name="command" /></button>
       <button class="icon-btn" title="Settings" onclick={() => app.openOverlay("settings")} data-testid="open-settings"><Icon name="settings" /></button>

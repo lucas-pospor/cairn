@@ -167,6 +167,11 @@ class App {
     },
     readNote: async (path) => (await backend.readNote(path)).content,
     choose: (title, options) => this.choose({ title, options }),
+    createNote: async (path, content) => {
+      await backend.createNote(path, content);
+      await this.refreshEntries();
+    },
+    openNote: (path, newTab = false) => this.openNote(path, { newTab }),
     toast: (m, kind) => this.toast(m, kind),
     now: () => new Date(),
   };

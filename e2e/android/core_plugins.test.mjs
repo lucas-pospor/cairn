@@ -7,7 +7,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { Device, adb, sleep, closeSettings, eventually, writeAppFile, readAppFile, rescan, APP_DATA } from "./adv_helpers.mjs";
+import { Device, adb, sleep, closeSettings, eventually, writeAppFile, readAppFile, rescan, runAs, APP_DATA } from "./adv_helpers.mjs";
 
 const d = new Device();
 const VAULT = `${APP_DATA}/vaults/Core`;
@@ -110,4 +110,27 @@ test("turning Templates off with a tap hides its toolbar button and options", as
   await eventually(() => settingsOnDevice().corePlugins?.templates?.on === true, { message: "switch saved" });
   await closeSettings(d);
   await d.waitFor(`!!document.querySelector('[data-testid=toolbar-template]')`);
+});
+
+test("the Today button in the Files drawer creates today's note, then opens the same one", async () => {
+  // The phone's date, which may differ from this computer's.
+  const today = await d.eval(`(() => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); })()`);
+  const file = `${VAULT}/${today}.md`;
+  await openDrawer();
+  await d.waitFor(`document.querySelector('[data-testid=open-today]')?.nextElementSibling?.dataset.testid === 'open-graph'`);
+  await tap("[data-testid=open-today]");
+  await d.waitFor(`document.querySelector('.mobile-title')?.textContent.trim() === ${JSON.stringify(today)}`);
+  // The drawer closed over the note.
+  await d.waitFor(`document.querySelector('aside.left').classList.contains('hidden')`);
+  await eventually(() => runAs(`ls ${VAULT}`).split(/\s+/).includes(`${today}.md`), { message: "note on the phone" });
+  await d.append("Phone entry.");
+  await eventually(() => readAppFile(file) === "Phone entry.", { message: "saved" });
+
+  await d.openNote("Visit.md", { contains: "Start" });
+  await openDrawer();
+  await tap("[data-testid=open-today]");
+  await d.waitFor(`document.querySelector('.mobile-title')?.textContent.trim() === ${JSON.stringify(today)}`);
+  assert.equal(await doc(), "Phone entry.");
+  assert.equal(readAppFile(file), "Phone entry.");
+  await d.shot("core-plugins-today.png");
 });

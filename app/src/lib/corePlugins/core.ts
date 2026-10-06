@@ -40,6 +40,13 @@ export interface CoreHost {
   readNote(path: string): Promise<string>;
   /** Let the user pick one of `options`; null if they cancel. */
   choose(title: string, options: { value: string; label: string }[]): Promise<string | null>;
+  /**
+   * Create a note (and the folders on the way). Never over anything: if a file or folder
+   * is at `path`, or one whose name differs only in case, it fails with a CoreError
+   * "alreadyExists" whose detail is the path that is there.
+   */
+  createNote(path: string, content: string): Promise<void>;
+  openNote(path: string, newTab?: boolean): Promise<void>;
   toast(message: string, kind?: "info" | "error"): void;
   now(): Date;
 }
@@ -50,8 +57,11 @@ export interface CoreOption {
   description: string;
   /** Shown in the field while it is empty. */
   placeholder?: string;
-  /** An example of what `value` gives, or why it cannot work. Settings shows it under the field. */
-  check?(value: string, host: CoreHost): { example?: string; problem?: string };
+  /**
+   * An example of what `value` gives, or why it cannot work; Settings shows it under the
+   * field. `get` gives the plugin's other options as they are in Settings at the moment.
+   */
+  check?(value: string, host: CoreHost, get: (key: string) => string): { example?: string; problem?: string };
 }
 
 export interface CoreCommand {
