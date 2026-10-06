@@ -369,7 +369,7 @@
   <div style="height: {(rows.length - last) * ROW_H}px"></div>
   {#if rows.length === 0}
     {@const create = app.hotkeyHint("note:new")}
-    <p class="empty muted">This vault is empty. Create a note with the button above{create ? ` or ${create}` : ""}.</p>
+    <p class="empty muted">This notebook is empty. Create a note with the button above{create ? ` or ${create}` : ""}.</p>
   {/if}
 </div>
 

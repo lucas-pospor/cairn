@@ -55,7 +55,7 @@ test("FINDING-121: typing '~/…/Notes' and pressing Open neither creates a lite
   const hadTilde = fs.existsSync(tildeDir);
   const literal = path.join(tildeDir, unique, "Notes");
   try {
-    await app.palette("switch vault");
+    await app.palette("switch notebook");
     await app.s.waitFor(`return !!document.querySelector('[data-testid=vault-path]')`, { message: "welcome screen" });
     await openTyped(`~/${unique}/Notes`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=file-tree]')`, { timeout: 8000, message: "workspace opened" }).catch(() => {});

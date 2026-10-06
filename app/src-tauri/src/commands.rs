@@ -28,7 +28,7 @@ fn vault(state: &State<'_, AppState>) -> CmdResult<Arc<Vault>> {
         .vault
         .read()
         .clone()
-        .ok_or_else(|| CoreError::NotFound("no vault is open".into()))
+        .ok_or_else(|| CoreError::NotFound("no notebook is open".into()))
 }
 
 fn vault_root(state: &State<'_, AppState>) -> CmdResult<String> {
@@ -36,7 +36,7 @@ fn vault_root(state: &State<'_, AppState>) -> CmdResult<String> {
         .vault_root
         .read()
         .clone()
-        .ok_or_else(|| CoreError::NotFound("no vault is open".into()))
+        .ok_or_else(|| CoreError::NotFound("no notebook is open".into()))
 }
 
 /// The open vault, once `path` is checked to stay inside it on disk when
@@ -96,7 +96,7 @@ fn vault_fs(app: &AppHandle, path: &str) -> CmdResult<(Arc<dyn cairn_core::Vault
         use tauri::Manager;
         let handle = app.state::<crate::android::Saf>().0.clone();
         let decoded = percent_encoding::percent_decode_str(path).decode_utf8_lossy().into_owned();
-        let name = decoded.rsplit(['/', ':']).find(|s| !s.is_empty()).unwrap_or("Vault").to_string();
+        let name = decoded.rsplit(['/', ':']).find(|s| !s.is_empty()).unwrap_or("Notebook").to_string();
         let fs = crate::android::SafFs::new(handle, path.to_string(), name.clone());
         return Ok((Arc::new(fs), path.to_string(), name));
     }
@@ -128,7 +128,7 @@ pub async fn open_vault(app: AppHandle, state: State<'_, AppState>, path: String
     }
     let started = std::time::Instant::now();
     let v = Arc::new(Vault::open(fs)?);
-    log::info!("opened vault {root_str} ({} notes) in {:?}", v.index().note_count(), started.elapsed());
+    log::info!("opened notebook {root_str} ({} notes) in {:?}", v.index().note_count(), started.elapsed());
     #[cfg(desktop)]
     {
         // Drop the old watcher before starting a new one.
@@ -615,7 +615,7 @@ pub async fn reveal_in_file_manager(state: State<'_, AppState>, path: String) ->
 // ---------- sync ----------
 
 fn sync_mgr(state: &State<'_, AppState>) -> Result<Arc<crate::sync::SyncManager>, String> {
-    state.sync.lock().clone().ok_or_else(|| "no vault is open".to_string())
+    state.sync.lock().clone().ok_or_else(|| "no notebook is open".to_string())
 }
 
 #[tauri::command]

@@ -100,7 +100,7 @@ test("connect the app to a server from settings", async () => {
   const ok = await s.findWait("[data-testid=dialog-ok]");
   assert.equal(
     await s.exec(`return document.querySelector('[data-testid=dialog-ok]').closest('[role=dialog]').querySelector('p').textContent.trim()`),
-    "There's no vault called e2e on this server. Create it?",
+    "There's no notebook called e2e on this server. Create it?",
   );
   await s.click(ok);
   await s.waitFor(`return document.querySelector('[data-testid=sync-state]')?.textContent.trim() === 'idle'`, { timeout: 30000 }).catch(async (e) => {

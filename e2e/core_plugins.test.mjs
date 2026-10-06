@@ -52,7 +52,7 @@ test("the Plugins section is as before", async () => {
   await app.openSettings("plugins");
   assert.equal(await app.exec(`return document.querySelector('[data-testid=settings] section h3').textContent`), "Plugins");
   const intro = await app.exec(`return document.querySelector('[data-testid=settings] section p.muted').textContent`);
-  assert.match(intro, /Plugins are JavaScript files in .cairn\/plugins\/ in this vault/);
+  assert.match(intro, /Plugins are JavaScript files in .cairn\/plugins\/ in this notebook/);
   await app.waitFor(`return document.querySelector('[data-testid=plugin-row]')?.dataset.file === 'hello.js'`);
   assert.equal(await app.exec(`return document.querySelector('[data-testid=plugin-row] [data-testid=plugin-file]').textContent`), "hello.js");
   assert.equal(await app.exec(`return document.querySelector('[data-testid=plugin-row] [data-testid=plugin-toggle]').checked`), false);

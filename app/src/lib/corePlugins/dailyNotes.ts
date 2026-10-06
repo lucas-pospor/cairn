@@ -42,8 +42,8 @@ export const dailyNotes: CorePlugin = {
     {
       key: "folder",
       label: "Folder",
-      description: "Where new daily notes go. Empty means the vault root.",
-      placeholder: "Vault root",
+      description: "Where new daily notes go. Empty means the notebook folder.",
+      placeholder: "Notebook folder",
       check: folderCheck,
     },
     {

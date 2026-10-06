@@ -186,7 +186,7 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
     private fun mkdirs(treeStr: String, path: String): Found {
         val tree = Uri.parse(treeStr)
         find(treeStr, path)?.let { return it }
-        if (path.isEmpty()) throw FileNotFoundException("vault folder")
+        if (path.isEmpty()) throw FileNotFoundException("notebook folder")
         val parent = mkdirs(treeStr, parentOf(path))
         val parentUri = DocumentsContract.buildDocumentUriUsingTree(tree, parent.id)
         val created = DocumentsContract.createDocument(resolver, parentUri, Document.MIME_TYPE_DIR, nameOf(path))
@@ -426,7 +426,7 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.reject("cannot keep access to this folder: ${e.message}")
             return
         }
-        val name = docInfo(uri, DocumentsContract.getTreeDocumentId(uri))?.name ?: "Vault"
+        val name = docInfo(uri, DocumentsContract.getTreeDocumentId(uri))?.name ?: "Notebook"
         invoke.resolve(JSObject().apply {
             put("uri", uri.toString())
             put("name", name)

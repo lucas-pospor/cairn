@@ -18,7 +18,7 @@ pub mod transport;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
-    #[error("wrong passphrase for this vault")]
+    #[error("wrong passphrase for this notebook")]
     WrongPassphrase,
     #[error("encryption error: {0}")]
     Crypto(String),
@@ -33,7 +33,7 @@ pub enum SyncError {
     Upload(String),
     #[error("the server rejected the token")]
     Unauthorized,
-    #[error("vault {0:?} does not exist on the server")]
+    #[error("notebook {0:?} does not exist on the server")]
     NoSuchVault(String),
     /// The server has fewer changes than this device has seen: it was reset
     /// or restored from an older backup.
@@ -42,12 +42,12 @@ pub enum SyncError {
     /// The server no longer has the vault this device synced with: it was
     /// reset, or the vault was removed there (or another Cairn server now
     /// answers at the server's address).
-    #[error("the server no longer has this vault, so nothing was synced. If the server was reset, turn sync off in Settings > Sync and connect again")]
+    #[error("the server no longer has this notebook, so nothing was synced. If the server was reset, turn sync off in Settings > Sync and connect again")]
     VaultGone,
     /// The vault folder has no files, but this device has synced some: it
     /// may have been moved or renamed, or its storage is not mounted.
     /// Pushing that would delete every note on every device.
-    #[error("the vault folder looks empty or missing, so nothing was synced. If you deleted every note on purpose, add a note and sync again")]
+    #[error("the notebook folder looks empty or missing, so nothing was synced. If you deleted every note on purpose, add a note and sync again")]
     VaultEmpty,
     #[error("local error: {0}")]
     Local(String),
@@ -56,7 +56,7 @@ pub enum SyncError {
     /// from `Local`, whose messages can quote any file name.
     #[error("local error: file changed on disk: {0}")]
     Changed(String),
-    #[error("sync is not set up for this vault")]
+    #[error("sync is not set up for this notebook")]
     NotConfigured,
 }
 

@@ -76,7 +76,7 @@ impl VaultKey {
         let nonce: [u8; 24] = random_bytes();
         let ct = cipher
             .encrypt(XNonce::from_slice(&nonce), Payload { msg: &self.0, aad: KEY_AAD })
-            .map_err(|_| SyncError::Crypto("wrapping the vault key failed".into()))?;
+            .map_err(|_| SyncError::Crypto("wrapping the notebook key failed".into()))?;
         let mut wrapped = nonce.to_vec();
         wrapped.extend_from_slice(&ct);
         Ok(KeyEnvelope { salt: b64(&salt), kdf, wrapped_key: b64(&wrapped) })

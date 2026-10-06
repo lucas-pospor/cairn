@@ -54,7 +54,7 @@ const killAll = () =>
 async function switchTo(v, { kill = true } = {}) {
   await escapeAll();
   if (kill) await killAll();
-  await runCommand("Switch vault");
+  await runCommand("Switch notebook");
   await s.type(await s.findWait("[data-testid=vault-path]", 8000), v.dir);
   await s.click(await s.find("[data-testid=vault-open]"));
   await s.waitFor(`return !document.querySelector('[data-testid=vault-path]') && document.querySelectorAll('[data-testid=tree-row]').length >= 1`, { timeout: 15000 });

@@ -658,7 +658,7 @@ impl SyncEngine {
         kdf: KdfParams,
     ) -> Result<SyncEngine, SyncError> {
         if !valid_id(&settings.vault_id) {
-            return Err(SyncError::Local("the vault name may only contain letters, digits, - and _ (up to 64 characters)".into()));
+            return Err(SyncError::Local("the notebook name may only contain letters, digits, - and _ (up to 64 characters)".into()));
         }
         if passphrase.chars().count() < 8 {
             return Err(SyncError::Local("use a passphrase of at least 8 characters".into()));

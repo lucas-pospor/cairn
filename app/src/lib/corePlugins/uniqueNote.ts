@@ -54,8 +54,8 @@ export const uniqueNote: CorePlugin = {
     {
       key: "folder",
       label: "Folder",
-      description: "Where new notes go. Empty means the vault root.",
-      placeholder: "Vault root",
+      description: "Where new notes go. Empty means the notebook folder.",
+      placeholder: "Notebook folder",
       check: folderCheck,
     },
     {

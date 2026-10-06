@@ -383,7 +383,7 @@ fn config_folders_that_lead_out_of_the_vault_are_not_written() {
     let before = snapshot(o);
     let (d, v) = setup(&[("n.md", ""), ("config/x.json", "{}")]);
     let r = d.path();
-    let out_err = |dir: &str| CoreError::Io(format!("The \"{dir}\" folder leads outside the vault."));
+    let out_err = |dir: &str| CoreError::Io(format!("The \"{dir}\" folder leads outside the notebook."));
 
     // The whole .cairn folder links out.
     symlink(o.join("cairn"), r.join(".cairn")).unwrap();

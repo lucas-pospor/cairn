@@ -3,7 +3,7 @@ name = "cairn-sync"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "End-to-end encrypted sync for Cairn vaults: protocol, crypto, merge and client engine."
+description = "End-to-end encrypted sync for Cairn notebooks: protocol, crypto, merge and client engine."
 
 [features]
 default = ["client"]

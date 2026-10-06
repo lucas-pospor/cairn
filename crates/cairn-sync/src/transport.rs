@@ -151,9 +151,19 @@ fn read_error(mut resp: ureq::http::Response<ureq::Body>) -> SyncError {
     let body = resp.body_mut().read_to_string().unwrap_or_default();
     let reason = serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|v| v.get("error")?.as_str().map(str::to_string));
     SyncError::Server(match reason {
-        Some(r) => format!("{r} (HTTP {status})"),
+        Some(r) => format!("{} (HTTP {status})", in_app_words(&r)),
         None => format!("HTTP {status}"),
     })
+}
+
+/// The server's texts that say "vault", in the app's word. The server keeps
+/// them because older apps match "no such vault".
+fn in_app_words(reason: &str) -> &str {
+    match reason {
+        "no such vault" => "no such notebook",
+        "vault exists" => "a notebook with this name already exists",
+        r => r,
+    }
 }
 
 /// A 404 that is not a Cairn server's own answer: the URL points somewhere
@@ -489,5 +499,28 @@ mod tests {
         let plain = "server error: unexpected answer; is this a Cairn server?";
         assert_eq!(t.changes("v", 0, 500).unwrap_err().to_string(), plain);
         assert_eq!(t.revision("v", 1).unwrap_err().to_string(), plain);
+    }
+
+    /// The server's own errors that say "vault" read with the app's word,
+    /// and a 404 still ends in "(HTTP 404)" for the engine's check.
+    #[test]
+    fn the_servers_vault_errors_say_notebook() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for c in l.incoming() {
+                let Ok(mut c) = c else { return };
+                let mut line = String::new();
+                let mut r = BufReader::new(c.try_clone().unwrap());
+                r.read_line(&mut line).unwrap();
+                while r.read_line(&mut String::new()).unwrap() > 2 {}
+                let (status, body) =
+                    if line.contains("/revisions/1 ") { ("404 Not Found", r#"{"error":"no such vault"}"#) } else { ("409 Conflict", r#"{"error":"vault exists"}"#) };
+                let _ = write!(c, "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+            }
+        });
+        let t = HttpTransport::new(&url, "token");
+        assert_eq!(t.revision("v", 1).unwrap_err().to_string(), "server error: no such notebook (HTTP 404)");
+        assert_eq!(t.revision("v", 2).unwrap_err().to_string(), "server error: a notebook with this name already exists (HTTP 409)");
     }
 }

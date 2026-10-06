@@ -71,7 +71,7 @@ async function escapeAll() {
 async function switchTo(v) {
   await escapeAll();
   await s.keys({ chord: [Key.ctrl, "p"] });
-  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch vault");
+  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch notebook");
   await sleep(150);
   await s.keys(Key.enter);
   const input = await s.findWait("[data-testid=vault-path]", 8000);

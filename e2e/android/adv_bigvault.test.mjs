@@ -87,7 +87,7 @@ test(`SAF: a ${N}-note shared folder opens; the app shows progress while it load
   await sleep(15000); // let a second load (if any) finish and log
   const count = await fileCount();
   const rescan = await timed("rescan");
-  const opens = devSh(`logcat -d | grep 'opened vault' || true`).split("\n").filter((l) => l.includes(LABEL));
+  const opens = devSh(`logcat -d | grep 'opened notebook' || true`).split("\n").filter((l) => l.includes(LABEL));
   console.log(`SAF, ${N} notes: workspace after ${open} ms, ${count} files indexed, rescan ${rescan} ms; 1.5 s after the tap: ${JSON.stringify(feedback)}; vault loads logged: ${opens.length}`);
   for (const l of opens) console.log("  " + l.replace(/^.*INFO\s+/, ""));
   assert.ok(count >= N, `${count} files indexed`);

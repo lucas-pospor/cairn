@@ -196,7 +196,7 @@ async fn create_vault(State(st): State<Shared>, ApiPath(vault): ApiPath<String>,
     if n == 0 {
         return Err(ApiError(StatusCode::CONFLICT, "vault exists".into()));
     }
-    log::info!("created vault {vault}");
+    log::info!("created notebook {vault}");
     Ok(StatusCode::CREATED)
 }
 

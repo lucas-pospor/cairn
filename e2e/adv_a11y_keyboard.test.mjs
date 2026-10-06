@@ -300,10 +300,10 @@ test("FINDING-103: there is a keyboard path to move a note and to rename or dele
   else {
     await app.palette("move current");
     await app.s.waitFor(`return document.activeElement?.matches('[role=dialog] .choice')`, { message: "folder chooser focused" });
-    assert.equal(await app.exec(`return document.activeElement.textContent`), "Vault root");
+    assert.equal(await app.exec(`return document.activeElement.textContent`), "Notebook folder");
     await app.keys(K.enter);
     await eventually(() => app.exists("Upper.md") && !app.exists("Journal/Upper.md"), { message: "note moved to the vault root" }).catch(() =>
-      problems.push("Move current note to… + Enter on 'Vault root' did not move the note"),
+      problems.push("Move current note to… + Enter on 'Notebook folder' did not move the note"),
     );
   }
   assert.deepEqual(problems, []);

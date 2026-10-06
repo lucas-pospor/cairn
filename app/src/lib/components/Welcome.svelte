@@ -13,7 +13,7 @@
   });
 
   async function createOnDevice() {
-    const name = await app.prompt({ title: "Name of the new vault", value: "Notes", okLabel: "Create vault" });
+    const name = await app.prompt({ title: "Name of the new notebook", value: "Notes", okLabel: "Create notebook" });
     if (name) await app.openVault(name.trim(), true);
   }
 
@@ -27,14 +27,14 @@
   }
 
   async function openFolder() {
-    const dir = await open({ directory: true, multiple: false, title: "Open a folder as a vault" });
+    const dir = await open({ directory: true, multiple: false, title: "Open a folder as a notebook" });
     if (typeof dir === "string") await app.openVault(dir);
   }
 
   async function createVault() {
-    const parentDir = await open({ directory: true, multiple: false, title: "Where should the new vault go?" });
+    const parentDir = await open({ directory: true, multiple: false, title: "Where should the new notebook go?" });
     if (typeof parentDir !== "string") return;
-    const name = await app.prompt({ title: "Name of the new vault", value: "Notes", okLabel: "Create vault" });
+    const name = await app.prompt({ title: "Name of the new notebook", value: "Notes", okLabel: "Create notebook" });
     if (!name) return;
     const sep = parentDir.includes("\\") && !parentDir.includes("/") ? "\\" : "/";
     await app.openVault(parentDir.replace(/[\\/]+$/, "") + sep + name.trim(), true);
@@ -90,11 +90,11 @@
 
     {#if isMobile}
       <div class="actions mobile">
-        <button class="btn primary" onclick={createOnDevice} disabled={!!app.opening} data-testid="create-on-device"><Icon name="folder-plus" /> Create a vault on this device</button>
+        <button class="btn primary" onclick={createOnDevice} disabled={!!app.opening} data-testid="create-on-device"><Icon name="folder-plus" /> Create a notebook on this device</button>
         <button class="btn" onclick={pickAndroidFolder} disabled={!!app.opening}><Icon name="folder" /> Open a folder from storage</button>
       </div>
       <p class="hint muted">
-        A vault on this device is private to Cairn and syncs through your Cairn server. A folder from storage can also be
+        A notebook on this device is private to Cairn and syncs through your Cairn server. A folder from storage can also be
         opened by other apps, but large folders load more slowly.
       </p>
       {#if appVaults.length}
@@ -113,8 +113,8 @@
       {/if}
     {:else}
     <div class="actions">
-      <button class="btn primary" onclick={openFolder} disabled={!!app.opening}><Icon name="folder" /> Open folder as vault</button>
-      <button class="btn" onclick={createVault} disabled={!!app.opening}><Icon name="folder-plus" /> Create new vault</button>
+      <button class="btn primary" onclick={openFolder} disabled={!!app.opening}><Icon name="folder" /> Open folder as notebook</button>
+      <button class="btn" onclick={createVault} disabled={!!app.opening}><Icon name="folder-plus" /> Create new notebook</button>
     </div>
 
     <form

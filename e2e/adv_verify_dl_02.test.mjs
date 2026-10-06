@@ -118,7 +118,7 @@ test(
       v.write("A.md", "THEIRS\n");
       await app.waitBanner();
       await app.insertEnd(PARA);
-      await app.s.click(await app.s.find('button.vault[title="Switch vault"]'));
+      await app.s.click(await app.s.find('button.vault[title="Switch notebook"]'));
       await sleep(800);
       const asked = await app.exec(`return !!document.querySelector('[data-testid=dialog-ok]')`);
       const stillInVault = await app.exec(`return !!document.querySelector('[data-testid=file-tree]')`);

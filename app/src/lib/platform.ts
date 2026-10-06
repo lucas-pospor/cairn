@@ -14,7 +14,7 @@ export function narrowQuery(): MediaQueryList | null {
 export function vaultLabel(root: string): string {
   if (root.startsWith("content://")) {
     const decoded = decodeURIComponent(root);
-    return decoded.split(/[/:]/).filter(Boolean).pop() ?? "Vault";
+    return decoded.split(/[/:]/).filter(Boolean).pop() ?? "Notebook";
   }
   return root.split(/[\\/]/).filter(Boolean).pop() ?? root;
 }

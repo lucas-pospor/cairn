@@ -394,7 +394,7 @@ test("Welcome recent-vault list shows a hostile vault folder name as text (held 
   let a2;
   try {
     a2 = await launch({ vault: dir, xdg: e2.xdg, waitRows: 1 });
-    await runCommand(a2, "Switch vault");
+    await runCommand(a2, "Switch notebook");
     const rec = await a2.s.waitFor(
       `const r = [...document.querySelectorAll('.recent-open')].map((e) => ({ text: e.textContent, title: e.getAttribute('title') })); return r.length ? r : null`,
       { timeout: 8000, message: "recent list" },

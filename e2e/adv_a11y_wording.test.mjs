@@ -102,7 +102,7 @@ async function openTyped(p) {
 }
 
 async function toWelcome() {
-  await app.palette("switch vault");
+  await app.palette("switch notebook");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=vault-path]')`, { message: "welcome screen" });
 }
 
@@ -258,11 +258,11 @@ test("FINDING-120: opening a file or an unreadable folder as a vault shows a cle
   const out = {};
   try {
     await openTyped(file);
-    out.file = await nextToast("Could not open vault");
+    out.file = await nextToast("Could not open notebook");
     await app.exec(`for (const t of document.querySelectorAll('.toast')) t.remove(); return 1`).catch(() => {});
     await sleep(300);
     await openTyped(locked);
-    out.noAccess = await nextToast("Could not open vault");
+    out.noAccess = await nextToast("Could not open notebook");
   } finally {
     fs.chmodSync(locked, 0o755);
   }

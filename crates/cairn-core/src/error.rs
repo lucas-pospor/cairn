@@ -31,8 +31,8 @@ impl CoreError {
     /// rest the OS text without its "(os error N)" code.
     pub fn io(path: &str, e: std::io::Error) -> Self {
         use std::io::ErrorKind as K;
-        let what = if path.is_empty() { "the vault folder".to_string() } else { format!("\"{path}\"") };
-        let what_cap = if path.is_empty() { "The vault folder".to_string() } else { what.clone() };
+        let what = if path.is_empty() { "the notebook folder".to_string() } else { format!("\"{path}\"") };
+        let what_cap = if path.is_empty() { "The notebook folder".to_string() } else { what.clone() };
         match e.kind() {
             K::NotFound => CoreError::NotFound(path.to_string()),
             K::AlreadyExists => CoreError::AlreadyExists(path.to_string()),
@@ -64,7 +64,7 @@ mod tests {
     fn io_errors_are_plain_words() {
         let denied = CoreError::io("Locked/Locked note.md", Error::from_raw_os_error(13));
         assert_eq!(denied, CoreError::Io("No permission to access \"Locked/Locked note.md\".".into()));
-        assert_eq!(CoreError::io("", Error::from_raw_os_error(13)), CoreError::Io("No permission to access the vault folder.".into()));
+        assert_eq!(CoreError::io("", Error::from_raw_os_error(13)), CoreError::Io("No permission to access the notebook folder.".into()));
         assert_eq!(CoreError::io("a.md/b", ErrorKind::NotADirectory.into()), CoreError::Io("\"a.md/b\" is a file, not a folder.".into()));
         // Kinds without their own sentence keep the OS text, minus the code.
         let other = CoreError::io("x.md", Error::from_raw_os_error(24));

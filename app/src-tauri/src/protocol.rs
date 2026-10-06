@@ -52,7 +52,7 @@ pub fn handle(ctx: UriSchemeContext<'_, Wry>, req: Request<Vec<u8>>, responder: 
     std::thread::spawn(move || {
         let path = percent_encoding::percent_decode_str(&raw).decode_utf8_lossy().into_owned();
         let res = match vault {
-            None => respond(StatusCode::SERVICE_UNAVAILABLE, "text/plain", b"no vault open".to_vec()),
+            None => respond(StatusCode::SERVICE_UNAVAILABLE, "text/plain", b"no notebook open".to_vec()),
             Some(v) => match v.read_file(&path) {
                 Ok(bytes) => respond(StatusCode::OK, mime_for(&path), bytes),
                 Err(e) => respond(StatusCode::NOT_FOUND, "text/plain", e.to_string().into_bytes()),

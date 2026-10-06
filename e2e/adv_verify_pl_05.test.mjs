@@ -188,7 +188,7 @@ test("ten enabled 200 KB plugins: a double Reload at gaps from 0 to 150 ms leave
   await escapeAll();
   await killAll();
   await s.keys({ chord: [Key.ctrl, "p"] });
-  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch vault");
+  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch notebook");
   await sleep(150);
   await s.keys(Key.enter);
   await s.type(await s.findWait("[data-testid=vault-path]", 8000), dir);
@@ -242,7 +242,7 @@ test("one 8 MB plugin (the size of a large bundled plugin): a human-speed double
   await escapeAll();
   await killAll();
   await s.keys({ chord: [Key.ctrl, "p"] });
-  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch vault");
+  await s.type(await s.findWait("[data-testid=palette-input]"), "Switch notebook");
   await sleep(150);
   await s.keys(Key.enter);
   await s.type(await s.findWait("[data-testid=vault-path]", 8000), dir);

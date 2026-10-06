@@ -330,7 +330,7 @@
         >
       {/each}
       <span class="grow"></span>
-      <p class="muted small">Stored in <code>.cairn/settings.json</code> inside this vault.</p>
+      <p class="muted small">Stored in <code>.cairn/settings.json</code> inside this notebook.</p>
     </nav>
     <section>
       <button class="icon-btn close" title="Close" onclick={() => (app.settingsOpen = false)}><Icon name="x" /></button>
@@ -427,7 +427,7 @@
         <div class="row">
           <div>
             <b id="{uid}-attach">Attachment folder</b>
-            <p id="{uid}-attach-d">Where pasted and dropped files are saved, relative to the vault root.</p>
+            <p id="{uid}-attach-d">Where pasted and dropped files are saved, relative to the notebook folder.</p>
           </div>
           <input class="text-input narrow" aria-labelledby="{uid}-attach" aria-describedby="{uid}-attach-d" value={s.attachmentFolder} onchange={(e) => set("attachmentFolder", e.currentTarget.value.trim())} />
         </div>
@@ -444,7 +444,7 @@
           <div class="row">
             <div>
               <b>Connected</b>
-              <p>Vault <code>{app.sync.vaultId}</code> on {app.sync.server}, as "{app.sync.device}".</p>
+              <p>Notebook <code>{app.sync.vaultId}</code> on {app.sync.server}, as "{app.sync.device}".</p>
             </div>
             <span class="sync-state {app.sync.state}" data-testid="sync-state">{app.sync.state}</span>
           </div>
@@ -482,7 +482,7 @@
           </div>
         {:else}
           <p class="muted">
-            Sync keeps this vault in step with your other devices through your own Cairn server. Notes are encrypted on this
+            Sync keeps this notebook in step with your other devices through your own Cairn server. Notes are encrypted on this
             device with your passphrase before they are sent; the server only stores encrypted data.
           </p>
           <form class="sync-form" onsubmit={(e) => { e.preventDefault(); void connectSync(); }}>
@@ -490,12 +490,12 @@
                  inputmode, not type="url": the browser would refuse a URL without http(s):// before Cairn can explain it. -->
             <label>Server URL<input class="text-input" inputmode="url" placeholder="https://notes.example.com" bind:value={form.server} required autocapitalize="off" autocorrect="off" spellcheck="false" data-testid="sync-server" /></label>
             <label>Access token<input class="text-input" type="password" placeholder="CAIRN_TOKENS value on the server" bind:value={form.token} required data-testid="sync-token" /></label>
-            <label>Vault name on the server<input class="text-input" bind:value={form.vaultId} pattern="[A-Za-z0-9_-]{'{'}1,64{'}'}" required autocapitalize="off" autocorrect="off" spellcheck="false" data-testid="sync-vault" /></label>
+            <label>Notebook name on the server<input class="text-input" bind:value={form.vaultId} pattern="[A-Za-z0-9_-]{'{'}1,64{'}'}" required autocapitalize="off" autocorrect="off" spellcheck="false" data-testid="sync-vault" /></label>
             <label>This device's name<input class="text-input" bind:value={form.device} required autocapitalize="off" autocorrect="off" spellcheck="false" data-testid="sync-device" /></label>
             <label>Encryption passphrase<input class="text-input" type="password" bind:value={form.passphrase} minlength="8" required data-testid="sync-pass" /></label>
             <label>Passphrase again<input class="text-input" type="password" bind:value={form.confirm} minlength="8" required data-testid="sync-pass2" /></label>
             <p class="warn">
-              Use the same vault name and passphrase on every device. If you lose the passphrase, the data on the server cannot
+              Use the same notebook name and passphrase on every device. If you lose the passphrase, the data on the server cannot
               be decrypted by anyone, including you.
             </p>
             {#if syncError}<p class="err" data-testid="sync-error">{syncError}</p>{/if}
@@ -507,7 +507,7 @@
         {/if}
       {:else if section === "core-plugins"}
         <h3>Core plugins</h3>
-        <p class="muted">Optional features that come with Cairn. They need no approval, and their settings are saved in this vault.</p>
+        <p class="muted">Optional features that come with Cairn. They need no approval, and their settings are saved in this notebook.</p>
         {#each CORE_PLUGINS as p (p.id)}
           {@const on = corePluginOn(p)}
           <div class="row" data-testid="core-plugin-row" data-id={p.id}>
@@ -557,7 +557,7 @@
       {:else if section === "plugins"}
         <h3>Plugins</h3>
         <p class="muted">
-          Plugins are JavaScript files in <code>.cairn/plugins/</code> in this vault. Each one runs in its own sandbox
+          Plugins are JavaScript files in <code>.cairn/plugins/</code> in this notebook. Each one runs in its own sandbox
           without access to the network, the file system or the rest of the app; it can only add commands, show messages, and
           use the permissions it asks for. Only enable plugins you trust.
         </p>

@@ -49,7 +49,7 @@ describe("sync setup with a vault name the server does not have", () => {
     exists = false;
     const { d, run } = await asked();
     expect(d?.kind).toBe("confirm");
-    expect(d && "message" in d ? d.message : null).toBe("There's no vault called Notes on this server. Create it?");
+    expect(d && "message" in d ? d.message : null).toBe("There's no notebook called Notes on this server. Create it?");
     expect(app.syncSetup?.busy).toBe(true);
     if (d?.kind === "confirm") d.resolve(false);
     await run;

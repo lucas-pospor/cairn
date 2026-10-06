@@ -6,7 +6,7 @@ import { notesIn } from "./files";
 
 async function openRandom(host: CoreHost) {
   const notes = notesIn("", host.files());
-  if (!notes.length) return host.toast("There are no notes in this vault.");
+  if (!notes.length) return host.toast("There are no notes in this notebook.");
   const others = notes.filter((p) => p !== host.activeNote());
   const pool = others.length ? others : notes;
   await host.openNote(pool[Math.min(pool.length - 1, Math.floor(host.random() * pool.length))]);

@@ -96,7 +96,7 @@ test(
       fs.chmodSync(v.p("d"), 0o555);
       await app.insertEnd("MY IMPORTANT EDIT");
       await eventually(async () => (await app.toasts()).some((t) => /Could not save/.test(t)), { message: "error toast" });
-      await app.s.click(await app.s.find('button.vault[title="Switch vault"]'));
+      await app.s.click(await app.s.find('button.vault[title="Switch notebook"]'));
       await sleep(800);
       const asked = await app.exec(`return !!document.querySelector('[data-testid=dialog-ok]')`);
       const stillInVault = await app.exec(`return !!document.querySelector('[data-testid=file-tree]')`);

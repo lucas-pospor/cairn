@@ -58,6 +58,6 @@ describe("Open random note", () => {
     const f = fakeHost(["pic.png"], null, 0.5);
     await openRandom(f.host);
     expect(f.opened).toEqual([]);
-    expect(f.toasts).toEqual(["There are no notes in this vault."]);
+    expect(f.toasts).toEqual(["There are no notes in this notebook."]);
   });
 });

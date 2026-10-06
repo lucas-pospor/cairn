@@ -58,7 +58,7 @@
 </script>
 
 <footer class="status" {inert}>
-  <button class="vault" title="Switch vault" aria-label="Switch vault (current: {app.vault?.name})" onclick={() => app.closeVault()}>
+  <button class="vault" title="Switch notebook" aria-label="Switch notebook (current: {app.vault?.name})" onclick={() => app.closeVault()}>
     <Icon name="vault" size={13} />
     <span class="vault-name">{app.vault?.name}</span>
   </button>

@@ -265,7 +265,7 @@ impl Vault {
     pub fn check_in_vault(&self, path: &str) -> Result<()> {
         let path = vpath::normalize(path)?;
         if self.fs.leads_outside(&path) {
-            return Err(CoreError::InvalidPath(format!("{path} leads outside the vault's notes")));
+            return Err(CoreError::InvalidPath(format!("{path} leads outside the notebook's notes")));
         }
         Ok(())
     }
@@ -985,7 +985,7 @@ impl Vault {
         let p = Self::config_path(name)?;
         let _g = self.op.lock();
         if let Some(dir) = self.fs.folder_outside(vpath::parent(&p)) {
-            return Err(CoreError::Io(format!("The \"{dir}\" folder leads outside the vault.")));
+            return Err(CoreError::Io(format!("The \"{dir}\" folder leads outside the notebook.")));
         }
         self.fs.create_dir(vpath::parent(&p))?;
         self.fs.write_in_vault(&p, content.as_bytes())?;

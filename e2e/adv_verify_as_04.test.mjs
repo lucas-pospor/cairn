@@ -139,8 +139,8 @@ test("FINDING-020 chain: its plugin cannot read or rewrite .git/config or a data
   const p = probe();
   assert.ok(p, "plugin ran and wrote its probe");
   for (const n of ["notes/setup.md", "notes/data.md"]) {
-    assert.ok(p.some((x) => x.startsWith(`read-failed:${n}:`) && x.includes("leads outside the vault")), JSON.stringify(p));
-    assert.ok(p.some((x) => x.startsWith(`overwrite-failed:${n}:`) && x.includes("leads outside the vault")), JSON.stringify(p));
+    assert.ok(p.some((x) => x.startsWith(`read-failed:${n}:`) && x.includes("leads outside the notebook")), JSON.stringify(p));
+    assert.ok(p.some((x) => x.startsWith(`overwrite-failed:${n}:`) && x.includes("leads outside the notebook")), JSON.stringify(p));
   }
   assert.equal(fs.readFileSync(path.join(vault, ".git/config"), "utf8"), GIT_CONFIG);
   assert.equal(fs.readFileSync(path.join(vault, "data.json"), "utf8"), DATA);

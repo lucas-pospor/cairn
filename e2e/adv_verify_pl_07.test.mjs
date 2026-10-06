@@ -108,7 +108,7 @@ async function paletteItems(filter) {
 
 async function switchTo(v) {
   await escapeAll();
-  await runCommand("Switch vault");
+  await runCommand("Switch notebook");
   const input = await s.findWait("[data-testid=vault-path]", 8000);
   await s.type(input, v.dir);
   await s.click(await s.find("[data-testid=vault-open]"));

@@ -38,7 +38,7 @@ describe("saving", () => {
       querySelectorAll: () => [],
     });
     vi.useFakeTimers();
-    const refused = { kind: "io", detail: 'The ".cairn" folder leads outside the vault.' };
+    const refused = { kind: "io", detail: 'The ".cairn" folder leads outside the notebook.' };
     const writeConfig = vi.fn(async () => {
       throw refused;
     });

@@ -207,7 +207,7 @@ test(
       await s.findWait("[data-testid=sync-server]", 70000);
     }
     assert.ok(question || !r.connected, `connected to a brand-new vault "e2e-" without asking (status bar: ${JSON.stringify(indicator)}, phone's note present: ${gotPhoneNote}; default vault name offered: ${JSON.stringify(defaultVaultName)})`);
-    assert.equal(question, "There's no vault called e2e- on this server. Create it?");
+    assert.equal(question, "There's no notebook called e2e- on this server. Create it?");
     // Saying no creates nothing and leaves the form as it was.
     assert.deepEqual({ ...r, vaults }, { connected: false, error: null, button: "Connect and sync", vaultField: "e2e-", vaults: 404 });
   },
@@ -245,7 +245,7 @@ test("Escape on the create-vault question closes only the question: Settings sta
   const out = { question, after, configured, serverStatusForNewVault: vaults };
   results["escape on the question"] = out;
   console.log("escape on the question", JSON.stringify(out, null, 2));
-  assert.equal(question, "There's no vault called e2e-esc on this server. Create it?");
+  assert.equal(question, "There's no notebook called e2e-esc on this server. Create it?");
   assert.equal(after.settingsOpen, true, "Escape closed Settings as well as the question");
   assert.equal(after.section, "Sync");
   assert.ok(after.focusInSettings, `after Escape focus is on ${after.focus}, not in Settings`);

@@ -1,7 +1,7 @@
 //! Sync a folder once from the command line (a second "device" for tests,
 //! or a headless sync for servers and scripts).
 //!
-//!   sync_dir <vault dir> <state dir> <server> <token> <vault id> <device> <passphrase>
+//!   sync_dir <notebook dir> <state dir> <server> <token> <notebook id> <device> <passphrase>
 //!
 //! Prints a JSON report.
 
@@ -13,7 +13,7 @@ use cairn_sync::engine::{SyncEngine, SyncSettings};
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     if a.len() != 7 {
-        eprintln!("usage: sync_dir <vault dir> <state dir> <server> <token> <vault id> <device> <passphrase>");
+        eprintln!("usage: sync_dir <notebook dir> <state dir> <server> <token> <notebook id> <device> <passphrase>");
         std::process::exit(2);
     }
     std::fs::create_dir_all(&a[0]).unwrap();

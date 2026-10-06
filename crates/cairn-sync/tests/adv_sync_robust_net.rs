@@ -821,7 +821,7 @@ fn server_data_loss_is_recovered_by_reconnecting() {
     let r = a.sync();
     eprintln!("A after the reset: {:?}", r.as_ref().err().map(|e| e.to_string()));
     let err = r.err().map(|e| e.to_string()).unwrap_or_default();
-    assert!(err.contains("no longer has this vault") && err.contains("turn sync off in Settings > Sync and connect again"), "{err:?}");
+    assert!(err.contains("no longer has this notebook") && err.contains("turn sync off in Settings > Sync and connect again"), "{err:?}");
     // the user does what the error suggests: connect again, same settings
     a.engine = None;
     a.engine = Some(

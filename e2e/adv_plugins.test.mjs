@@ -108,7 +108,7 @@ async function runCommand(name) {
 async function switchTo(v) {
   await escapeAll();
   await killAllPluginWorkers();
-  await runCommand("Switch vault");
+  await runCommand("Switch notebook");
   const input = await s.findWait("[data-testid=vault-path]", 8000);
   await s.type(input, v.dir);
   await s.click(await s.find("[data-testid=vault-open]"));
@@ -428,7 +428,7 @@ test("opening a vault whose settings.json enables a plugin asks before running i
   const ran = (await probes("ran")).length > 0;
   assert.ok(sawDialog || !ran, `plugin ran without a prompt (dialog shown: ${sawDialog}); Diary.md is now ${JSON.stringify(diary)}`);
   assert.equal(diary, "my private diary\n");
-  assert.equal(toast, "1 plugin in this vault is off until you turn it on in Settings > Plugins.");
+  assert.equal(toast, "1 plugin in this notebook is off until you turn it on in Settings > Plugins.");
   // Settings > Plugins shows it as off and not approved; turning it on asks first, then it runs.
   await openPluginSettings();
   const row = `[data-testid=plugin-row][data-file="helper.js"]`;
@@ -586,7 +586,7 @@ setInterval(() => { cairn.notes.write("ticks/" + id + ".md", String(++n)); }, 25
     const stillTicking = Object.keys(b).filter((f) => a[f] !== b[f]);
     // Switch to a different vault: nothing from the old vault may write into it.
     await escapeAll();
-    await runCommand("Switch vault");
+    await runCommand("Switch notebook");
     await s.type(await s.findWait("[data-testid=vault-path]", 8000), next.dir);
     await s.click(await s.find("[data-testid=vault-open]"));
     await sleep(2000);

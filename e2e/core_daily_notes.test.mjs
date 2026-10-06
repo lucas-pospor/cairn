@@ -49,7 +49,7 @@ test("Daily notes is on by default: its button is next to Graph view and its opt
   await app.openSettings("core-plugins");
   assert.equal(await app.exec(`return document.querySelector('[data-testid=core-plugin-row][data-id=daily-notes] [data-testid=core-plugin-toggle]').checked`), true);
   const fields = await app.exec(`return [...document.querySelectorAll('[data-testid=core-plugin-option][data-id=daily-notes] input')].map((i) => [i.value, i.placeholder])`);
-  assert.deepEqual(fields, [["", "Vault root"], ["YYYY-MM-DD", "YYYY-MM-DD"], ["", "None"]]);
+  assert.deepEqual(fields, [["", "Notebook folder"], ["YYYY-MM-DD", "YYYY-MM-DD"], ["", "None"]]);
   assert.equal(await note("format", "example"), `Today's note: ${today()}.md`);
   await app.closeSettings();
 });

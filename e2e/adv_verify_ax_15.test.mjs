@@ -85,7 +85,7 @@ test("FINDING-203: repeated per-row buttons have distinct accessible names", asy
   const second = path.join(app.tmp, "second-vault");
   fs.mkdirSync(second, { recursive: true });
   fs.writeFileSync(path.join(second, "Note.md"), "# Note\n");
-  await app.exec(`document.querySelector('.statusbar button.vault, button.vault[title="Switch vault"]').click(); return 1`);
+  await app.exec(`document.querySelector('.statusbar button.vault, button.vault[title="Switch notebook"]').click(); return 1`);
   await app.s.waitFor(`return !!document.querySelector('[data-testid=vault-path]')`, { message: "welcome screen" });
   await app.exec(`
     const i = document.querySelector('[data-testid=vault-path]');
@@ -95,7 +95,7 @@ test("FINDING-203: repeated per-row buttons have distinct accessible names", asy
   await sleep(100);
   await app.exec(`document.querySelector('[data-testid=vault-open]').click(); return 1`);
   await app.s.waitFor(`return document.querySelectorAll('[data-testid=tree-row]').length >= 1 && !document.querySelector('[data-testid=vault-path]')`, { timeout: 15000, message: "second vault open" });
-  await app.exec(`document.querySelector('button.vault[title="Switch vault"]').click(); return 1`);
+  await app.exec(`document.querySelector('button.vault[title="Switch notebook"]').click(); return 1`);
   await app.s.waitFor(`return document.querySelectorAll('.recent li').length >= 2`, { timeout: 10000, message: "two recent vaults" });
   const recentRemove = await names(".recent li button.icon-btn");
   const recentOpen = await names(".recent li button.recent-open");

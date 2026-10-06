@@ -430,7 +430,7 @@ test("sync setup: a vault name that differs only in case from the existing one d
   console.log(`phone set up with "Notes": asked ${JSON.stringify(question)}, connected ${connected}, vault field ${JSON.stringify(vaultField)}; server GET /vaults/<id>: ${JSON.stringify(vaults)}`);
   await closeSettings(d);
   if (connected) await invoke("sync_disconnect");
-  assert.equal(question, "There's no vault called Notes on this server. Create it?", "setup should say the vault does not exist yet");
+  assert.equal(question, "There's no notebook called Notes on this server. Create it?", "setup should say the vault does not exist yet");
   // Saying no creates nothing and leaves the name in the form to correct.
   assert.deepEqual({ connected, vaultField, vaults }, { connected: false, vaultField: "Notes", vaults: [["notes", 200], ["Notes", 404]] });
 });

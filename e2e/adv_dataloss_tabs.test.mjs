@@ -157,7 +157,7 @@ test("Switch vault right after typing: the edit is flushed to the old vault, the
     await app.openFromTree("A.md");
     await app.source();
     await app.typeEnd("TYPED");
-    await runCommand(app, "Switch vault");
+    await runCommand(app, "Switch notebook");
     await app.s.findWait("[data-testid=vault-path]");
     await app.s.type(await app.s.find("[data-testid=vault-path]"), v2.root);
     await app.s.click(await app.s.find("[data-testid=vault-open]"));
@@ -290,7 +290,7 @@ test(
     const { v, app } = await openFresh({ "A.md": "alpha\n", "Z.md": "z\n" }, "A.md");
     try {
       await makeConflict(app, v, "A.md", "MY IMPORTANT EDIT");
-      await runCommand(app, "Switch vault");
+      await runCommand(app, "Switch notebook");
       await sleep(800);
       const asked = await app.exec(`return !!document.querySelector('[data-testid=dialog-ok]')`);
       const stillInVault = await app.exec(`return !!document.querySelector('[data-testid=file-tree]')`);
@@ -341,17 +341,17 @@ test("Switch vault and the status-bar vault button with a blocked save: Cancel s
   try {
     await makeConflict(app, v, "A.md", "MY IMPORTANT EDIT");
     await app.openFromTree("Z.md", { newTab: true });
-    await runCommand(app, "Switch vault");
+    await runCommand(app, "Switch notebook");
     await answerDialog(app, /Discard unsaved changes to "A"\?/, "Cancel");
     await sleep(300);
     assert.ok(await app.exec(`return !!document.querySelector('[data-testid=file-tree]')`), "still in the vault");
     assert.equal(await app.activeTab(), "A.md", "the tab with the unsaved edits is shown");
     assert.equal(await app.editorText(), "alpha\nMY IMPORTANT EDIT");
-    await app.s.click(await app.s.find('button.vault[title="Switch vault"]'));
+    await app.s.click(await app.s.find('button.vault[title="Switch notebook"]'));
     await answerDialog(app, /Discard unsaved changes to "A"\?/, "Cancel");
     await sleep(300);
     assert.ok(await app.exec(`return !!document.querySelector('[data-testid=file-tree]')`), "still in the vault");
-    await app.s.click(await app.s.find('button.vault[title="Switch vault"]'));
+    await app.s.click(await app.s.find('button.vault[title="Switch notebook"]'));
     await answerDialog(app, /Discard unsaved changes to "A"\?/, "Discard");
     await app.s.findWait("[data-testid=vault-path]");
     assert.equal(v.read("A.md"), "THEIRS\n");

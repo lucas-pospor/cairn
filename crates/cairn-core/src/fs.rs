@@ -1106,7 +1106,7 @@ impl VaultFs for StdFs {
 
     fn remove(&self, path: &str) -> Result<()> {
         if path.is_empty() {
-            return Err(CoreError::InvalidPath("cannot delete the vault root".into()));
+            return Err(CoreError::InvalidPath("cannot delete the notebook folder".into()));
         }
         let abs = self.op_abs(path)?;
         if fs::symlink_metadata(&abs).is_err() {
@@ -1123,7 +1123,7 @@ impl VaultFs for StdFs {
                 {
                     match trash::delete(&abs) {
                         Ok(()) => return Ok(()),
-                        Err(e) => log::warn!("system trash failed for {path}: {e}; using vault trash"),
+                        Err(e) => log::warn!("system trash failed for {path}: {e}; using the notebook's .trash folder"),
                     }
                 }
                 self.move_to_vault_trash(path)

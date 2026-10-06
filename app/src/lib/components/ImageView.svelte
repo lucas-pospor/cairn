@@ -165,7 +165,7 @@
         <p>Cairn cannot show {name}.</p>
         <p class="muted">The file may be damaged, or in a format this system cannot display.</p>
       {:else}
-        <p>{name} is not in the vault any more.</p>
+        <p>{name} is not in the notebook any more.</p>
       {/if}
     </div>
   {:else if status === "loading"}

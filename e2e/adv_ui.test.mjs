@@ -41,9 +41,9 @@ async function palette(app, name) {
   await sleep(300);
 }
 
-/** "Switch vault" then open `dir` from the typed-path box on the Welcome screen. */
+/** "Switch notebook" then open `dir` from the typed-path box on the Welcome screen. */
 async function switchVault(app, dir, waitRows = 1) {
-  await palette(app, "Switch vault");
+  await palette(app, "Switch notebook");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=vault-path]')`, { message: "welcome screen" });
   await app.exec(
     `const i = document.querySelector('[data-testid=vault-path]'); i.value = arguments[0]; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-testid=vault-open]').click(); return 1`,
@@ -217,7 +217,7 @@ test(
       await sleep(400);
       const graph = await app.exec(`return !!document.querySelector('[data-testid=graph-view]')`);
       const problems = [];
-      const bad = toasts.find((t) => /Could not open vault/.test(t));
+      const bad = toasts.find((t) => /Could not open notebook/.test(t));
       if (bad) problems.push(`error toast although the vault opened: ${JSON.stringify(bad)}`);
       if (!tabs.includes("C.md")) problems.push(`the session (tab C.md) was not restored: tabs ${JSON.stringify(tabs)}`);
       if (graph) problems.push("Ctrl+J (a custom hotkey of the previous vault) still opens the graph in this vault");
@@ -415,13 +415,13 @@ test("recent vaults: a folder that no longer exists shows an error, stays listed
     // Start without a vault argument: the most recent vault (A) opens.
     app = await launch({ vault: null, xdg: env.xdg, args: [] });
     await app.s.waitFor(`return document.querySelectorAll('[data-testid=tree-row]').length >= 1`, { timeout: 15000 });
-    await palette(app, "Switch vault");
+    await palette(app, "Switch notebook");
     await app.s.waitFor(`return document.querySelectorAll('.recent-open').length === 2`);
     await app.instrument();
     await app.exec(`[...document.querySelectorAll('.recent-open')].find(b => b.title === arguments[0]).click(); return 1`, gone.root);
     await sleep(800);
     const toasts = await app.toasts();
-    assert.ok(toasts.some((t) => /Could not open vault/.test(t)), JSON.stringify(toasts));
+    assert.ok(toasts.some((t) => /Could not open notebook/.test(t)), JSON.stringify(toasts));
     assert.ok(!fs.existsSync(gone.root), "clicking a missing recent vault must not create it");
     assert.equal(await app.exec(`return !!document.querySelector('[data-testid=vault-path]')`), true, "still on the Welcome screen");
     await app.exec(`[...document.querySelectorAll('.recent-open')].find(b => b.title === arguments[0]).parentElement.querySelector('.icon-btn').click(); return 1`, gone.root);

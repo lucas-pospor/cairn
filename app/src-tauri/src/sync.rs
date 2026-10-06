@@ -288,7 +288,7 @@ impl SyncManager {
     /// second, empty vault. [`Self::cancel`] gives it up.
     pub fn vault_exists(&self, settings: &SyncSettings) -> Result<bool, String> {
         if !valid_id(&settings.vault_id) {
-            return Err("the vault name may only contain letters, digits, - and _ (up to 64 characters)".into());
+            return Err("the notebook name may only contain letters, digits, - and _ (up to 64 characters)".into());
         }
         // Like setup: a setup given up meanwhile sees that before this resets it.
         let _run = self.running.lock();

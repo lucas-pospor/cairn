@@ -318,17 +318,17 @@ class App {
       this.plugins.stopAll();
       // Plugins the vault lists but this device has not approved stay off, without a dialog.
       void this.plugins.sync(settings.value.plugins).then((off) => {
-        if (off.length === 1) this.toast("1 plugin in this vault is off until you turn it on in Settings > Plugins.");
-        else if (off.length) this.toast(`${off.length} plugins in this vault are off until you turn them on in Settings > Plugins.`);
+        if (off.length === 1) this.toast("1 plugin in this notebook is off until you turn it on in Settings > Plugins.");
+        else if (off.length) this.toast(`${off.length} plugins in this notebook are off until you turn them on in Settings > Plugins.`);
       });
       this.restoreSession();
       this.recent = await backend.recentVaults();
     } catch (e) {
       if (create === "ask" && isCoreError(e) && e.kind === "notFound") {
         const ok = await this.confirm({
-          title: "Create a new vault?",
-          message: `There is no folder at ${path}. Create it and open it as a new, empty vault?`,
-          okLabel: "Create vault",
+          title: "Create a new notebook?",
+          message: `There is no folder at ${path}. Create it and open it as a new, empty notebook?`,
+          okLabel: "Create notebook",
         });
         if (ok) {
           // This open is over; let the one that creates the folder start.
@@ -337,7 +337,7 @@ class App {
         }
         return;
       }
-      this.toast(`Could not open vault: ${errorMessage(e)}`, "error");
+      this.toast(`Could not open notebook: ${errorMessage(e)}`, "error");
       this.recent = await backend.recentVaults();
     } finally {
       this.opening = null;
@@ -369,8 +369,8 @@ class App {
         const create =
           this.syncSetup?.id === id &&
           (await this.confirm({
-            title: "New vault",
-            message: `There's no vault called ${args.vaultId.trim()} on this server. Create it?`,
+            title: "New notebook",
+            message: `There's no notebook called ${args.vaultId.trim()} on this server. Create it?`,
             okLabel: "Create",
           }));
         if (this.syncSetup?.id !== id) return;
@@ -1129,7 +1129,7 @@ class App {
       { id: "app:files", name: "Show files", run: () => void ((this.leftOpen = true), (this.leftPanel = "files")) },
       { id: "app:toggle-left", name: "Toggle left sidebar", run: () => void (this.leftOpen = !this.leftOpen) },
       { id: "app:toggle-right", name: "Toggle right sidebar", run: () => void (this.rightOpen = !this.rightOpen) },
-      { id: "app:close-vault", name: "Switch vault", run: () => this.closeVault() },
+      { id: "app:close-vault", name: "Switch notebook", run: () => this.closeVault() },
       {
         id: "sync:now",
         name: "Sync now",
@@ -1284,7 +1284,7 @@ class App {
     const dirs = ["", ...this.entries.filter((e) => e.kind === "dir" && !isSameOrInside(e.path, path)).map((e) => e.path).sort()];
     const choice = await this.choose({
       title: `Move "${displayName(path)}" to`,
-      options: dirs.map((d) => ({ value: d, label: d || "Vault root" })),
+      options: dirs.map((d) => ({ value: d, label: d || "Notebook folder" })),
     });
     if (choice == null) return;
     await this.moveInto(path, choice);

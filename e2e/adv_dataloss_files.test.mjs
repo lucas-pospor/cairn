@@ -244,7 +244,7 @@ test("a .cairn folder that links out of the vault is read but not written", asyn
     await app.exec(`document.querySelector('[data-testid=settings-appearance]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-select]')`);
     await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'light'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
-    const refused = 'The ".cairn" folder leads outside the vault.';
+    const refused = 'The ".cairn" folder leads outside the notebook.';
     await eventually(async () => (await app.toasts()).includes(`Could not save settings: ${refused}`), { message: "settings toast" });
     // Below the theme rows, the button can be cut off at the bottom of Settings,
     // and WebDriver does not scroll a partly hidden element into view.
