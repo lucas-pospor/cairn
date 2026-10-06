@@ -4,6 +4,7 @@
 import { backend } from "./backend";
 import { deriveAccent, parseRgb } from "./accent";
 import { themeFor, themeInUse } from "./themes";
+import { FONT_DIR, MAX_FONT_BYTES, fontBytesProblem, fontFailure, fontNameProblem, loadFontFace } from "./textFont";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -21,7 +22,15 @@ export interface Settings {
   accent: string;
   fontSize: number;
   lineWidth: number;
+  /** The Text font; also used wherever the font file (textFont) cannot load. */
   fontFamily: "sans" | "serif" | "mono";
+  /**
+   * The file name of the user's font for note text in `.cairn/fonts/`
+   * (textFont.ts). Kept as read and not written until chosen, like the theme
+   * ids: versions up to 1.2.0 keep it and show fontFamily, which is why the
+   * font file has a key of its own.
+   */
+  textFont?: unknown;
   defaultMode: "live" | "source" | "preview";
   attachmentFolder: string;
   /** Enabled CSS snippet file names. */
@@ -79,6 +88,15 @@ const FONTS: Record<Settings["fontFamily"], string> = {
   serif: 'Charter, "Iowan Old Style", "Source Serif 4", Georgia, "Noto Serif", serif',
   mono: "var(--font-mono)",
 };
+/** The Text font choices by name, as Settings shows them. */
+export const FONT_NAMES: Record<Settings["fontFamily"], string> = { sans: "Sans serif", serif: "Serif", mono: "Monospace" };
+
+/** The font file named by textFont: loading, in use, or why it is not. */
+export interface FontFileState {
+  name: string;
+  state: "loading" | "loaded" | "failed";
+  error?: string;
+}
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
@@ -95,6 +113,15 @@ class SettingsStore {
   private loaded = false;
   /** Told when a change could not be saved after the debounce; the app shows a toast. */
   onSaveError: (e: unknown) => void = (e) => console.warn("settings.json not saved", e);
+  /** The font file named by textFont, or null when none is (or it is not a file name at all). */
+  font = $state<FontFileState | null>(null);
+  private face: FontFace | null = null;
+  /** Counts font loads, so one that finishes after another has started is dropped. */
+  private fontGen = 0;
+  /** Told when the font file cannot be used; the app shows a toast. */
+  onFontError: (name: string, message: string) => void = (name, message) => console.warn(`font file ${name} not loaded: ${message}`);
+  /** Told when the note text font changed after a font file loaded or went; the editor measures its lines again. */
+  onFontChange: () => void = () => {};
 
   constructor() {
     // The derived accent depends on the theme, which follows the system with theme "system".
@@ -121,6 +148,9 @@ class SettingsStore {
     value.fontFamily = oneOf(value.fontFamily, ["sans", "serif", "mono"], DEFAULT_SETTINGS.fontFamily);
     value.defaultMode = oneOf(value.defaultMode, ["live", "source", "preview"], DEFAULT_SETTINGS.defaultMode);
     this.value = value;
+    if (value.textFont !== undefined && typeof value.textFont !== "string") console.warn("settings.json: \"textFont\" is not a file name, so the Text font is used");
+    // Another vault's font file may have the same name.
+    this.dropFont();
     await this.refreshSnippets();
     this.loaded = true;
     this.apply();
@@ -170,9 +200,68 @@ class SettingsStore {
     root.dataset.darkTheme = themeFor("dark", s.darkTheme);
     root.style.setProperty("--text-size", `${s.fontSize}px`);
     root.style.setProperty("--line-width", `${s.lineWidth}px`);
-    root.style.setProperty("--font-text", FONTS[s.fontFamily] ?? FONTS.sans);
+    root.style.setProperty("--font-text", this.fontStack());
+    void this.syncFont();
     this.applyAccent();
     await this.applySnippets();
+  }
+
+  /** --font-text: the font file once it is loaded, with the Text font behind it. */
+  private fontStack(): string {
+    const fallback = FONTS[this.value.fontFamily] ?? FONTS.sans;
+    return this.face && this.font?.state === "loaded" && this.font.name === this.value.textFont ? `"${this.face.family}", ${fallback}` : fallback;
+  }
+
+  /** Load the font file that textFont names, unless it is the one loaded (or failing) already; `again` loads it anyway. */
+  private async syncFont(again = false) {
+    const want = this.value.textFont;
+    const name = typeof want === "string" ? want : null;
+    if (!again && (this.font?.name ?? null) === name) return;
+    const had = this.face !== null;
+    this.dropFont();
+    const gen = this.fontGen;
+    const root = document.documentElement;
+    if (name === null) {
+      if (had) {
+        root.style.setProperty("--font-text", this.fontStack());
+        this.onFontChange();
+      }
+      return;
+    }
+    this.font = { name, state: "loading" };
+    try {
+      const problem = fontNameProblem(name);
+      if (problem) throw new Error(problem);
+      const bytes = await backend.readConfigBytes(`${FONT_DIR}/${name}`, MAX_FONT_BYTES);
+      if (gen !== this.fontGen) return;
+      const bad = fontBytesProblem(new Uint8Array(bytes));
+      if (bad) throw new Error(bad);
+      const face = await loadFontFace(bytes);
+      if (gen !== this.fontGen) return;
+      document.fonts.add(face);
+      this.face = face;
+      this.font = { name, state: "loaded" };
+    } catch (e) {
+      if (gen !== this.fontGen) return;
+      const message = fontFailure(e);
+      this.font = { name, state: "failed", error: message };
+      this.onFontError(name, message);
+    }
+    root.style.setProperty("--font-text", this.fontStack());
+    this.onFontChange();
+  }
+
+  /** Load the font file again: it was replaced by one of the same name. */
+  reloadFont(): Promise<void> {
+    return this.syncFont(true);
+  }
+
+  /** Stop using the font file (a load under way is dropped too). */
+  private dropFont() {
+    this.fontGen++;
+    if (this.face) document.fonts?.delete(this.face);
+    this.face = null;
+    this.font = null;
   }
 
   /** The custom accent, adjusted to the current theme so text in and on it stays readable (see accent.ts). */
@@ -224,13 +313,14 @@ class SettingsStore {
     return file;
   }
 
-  /** Remove theme overrides when leaving a vault. */
+  /** Remove theme overrides and the font file when leaving a vault. */
   reset() {
     clearTimeout(this.saveTimer);
     this.dirty = false;
     this.loaded = false;
     this.value = { ...DEFAULT_SETTINGS };
     this.available = [];
+    this.dropFont();
     void this.apply();
   }
 }

@@ -438,6 +438,99 @@ fn config_folders_that_lead_out_of_the_vault_are_not_written() {
     assert_eq!(snapshot(o), before);
 }
 
+/// Fonts in `.cairn/fonts/` are read and written as bytes: bytes that are not
+/// UTF-8 come back as they were, and a file over the size limit is not read.
+#[test]
+fn config_bytes_round_trip_and_keep_to_a_size_limit() {
+    let (d, v) = setup(&[("n.md", "")]);
+    let font: Vec<u8> = [b"wOF2".as_slice(), &[0, 0xff, 0xfe, 0x80, 0xc3]].concat();
+    assert_eq!(v.read_config_bytes("fonts/A.woff2", 1 << 20).unwrap(), None);
+    v.write_config_bytes("fonts/A.woff2", &font).unwrap();
+    assert_eq!(fs::read(d.path().join(".cairn/fonts/A.woff2")).unwrap(), font);
+    assert_eq!(v.read_config_bytes("fonts/A.woff2", 1 << 20).unwrap(), Some(font.clone()));
+    assert_eq!(v.read_config_bytes("fonts/A.woff2", font.len() as u64).unwrap(), Some(font));
+    // One byte more than the limit allows.
+    fs::write(d.path().join(".cairn/fonts/Big.ttf"), vec![0u8; (1 << 20) + 1]).unwrap();
+    assert_eq!(v.read_config_bytes("fonts/Big.ttf", 1 << 20), Err(CoreError::Io("\"fonts/Big.ttf\" is 2 MB, more than the 1 MB that Cairn reads.".into())));
+    fs::create_dir(d.path().join(".cairn/fonts/Dir.otf")).unwrap();
+    assert!(v.read_config_bytes("fonts/Dir.otf", 1 << 20).is_err());
+    // Text config keeps working through the same write.
+    v.write_config("settings.json", "{}").unwrap();
+    assert_eq!(v.read_config("settings.json").unwrap().as_deref(), Some("{}"));
+    // Never in the index.
+    assert!(v.rescan().unwrap().is_empty());
+    assert_eq!(paths(&v), vec!["n.md"]);
+}
+
+/// A font that is replaced or removed goes to the trash like a deleted note;
+/// a missing one is no error, and nothing outside `.cairn/` can be named.
+#[test]
+fn config_files_go_to_the_trash() {
+    let (d, v) = setup(&[("n.md", "")]);
+    v.write_config_bytes("fonts/A.ttf", b"\0\x01\0\0").unwrap();
+    assert!(v.trash_config("fonts/A.ttf").unwrap(), "moved");
+    assert!(!d.path().join(".cairn/fonts/A.ttf").exists());
+    assert_eq!(fs::read(d.path().join(".trash/A.ttf")).unwrap(), b"\0\x01\0\0");
+    assert!(!v.trash_config("fonts/A.ttf").unwrap(), "nothing left to move");
+    assert!(!v.trash_config("fonts/never.ttf").unwrap());
+    for n in ["../n.md", ".trash/A.ttf", "fonts/../../n.md", ""] {
+        assert!(matches!(v.trash_config(n), Err(CoreError::InvalidPath(_))), "{n:?}");
+    }
+    assert!(d.path().join("n.md").exists());
+    assert!(v.rescan().unwrap().is_empty());
+}
+
+/// As with text config: through a link in `.cairn/` that leads out of the
+/// vault, a font is read but never written or trashed; a link to a font is
+/// trashed itself, not the file it leads to (FINDING-013).
+#[cfg(unix)]
+#[test]
+fn config_bytes_are_not_written_or_trashed_outside_the_vault() {
+    use std::os::unix::fs::symlink;
+    let outside = tempfile::tempdir().unwrap();
+    let o = outside.path();
+    fs::create_dir_all(o.join("fonts")).unwrap();
+    fs::write(o.join("fonts/A.ttf"), b"OTTO").unwrap();
+    fs::write(o.join("B.ttf"), b"true").unwrap();
+    let before = snapshot(o);
+    let (d, v) = setup(&[("n.md", "")]);
+    let r = d.path();
+    fs::create_dir(r.join(".cairn")).unwrap();
+    symlink(o.join("fonts"), r.join(".cairn/fonts")).unwrap();
+    let out_err = CoreError::Io("The \".cairn/fonts\" folder leads outside the notebook.".into());
+    assert_eq!(v.read_config_bytes("fonts/A.ttf", 100).unwrap().as_deref(), Some(b"OTTO".as_slice()));
+    assert_eq!(v.write_config_bytes("fonts/A.ttf", b"wOFF"), Err(out_err.clone()));
+    assert_eq!(v.write_config_bytes("fonts/C.ttf", b"wOFF"), Err(out_err.clone()));
+    assert_eq!(v.trash_config("fonts/A.ttf"), Err(out_err));
+    assert_eq!(snapshot(o), before);
+    // A link to a font: trashing takes the link away and leaves the font.
+    fs::remove_file(r.join(".cairn/fonts")).unwrap();
+    fs::create_dir(r.join(".cairn/fonts")).unwrap();
+    symlink(o.join("B.ttf"), r.join(".cairn/fonts/B.ttf")).unwrap();
+    assert_eq!(v.read_config_bytes("fonts/B.ttf", 100).unwrap().as_deref(), Some(b"true".as_slice()));
+    assert!(v.trash_config("fonts/B.ttf").unwrap());
+    assert!(fs::symlink_metadata(r.join(".cairn/fonts/B.ttf")).is_err());
+    assert_eq!(snapshot(o), before);
+}
+
+/// A config file that links to a device (or a pipe) reports size 0 but never
+/// ends: it is refused instead of read without a limit.
+#[cfg(unix)]
+#[test]
+fn config_bytes_refuse_a_link_to_a_device() {
+    use std::os::unix::fs::symlink;
+    let (d, v) = setup(&[("n.md", "")]);
+    fs::create_dir_all(d.path().join(".cairn/fonts")).unwrap();
+    symlink("/dev/zero", d.path().join(".cairn/fonts/Zero.woff2")).unwrap();
+    assert_eq!(v.read_config_bytes("fonts/Zero.woff2", 1 << 20), Err(CoreError::Io("\".cairn/fonts/Zero.woff2\" is not a file.".into())));
+    // Text config the same way: a settings.json that a received vault links to a device.
+    symlink("/dev/zero", d.path().join(".cairn/settings.json")).unwrap();
+    assert_eq!(v.read_config("settings.json"), Err(CoreError::Io("\".cairn/settings.json\" is not a file.".into())));
+    // And one far too large to be settings.
+    fs::write(d.path().join(".cairn/huge.json"), vec![b' '; (16 << 20) + 1]).unwrap();
+    assert_eq!(v.read_config("huge.json"), Err(CoreError::Io("\"huge.json\" is more than the 16 MB that Cairn reads.".into())));
+}
+
 #[test]
 fn attachments_get_unique_names() {
     let (_d, v) = setup(&[]);

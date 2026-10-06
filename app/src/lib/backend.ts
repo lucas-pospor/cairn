@@ -67,6 +67,15 @@ export const backend = {
   readConfig: (name: string) => invoke<string | null>("read_config", { name }),
   writeConfig: (name: string, content: string) => invoke<void>("write_config", { name, content }),
   listConfig: (dir: string) => invoke<string[]>("list_config", { dir }),
+  /** A `.cairn/` file that is not text (a font); rejects with notFound if missing, or if larger than `max` bytes. */
+  readConfigBytes: (name: string, max: number) => invoke<ArrayBuffer>("read_config_bytes", { name, max }),
+  /** Raw bytes on the desktop; Android passes no raw body to a command, so base64 in JSON there. */
+  writeConfigBytes: (name: string, bytes: Uint8Array) =>
+    isAndroid
+      ? invoke<void>("write_config_bytes", { name, data: base64(bytes) })
+      : invoke<void>("write_config_bytes", bytes, { headers: { "x-name": encodeURIComponent(name) } }),
+  /** Move a `.cairn/` file to the trash: true if it did, false if there was no such file. */
+  trashConfig: (name: string) => invoke<boolean>("trash_config", { name }),
   /** Plugins turned on on this device for the open vault, by file name. */
   pluginApprovals: () => invoke<Record<string, PluginApproval>>("plugin_approvals"),
   setPluginApproval: (file: string, approval: PluginApproval | null) => invoke<void>("set_plugin_approval", { file, approval }),

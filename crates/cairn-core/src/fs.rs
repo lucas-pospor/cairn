@@ -114,6 +114,13 @@ pub trait VaultFs: Send + Sync {
     /// `None` if the path does not exist.
     fn stat(&self, path: &str) -> Result<Option<FileStat>>;
     fn read(&self, path: &str) -> Result<Vec<u8>>;
+    /// Like `read`, but reads no more than `max + 1` bytes, so a caller can
+    /// tell a file larger than `max` without holding all of it, and refuses
+    /// anything but a plain file (a device or a pipe a link leads to never
+    /// ends or never answers). The default is `read`.
+    fn read_max(&self, path: &str, _max: u64) -> Result<Vec<u8>> {
+        self.read(path)
+    }
     /// Create or replace a file. Implementations should make this atomic.
     /// The parent folder must exist.
     fn write(&self, path: &str, data: &[u8]) -> Result<FileStat>;
@@ -1079,6 +1086,20 @@ impl VaultFs for StdFs {
 
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         fs::read(self.op_abs(path)?).map_err(|e| CoreError::io(path, e))
+    }
+
+    fn read_max(&self, path: &str, max: u64) -> Result<Vec<u8>> {
+        use std::io::Read;
+        let abs = self.op_abs(path)?;
+        // Looked at before opening: opening a pipe waits for a writer.
+        if !fs::metadata(&abs).map_err(|e| CoreError::io(path, e))?.is_file() {
+            return Err(CoreError::Io(format!("\"{path}\" is not a file.")));
+        }
+        let mut data = Vec::new();
+        fs::File::open(&abs)
+            .and_then(|f| f.take(max.saturating_add(1)).read_to_end(&mut data))
+            .map_err(|e| CoreError::io(path, e))?;
+        Ok(data)
     }
 
     fn write(&self, path: &str, data: &[u8]) -> Result<FileStat> {

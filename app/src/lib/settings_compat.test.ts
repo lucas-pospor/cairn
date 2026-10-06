@@ -1,9 +1,10 @@
-// settings.json written by a version with core plugins or a choice of light and
-// dark themes, read and saved again by this version's settings code: the
-// "corePlugins", "lightTheme" and "darkTheme" keys and the hotkeys of core plugin
-// commands must come through unchanged. This test uses only load(), update() and
-// flush(), so it runs against older versions of settings.svelte.ts too (1.0.0 and
-// 1.1.0 keep keys they do not know, and replace only a "theme" they do not know).
+// settings.json written by a version with core plugins, a choice of light and
+// dark themes or a font file, read and saved again by this version's settings
+// code: the "corePlugins", "lightTheme", "darkTheme" and "textFont" keys and the
+// hotkeys of core plugin commands must come through unchanged. This test uses
+// only load(), update() and flush(), so it runs against older versions of
+// settings.svelte.ts too (1.0.0, 1.1.0 and 1.2.0 keep keys they do not know,
+// and replace only a "theme" or "fontFamily" they do not know).
 //
 // Run: cd app && npx vitest run src/lib/settings_compat.test.ts
 
@@ -107,5 +108,32 @@ describe("settings.json with a light and a dark theme chosen", () => {
   it("would lose a theme id written into \"theme\" itself, which is why it has keys of its own", async () => {
     const saved = await loadAndChange({ theme: "graphite" }, { fontSize: 18 });
     expect(saved.theme).toBe("system");
+  });
+});
+
+describe("settings.json with a font file", () => {
+  it("keeps textFont and fontFamily when another setting changes", async () => {
+    // A file name, and values of a later version or of the wrong type.
+    for (const textFont of ["Inter.woff2", "Noto Serif CJK.otf", { file: "Inter.woff2", on: true }, 5, null, ["Inter.woff2"]]) {
+      written = [];
+      const saved = await loadAndChange({ theme: "dark", fontFamily: "serif", textFont }, { fontSize: 18 });
+      expect(saved).toMatchObject({ theme: "dark", fontFamily: "serif", fontSize: 18 });
+      expect(saved.textFont).toEqual(textFont);
+    }
+  });
+
+  it("keeps it when the Text font changes", async () => {
+    const saved = await loadAndChange({ fontFamily: "serif", textFont: "Inter.woff2" }, { fontFamily: "mono" });
+    expect(saved).toMatchObject({ fontFamily: "mono", textFont: "Inter.woff2" });
+  });
+
+  it("does not add textFont to a file that has none", async () => {
+    const saved = await loadAndChange({ fontFamily: "serif" }, { fontSize: 18 });
+    expect("textFont" in saved).toBe(false);
+  });
+
+  it("would lose a font file named in \"fontFamily\" itself, which is why it has a key of its own", async () => {
+    const saved = await loadAndChange({ fontFamily: "Inter.woff2" }, { fontSize: 18 });
+    expect(saved.fontFamily).toBe("sans");
   });
 });

@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { app, type SettingsSection } from "../app.svelte";
   import { settings, DEFAULT_SETTINGS, type Settings } from "../settings.svelte";
+  import { FONT_DIR, FONT_EXTENSIONS, fontBytesProblem, fontFailure, fontNameProblem, fontSizeProblem, loadFontFace } from "../textFont";
   import { commands, comboFromEvent, displayCombo, hotkeyProblem } from "../commands";
   import { setRecordingHotkey } from "../hotkeyRecorder";
   import { closeOnBack } from "../back";
@@ -93,6 +94,89 @@
   const systemDark = new MediaQuery("(prefers-color-scheme: dark)");
   /** The theme on screen: its swatch is shown next to the Theme list, and its accent by the colour picker while no custom accent is set. */
   const shown = $derived(themeInUse(s, systemDark.current));
+
+  // ----- font file -----
+  let fontInput = $state<HTMLInputElement>();
+  let savingFont = $state(false);
+  /** The picker shows only fonts on the desktop. Android's would grey out fonts that the storage app labels by another type. */
+  const fontAccept = isMobile ? undefined : FONT_EXTENSIONS.map((x) => `.${x}`).join(",");
+  const fontState = $derived.by(() => {
+    const f = settings.font;
+    if (!f) return typeof s.textFont === "undefined" ? "" : "The font file setting holds no file name; notes use the Text font.";
+    if (f.state === "loading") return `Loading ${f.name}…`;
+    if (f.state === "loaded") return `${f.name} is in use.`;
+    return `${f.name} cannot be used: ${f.error} Notes use the Text font.`;
+  });
+
+  /**
+   * Save the picked font file in .cairn/fonts/ and use it. A file of another
+   * name that it replaces goes to the trash; one of the same name is written
+   * over (on macOS, Windows and Android shared folders, names that differ only
+   * in case are the same file).
+   */
+  async function chooseFont(e: Event & { currentTarget: HTMLInputElement }) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = "";
+    if (!file) return;
+    const name = file.name;
+    const refuse = (message: string) => app.toast(`Cannot use ${name}: ${message}`, "error");
+    const problem = fontNameProblem(name) ?? fontSizeProblem(file.size);
+    if (problem) return void refuse(problem);
+    // Closing or switching the vault meanwhile must not change another vault's settings or files.
+    const vault = app.vault?.root;
+    const stillHere = () => app.vault?.root === vault;
+    savingFont = true;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bad = fontBytesProblem(bytes);
+      if (bad) return void refuse(bad);
+      // Saved only if this web view can use it (on a copy of the bytes, which are sent below).
+      try {
+        await loadFontFace(bytes.slice().buffer);
+      } catch (err) {
+        return void refuse(fontFailure(err));
+      }
+      if (!stillHere()) return;
+      // The store, not s: s stays as it was once Settings is closed.
+      const old = settings.value.textFont;
+      const fold = (n: string) => n.normalize("NFC").toLowerCase();
+      const same = typeof old === "string" && fold(old) === fold(name);
+      await backend.writeConfigBytes(`${FONT_DIR}/${same ? old : name}`, bytes);
+      if (!stillHere()) return;
+      if (same) await settings.reloadFont();
+      else set("textFont", name);
+      if (typeof old === "string" && !same && !fontNameProblem(old)) {
+        await backend.trashConfig(`${FONT_DIR}/${old}`).catch((err) => app.toast(`Could not move ${old} to the trash: ${errorMessage(err)}`, "error"));
+      }
+    } catch (err) {
+      app.toast(`Could not save the font file: ${errorMessage(err)}`, "error");
+    } finally {
+      savingFont = false;
+      // The button was disabled while saving, so the focus went to the page; give it back.
+      await tick();
+      const now = document.activeElement;
+      if (dialog?.isConnected && (!now || now === document.body)) dialog.querySelector<HTMLElement>("[data-testid=font-choose]")?.focus();
+    }
+  }
+
+  /** Stop using the font file and move it to the trash. The setting goes even when the file cannot be moved. */
+  async function removeFont() {
+    const name = settings.value.textFont;
+    set("textFont", undefined);
+    if (typeof name === "string" && !fontNameProblem(name)) {
+      try {
+        const moved = await backend.trashConfig(`${FONT_DIR}/${name}`);
+        app.toast(moved ? `${name} moved to the trash. Notes use the Text font.` : "Notes use the Text font.");
+      } catch (err) {
+        app.toast(`Notes use the Text font. Could not move ${name} to the trash: ${errorMessage(err)}`, "error");
+      }
+    } else {
+      app.toast("Notes use the Text font.");
+    }
+    // The Remove button is gone; keep the focus in this row.
+    await tick();
+    dialog.querySelector<HTMLElement>("[data-testid=font-choose]")?.focus();
+  }
 
   // ----- snippets -----
   let editing = $state<{ name: string; css: string } | null>(null);
@@ -364,12 +448,26 @@
           </div>
         </div>
         <div class="row">
-          <div><b id="{uid}-font">Text font</b><p id="{uid}-font-d">Font for note text.</p></div>
+          <div><b id="{uid}-font">Text font</b><p id="{uid}-font-d">Font for note text, and in place of a font file that cannot be used.</p></div>
           <select aria-labelledby="{uid}-font" aria-describedby="{uid}-font-d" value={s.fontFamily} onchange={(e) => set("fontFamily", e.currentTarget.value as Settings["fontFamily"])}>
             <option value="sans">Sans serif</option>
             <option value="serif">Serif</option>
             <option value="mono">Monospace</option>
           </select>
+        </div>
+        <div class="row">
+          <div>
+            <b id="{uid}-fontfile">Font file</b>
+            <p id="{uid}-fontfile-d">Your own font for note text: a woff2, woff, ttf or otf file up to 20 MB, kept in <code>.cairn/fonts/</code> in this notebook. Where the file is missing, notes use the Text font.</p>
+            {#if fontState}<p class="font-state" role="status" data-testid="font-file-state">{fontState}</p>{/if}
+          </div>
+          <div class="inline">
+            <button class="btn" aria-label={settings.font ? "Change the font file" : "Choose a font file"} aria-describedby="{uid}-fontfile-d" disabled={savingFont} onclick={() => fontInput?.click()} data-testid="font-choose">{settings.font ? "Change" : "Choose"}</button>
+            {#if s.textFont !== undefined}
+              <button class="btn" aria-label="Remove the font file" disabled={savingFont} onclick={removeFont} data-testid="font-remove">Remove</button>
+            {/if}
+            <input type="file" hidden accept={fontAccept} bind:this={fontInput} onchange={chooseFont} data-testid="font-input" />
+          </div>
         </div>
         <div class="row">
           <div>
@@ -721,6 +819,10 @@
     padding-left: 20px;
   }
   .skipped code {
+    overflow-wrap: anywhere;
+  }
+  /* A long font file name with no spaces wraps instead of widening the row. */
+  .font-state {
     overflow-wrap: anywhere;
   }
   .inline {

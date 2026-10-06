@@ -987,10 +987,14 @@ impl Vault {
         Ok(format!("{CONFIG_DIR}/{rel}"))
     }
 
-    /// Read `.cairn/<name>`; `None` if it does not exist.
+    /// Read `.cairn/<name>`; `None` if it does not exist. Settings, snippets
+    /// and plugins are text far below 16 MB: a larger file, or a link to a
+    /// device or a pipe, is refused rather than read without end.
     pub fn read_config(&self, name: &str) -> Result<Option<String>> {
+        const MAX: u64 = 16 << 20;
         let p = Self::config_path(name)?;
-        match self.fs.read(&p) {
+        match self.fs.read_max(&p, MAX) {
+            Ok(b) if b.len() as u64 > MAX => Err(CoreError::Io(format!("\"{name}\" is more than the {} MB that Cairn reads.", MAX >> 20))),
             Ok(b) => Ok(Some(String::from_utf8_lossy(&b).into_owned())),
             Err(CoreError::NotFound(_)) => Ok(None),
             Err(e) => Err(e),
@@ -1000,17 +1004,62 @@ impl Vault {
     /// Write `.cairn/<name>`, creating folders as needed. A symlink there is
     /// followed only if it leads to a file in the vault; a link out of the
     /// vault (one a received vault came with) is replaced by the file. If a
-    /// folder on the way (`.cairn`, `.cairn/snippets`) leads out of the
-    /// vault, nothing is written and the error names that folder.
+    /// folder on the way (`.cairn`, `.cairn/snippets`, `.cairn/fonts`) leads
+    /// out of the vault, nothing is written and the error names that folder.
     pub fn write_config(&self, name: &str, content: &str) -> Result<()> {
+        self.write_config_bytes(name, content.as_bytes())
+    }
+
+    /// Read `.cairn/<name>` as it is, for a file that is not text (a font);
+    /// `None` if it does not exist. A file larger than `max` bytes is not
+    /// read: the error says how large it is.
+    pub fn read_config_bytes(&self, name: &str, max: u64) -> Result<Option<Vec<u8>>> {
+        let p = Self::config_path(name)?;
+        match self.fs.stat(&p)? {
+            None => return Ok(None),
+            Some(st) if st.kind != EntryKind::File => return Err(CoreError::Io(format!("\"{name}\" is not a file."))),
+            Some(st) if st.size > max => {
+                return Err(CoreError::Io(format!("\"{name}\" is {} MB, more than the {} MB that Cairn reads.", st.size.div_ceil(1 << 20), max >> 20)));
+            }
+            Some(_) => {}
+        }
+        match self.fs.read_max(&p, max) {
+            // Grown since the check above, or a device that a link leads to.
+            Ok(b) if b.len() as u64 > max => Err(CoreError::Io(format!("\"{name}\" is more than the {} MB that Cairn reads.", max >> 20))),
+            Ok(b) => Ok(Some(b)),
+            Err(CoreError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Write `data` to `.cairn/<name>`, with the rules of [`Vault::write_config`].
+    pub fn write_config_bytes(&self, name: &str, data: &[u8]) -> Result<()> {
         let p = Self::config_path(name)?;
         let _g = self.op.lock();
         if let Some(dir) = self.fs.folder_outside(vpath::parent(&p)) {
             return Err(CoreError::Io(format!("The \"{dir}\" folder leads outside the notebook.")));
         }
         self.fs.create_dir(vpath::parent(&p))?;
-        self.fs.write_in_vault(&p, content.as_bytes())?;
+        self.fs.write_in_vault(&p, data)?;
         Ok(())
+    }
+
+    /// Move `.cairn/<name>` to the trash, as deleting a note does: true if
+    /// it did, false if there was no such file. Like a write, it never acts
+    /// outside the vault: if a folder on the way leads out, nothing is moved
+    /// and the error names that folder. A link there is moved itself, not
+    /// the file it leads to.
+    pub fn trash_config(&self, name: &str) -> Result<bool> {
+        let p = Self::config_path(name)?;
+        let _g = self.op.lock();
+        if let Some(dir) = self.fs.folder_outside(vpath::parent(&p)) {
+            return Err(CoreError::Io(format!("The \"{dir}\" folder leads outside the notebook.")));
+        }
+        match self.fs.remove(&p) {
+            Ok(()) => Ok(true),
+            Err(CoreError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     /// Names of the files directly inside `.cairn/<dir>`.

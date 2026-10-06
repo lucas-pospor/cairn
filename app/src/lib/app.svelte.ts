@@ -14,7 +14,7 @@ import { refreshEmbeds } from "./editor/livePreview";
 import { displayName, isImage, isInside, isMarkdown, isSameOrInside, join, parent, rebase, fileName, resolveRelative } from "./paths";
 import { openTarget } from "./opening";
 import { errorMessage, isCoreError, type Change, type FileStat, type LinkKind, type SyncStatus, type VaultInfo } from "./types";
-import { settings } from "./settings.svelte";
+import { FONT_NAMES, settings } from "./settings.svelte";
 import { commands, displayCombo, isMac as macPlatform } from "./commands";
 import { toggleWrap, toggleTask, insertWikilink } from "./editor/format";
 import { lineBreaksOf, textWithLineBreaks } from "./editor/lineBreaks";
@@ -244,6 +244,10 @@ class App {
     // Say when a settings change could not be written (a full disk, or a
     // .cairn folder that leads out of the vault), not only in the console.
     settings.onSaveError = (e) => this.toast(`Could not save settings: ${errorMessage(e)}`, "error");
+    settings.onFontError = (name, message) =>
+      this.toast(`Could not use the font file ${name}: ${message} Notes use the Text font, ${FONT_NAMES[settings.value.fontFamily] ?? "Sans serif"}, instead.`, "error");
+    // Lines change height with the font, and the editor keeps the heights it measured.
+    settings.onFontChange = () => this.view?.requestMeasure();
     this.unlistenClose = await backend.onCloseRequested(() => this.beforeClose());
     this.registerCommands();
     const q = narrowQuery();

@@ -399,6 +399,48 @@ pub async fn list_config(state: State<'_, AppState>, dir: String) -> CmdResult<V
     vault(&state)?.list_config(&dir)
 }
 
+/// Read a file from `.cairn/` that is not text (a font), as raw bytes. A
+/// missing file is `NotFound`; one larger than `max` bytes is not read.
+#[tauri::command]
+pub async fn read_config_bytes(state: State<'_, AppState>, name: String, max: u64) -> CmdResult<tauri::ipc::Response> {
+    match vault(&state)?.read_config_bytes(&name, max)? {
+        Some(bytes) => Ok(tauri::ipc::Response::new(bytes)),
+        None => Err(CoreError::NotFound(name)),
+    }
+}
+
+/// Write a file to `.cairn/` that is not text (a font). The body is the raw
+/// bytes, named by the `x-name` header (percent-encoded). On Android, where a
+/// command never gets a raw body, it is JSON: `{ "name", "data" }` with the
+/// bytes in base64.
+#[tauri::command]
+pub async fn write_config_bytes(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<()> {
+    let header = request
+        .headers()
+        .get("x-name")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| percent_encoding::percent_decode_str(v).decode_utf8_lossy().into_owned());
+    let (name, bytes) = config_bytes_body(request.body(), header)?;
+    vault(&state)?.write_config_bytes(&name, &bytes)
+}
+
+/// The file name and bytes that `write_config_bytes` was sent: the name is
+/// in the header with raw bytes, and next to the base64 data in JSON.
+fn config_bytes_body(body: &tauri::ipc::InvokeBody, header: Option<String>) -> CmdResult<(String, std::borrow::Cow<'_, [u8]>)> {
+    let name = match body {
+        tauri::ipc::InvokeBody::Raw(_) => header,
+        tauri::ipc::InvokeBody::Json(v) => v.get("name").and_then(|n| n.as_str()).map(str::to_string),
+    };
+    let name = name.ok_or_else(|| CoreError::InvalidPath("expected a file name".into()))?;
+    Ok((name, attachment_bytes(body)?))
+}
+
+/// Move a file in `.cairn/` to the trash: true if it did, false if there was no such file.
+#[tauri::command]
+pub async fn trash_config(state: State<'_, AppState>, name: String) -> CmdResult<bool> {
+    vault(&state)?.trash_config(&name)
+}
+
 /// Plugins turned on on this device for the open vault, by file name (kept in
 /// the app config folder, never in the vault).
 #[tauri::command]
@@ -443,9 +485,9 @@ pub async fn read_text_file(state: State<'_, AppState>, path: String) -> CmdResu
     Ok(String::from_utf8(bytes).ok())
 }
 
-/// The bytes of a `save_attachment` body. The desktop sends them raw.
-/// Android cannot: Tauri always delivers a JSON body there, so the app sends
-/// `{ "data": "..." }` instead, with the bytes in base64.
+/// The bytes of a `save_attachment` or `write_config_bytes` body. The
+/// desktop sends them raw. Android cannot: Tauri always delivers a JSON body
+/// there, so the app sends `{ "data": "..." }` instead, with the bytes in base64.
 fn attachment_bytes(body: &tauri::ipc::InvokeBody) -> CmdResult<std::borrow::Cow<'_, [u8]>> {
     use base64::Engine;
     match body {
@@ -762,6 +804,25 @@ pub fn default_device_name() -> String {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn config_bytes_come_raw_with_a_header_or_as_base64_json() {
+        use tauri::ipc::InvokeBody;
+        let font = vec![0x77, 0x4f, 0x46, 0x32, 0x00, 0xff, 0xfe];
+        // The desktop: the bytes as they are, the name in the header.
+        let raw = InvokeBody::Raw(font.clone());
+        let (name, bytes) = config_bytes_body(&raw, Some("fonts/A.woff2".into())).unwrap();
+        assert_eq!((name.as_str(), &*bytes), ("fonts/A.woff2", font.as_slice()));
+        assert!(config_bytes_body(&raw, None).is_err());
+        // Android: JSON with the bytes in base64 (Tauri sends no raw body there).
+        let json = InvokeBody::Json(serde_json::json!({ "name": "fonts/A.woff2", "data": "d09GMgD//g==" }));
+        let (name, bytes) = config_bytes_body(&json, None).unwrap();
+        assert_eq!((name.as_str(), &*bytes), ("fonts/A.woff2", font.as_slice()));
+        // The JSON Tauri makes of a Uint8Array (a list of numbers) is refused, not stored.
+        assert!(config_bytes_body(&InvokeBody::Json(serde_json::json!([119, 79, 70, 50])), None).is_err());
+        assert!(config_bytes_body(&InvokeBody::Json(serde_json::json!({ "name": "fonts/A.woff2", "data": "not base64!" })), None).is_err());
+        assert!(config_bytes_body(&InvokeBody::Json(serde_json::json!({ "data": "d09GMg==" })), None).is_err());
+    }
 
     /// A fresh folder under the system's temp folder.
     fn temp(name: &str) -> PathBuf {

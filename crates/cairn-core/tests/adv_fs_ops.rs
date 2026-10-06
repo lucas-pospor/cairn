@@ -594,6 +594,9 @@ fn config_names_cannot_escape_the_cairn_folder() {
         assert!(matches!(v.read_config(n), Err(CoreError::InvalidPath(_))), "read {n:?}");
         assert!(matches!(v.write_config(n, "c"), Err(CoreError::InvalidPath(_))), "write {n:?}");
         assert!(matches!(v.list_config(n), Err(CoreError::InvalidPath(_))), "list {n:?}");
+        assert!(matches!(v.read_config_bytes(n, 1 << 20), Err(CoreError::InvalidPath(_))), "read bytes {n:?}");
+        assert!(matches!(v.write_config_bytes(n, b"c"), Err(CoreError::InvalidPath(_))), "write bytes {n:?}");
+        assert!(matches!(v.trash_config(n), Err(CoreError::InvalidPath(_))), "trash {n:?}");
     }
     v.write_config("/etc/passwd-cairn-test", "c").unwrap();
     assert!(d.path().join(".cairn/etc/passwd-cairn-test").exists());
