@@ -481,9 +481,12 @@ fn fs21_new_entries_in_folders_with_names_cairn_refuses_are_allowed() {
     v.create_note("Odd [dir]/x.md", "").unwrap();
     v.create_note("Odd [dir]/new/y.md", "").unwrap();
     v.create_folder("Odd [dir]/sub").unwrap();
-    fs::create_dir(d.path().join("trail.")).unwrap();
+    // Through the vault's canonical root: on Windows that is a \\?\ path,
+    // without which Windows drops the trailing dot.
+    let root = StdFs::new(d.path(), TrashMode::Vault).unwrap().root().to_path_buf();
+    fs::create_dir(root.join("trail.")).unwrap();
     v.create_note("trail./z.md", "").unwrap();
-    assert!(d.path().join("Odd [dir]/new/y.md").is_file() && d.path().join("trail./z.md").is_file());
+    assert!(d.path().join("Odd [dir]/new/y.md").is_file() && root.join("trail./z.md").is_file());
 }
 
 // ---------------------------------------------------------------------------
@@ -634,13 +637,18 @@ fn crlf_bom_cr_and_empty_round_trip_byte_exact() {
 
 #[test]
 fn odd_names_created_outside_are_readable_and_writable() {
-    let names_ = ["a#b.md", "x[1].md", "c^d.md", "p|q.md", "co:lon.md", "st*r.md", "q?.md", "quo\"te.md", "lt<gt>.md", " lead.md", "trail .md", "dots..md", "zw\u{200b}j.md", "emoji 🪨.md", "tab\there.md", "nl\nname.md"];
+    let mut names_ = vec!["a#b.md", "x[1].md", "c^d.md", " lead.md", "trail .md", "dots..md", "zw\u{200b}j.md", "emoji 🪨.md"];
+    // Windows refuses these characters in a name, and a colon there names a
+    // stream of the file.
+    if cfg!(not(windows)) {
+        names_.extend(["p|q.md", "co:lon.md", "st*r.md", "q?.md", "quo\"te.md", "lt<gt>.md", "tab\there.md", "nl\nname.md"]);
+    }
     let d = tempfile::tempdir().unwrap();
-    for n in names_ {
+    for &n in &names_ {
         fs::write(d.path().join(n), format!("content of {n}")).unwrap();
     }
     let v = open(d.path());
-    for n in names_ {
+    for &n in &names_ {
         let c = v.read_note(n).unwrap();
         v.write_note(n, &format!("{} + edit", c.content), Some(&c.hash)).unwrap();
         assert_eq!(fs::read_to_string(d.path().join(n)).unwrap(), format!("content of {n} + edit"));

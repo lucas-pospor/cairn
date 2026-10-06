@@ -1776,6 +1776,7 @@ fn changes_feed_that_never_advances_does_not_hang_the_client() {
     assert!(n < 50, "client requested {n} pages in {:?} before the test cut it off ({:?})", started.elapsed(), r.err().map(|e| e.to_string()));
 }
 
+#[cfg(not(windows))] // B plays a Linux device. Windows cannot hold ':' in a name.
 #[test]
 fn unwritable_incoming_file_does_not_block_other_changes() {
     let (_srv, mut a, mut b) = synced_pair(&[("n.md", "v1\n")]);
@@ -1930,6 +1931,7 @@ fn pending_remote_change_is_retried_and_merged_once_it_can_be_written() {
 /// A file or folder whose name has a backslash stays out of the vault
 /// (FINDING-011, by design) and is listed as not synced, with the
 /// reason; once renamed it syncs and leaves the list.
+#[cfg(not(windows))] // A backslash is a path separator on Windows.
 #[test]
 fn names_with_a_backslash_are_listed_as_not_synced() {
     let srv = server();
@@ -2483,6 +2485,7 @@ fn a_case_twin_named_like_an_error_does_not_stop_the_sync_on_android_shared_stor
 /// starts with the path, and one with "changed on disk" in it must not be
 /// taken for a race, which would retry every round of the sync until it
 /// failed.
+#[cfg(not(windows))] // The desktop plays Linux. Windows cannot hold '?' in a name.
 #[test]
 fn a_refused_name_that_reads_like_an_error_does_not_stop_the_sync_on_android_shared_storage() {
     let srv = server();

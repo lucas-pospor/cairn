@@ -16,6 +16,7 @@ mod common;
 
 use common::*;
 
+#[cfg(not(windows))] // A backslash is a path separator on Windows.
 #[test]
 fn fs18_file_named_backslash_does_not_break_sync() {
     let srv = server();

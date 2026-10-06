@@ -180,6 +180,7 @@ fn precomposed_emoji_and_zero_width_names_round_trip() {
 // FINDING-138: backslashes in names created outside Cairn (Linux)
 // ---------------------------------------------------------------------------
 
+#[cfg(not(windows))] // A backslash is a path separator on Windows.
 #[test]
 fn fs18_backslash_names_do_not_map_to_wrong_paths() {
     let d = tempfile::tempdir().unwrap();

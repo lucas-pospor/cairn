@@ -1909,6 +1909,7 @@ fn name_refused_by_receiving_fs_does_not_stop_sync() {
 /// A note made outside Cairn with a name the receiving file system refuses
 /// ("Why?.md" on Linux, received on Windows) is reported there on every
 /// sync and waits; the other files keep syncing in both directions.
+#[cfg(not(windows))] // The laptop plays Linux. Windows cannot hold '?' in a name.
 #[test]
 fn name_refused_here_is_reported_and_the_rest_syncs() {
     let srv = server();
