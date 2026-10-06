@@ -545,8 +545,13 @@ fn unknown_path_is_answered_without_reading_body() {
         let mut s = TcpStream::connect(srv.addr).unwrap();
         s.write_all(format!("POST {path} HTTP/1.1\r\nHost: x\r\nContent-Type: application/octet-stream\r\nContent-Length: 150000000\r\n\r\n").as_bytes()).unwrap();
         // A server that answers without reading the body closes the
-        // connection, so this write can fail with a broken pipe.
-        let _ = s.write_all(&vec![0u8; 1 << 20]);
+        // connection, so this write can fail with a broken pipe. On Windows
+        // the reset that this close sends throws away the answer before it
+        // is read, so no body is sent there: a server that waits for the
+        // body still gives no answer.
+        if cfg!(unix) {
+            let _ = s.write_all(&vec![0u8; 1 << 20]);
+        }
         let r = read_resp(&mut s, Duration::from_secs(3));
         assert_eq!(r.status, Some(404), "{path}: no answer after 3 s, the server is waiting to buffer the 150 MB body: {r:?}");
     }
