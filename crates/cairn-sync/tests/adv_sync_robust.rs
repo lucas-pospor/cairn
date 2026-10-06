@@ -1188,6 +1188,15 @@ fn edit_during_pull_through_the_vault_api_gets_a_conflict_copy_not_overwritten()
     assert!(all.contains("laptop minutes") && all.contains("phone agenda"), "{:?}", a.files());
 }
 
+/// True if backtrace `bt` is inside the push's own read: in
+/// SyncEngine::round, not in its scan and not applying a remote change. A
+/// Linux build names the frame `<cairn_sync::engine::SyncEngine>::round`,
+/// an MSVC build `cairn_sync::engine::SyncEngine::round`.
+fn in_push_read(bt: &str) -> bool {
+    let has = |f: &str| bt.contains(&format!("SyncEngine>::{f}")) || bt.contains(&format!("SyncEngine::{f}"));
+    has("round") && !has("scan") && !bt.contains("apply_remote")
+}
+
 #[test]
 fn save_between_push_read_and_stat_is_still_uploaded() {
     let (_srv, mut a, mut b) = synced_pair(&[("n.md", "v1\n")]);
@@ -1200,8 +1209,7 @@ fn save_between_push_read_and_stat_is_still_uploaded() {
     *a.hookfs.after_read.lock() = Some(Box::new(move |p| {
         if p == "n.md" && !fired {
             let bt = std::backtrace::Backtrace::force_capture().to_string();
-            let push_read = bt.contains("SyncEngine>::round") && !bt.contains("SyncEngine>::scan") && !bt.contains("apply_remote");
-            if push_read {
+            if in_push_read(&bt) {
                 fired = true;
                 vault.write_file("n.md", b"v3 typed during sync\n", None).unwrap();
             }
@@ -1222,18 +1230,20 @@ fn save_between_push_read_and_stat_then_remote_edit_does_not_block_sync() {
     let (_srv, mut a, mut b) = synced_pair(&[("n.md", "v1\n"), ("other.md", "o\n")]);
     a.write("n.md", "v2\n");
     let vault = a.vault.clone();
-    let mut fired = false;
+    let fired = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let saved = fired.clone();
     *a.hookfs.after_read.lock() = Some(Box::new(move |p| {
-        if p == "n.md" && !fired {
+        if p == "n.md" && !saved.load(Ordering::SeqCst) {
             let bt = std::backtrace::Backtrace::force_capture().to_string();
-            if bt.contains("SyncEngine>::round") && !bt.contains("SyncEngine>::scan") && !bt.contains("apply_remote") {
-                fired = true;
+            if in_push_read(&bt) {
+                saved.store(true, Ordering::SeqCst);
                 vault.write_file("n.md", b"v3 typed during sync\n", None).unwrap();
             }
         }
     }));
     a.sync_ok();
     *a.hookfs.after_read.lock() = None;
+    assert!(fired.load(Ordering::SeqCst), "the save during the push never happened");
     b.sync_ok();
     // B edits the note and another one; A must still be able to sync
     b.write("n.md", "v2\nphone line\n");
