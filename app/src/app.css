@@ -12,15 +12,15 @@
   --bg-input: #ffffff;
   --bg-code: #f0eee8;
   --border: #e2ded5;
-  --border-strong: #8a857b;
+  --border-strong: #878279;
   --text: #24292b;
   --text-muted: #5c6260;
-  --text-faint: #666c6a;
+  --text-faint: #626866;
   --accent: #a84529;
   --accent-soft: #f9ebe5;
   --accent-text: #ffffff;
   --link: #9e4026;
-  --unresolved: #6f675f;
+  --unresolved: #6d655d;
   --danger: #b0213f;
   --danger-text: #ffffff;
   --hit: #f3dd8d;
@@ -28,11 +28,11 @@
   --radius: 7px;
 
   --tok-keyword: #8a3f8a;
-  --tok-string: #3f7a3f;
-  --tok-number: #a35b1c;
-  --tok-comment: #8b918d;
+  --tok-string: #3b723b;
+  --tok-number: #9a5519;
+  --tok-comment: #646865;
   --tok-fn: #2e5f9e;
-  --tok-type: #8a6514;
+  --tok-type: #846114;
 
   color-scheme: light;
 }
@@ -46,7 +46,7 @@
     --bg-input: #23272a;
     --bg-code: #262a2d;
     --border: #2f3438;
-    --border-strong: #6a7379;
+    --border-strong: #6d767c;
     --text: #dfe3e0;
     --text-muted: #9aa29e;
     --text-faint: #909894;
@@ -55,14 +55,14 @@
     --accent-text: #1e100a;
     --link: #ee8c66;
     --unresolved: #a0978f;
-    --danger: #f0728a;
+    --danger: #f07e92;
     --danger-text: #22090f;
-    --hit: #6b5b1d;
+    --hit: #393119;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
     --tok-keyword: #d19ad1;
     --tok-string: #9cc98f;
     --tok-number: #e0a46b;
-    --tok-comment: #7c847f;
+    --tok-comment: #919693;
     --tok-fn: #8db6ea;
     --tok-type: #e2c27a;
     color-scheme: dark;
@@ -77,7 +77,7 @@
   --bg-input: #23272a;
   --bg-code: #262a2d;
   --border: #2f3438;
-  --border-strong: #6a7379;
+  --border-strong: #6d767c;
   --text: #dfe3e0;
   --text-muted: #9aa29e;
   --text-faint: #909894;
@@ -86,14 +86,14 @@
   --accent-text: #1e100a;
   --link: #ee8c66;
   --unresolved: #a0978f;
-  --danger: #f0728a;
+  --danger: #f07e92;
   --danger-text: #22090f;
-  --hit: #6b5b1d;
+  --hit: #393119;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
   --tok-keyword: #d19ad1;
   --tok-string: #9cc98f;
   --tok-number: #e0a46b;
-  --tok-comment: #7c847f;
+  --tok-comment: #919693;
   --tok-fn: #8db6ea;
   --tok-type: #e2c27a;
   color-scheme: dark;

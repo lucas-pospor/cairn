@@ -390,13 +390,24 @@ async function contrastScenes(theme) {
   await app.reset();
   await app.setTheme(theme);
   const scenes = {};
-  app.write("Contrast.md", "---\ntags: [prop]\n---\n# Contrast\n\nA #tag and [[Missing note]] and [[Ideas]] and `code` and [url](https://example.com).\n\n- [ ] task\n\n> quote\n\n" + "line\n".repeat(3));
+  // A code block with every syntax colour: keyword, comment, type (class name), function, number, string.
+  const code = "```js\n// a comment\nclass Box { size = 42; grow(n) { return \"big\"; } }\n```\n\n";
+  app.write("Contrast.md", "---\ntags: [prop]\n---\n# Contrast\n\nA #tag and [[Missing note]] and [[Ideas]] and `code` and [url](https://example.com).\n\n- [ ] task\n\n> quote\n\n" + code + "line\n".repeat(3));
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Contrast.md"]')`);
   await app.openNote("contrast", "Contrast.md");
+  await app.s.waitFor(`return !!document.querySelector('.cm-content .tok-comment')`, { message: "the code block is highlighted" });
   await app.exec(`document.querySelector('[data-testid=tree-row][data-path="Projects"]').click(); return 1`);
   await sleep(400);
   scenes.workspace = await contrastReport();
   await app.shot(`AX-contrast-${theme}-workspace.png`);
+  // Search results: the matched words are highlighted inside muted snippet text.
+  await app.exec(`document.querySelector('[data-testid=tab-search]').click(); return 1`);
+  await app.s.waitFor(`return !!document.querySelector('[data-testid=search-input]')`);
+  await app.exec(`const i = document.querySelector('[data-testid=search-input]'); i.value = 'quote'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+  await app.s.waitFor(`return !!document.querySelector('[data-testid=search-results] mark.hit')`, { message: "search hits shown" });
+  scenes.search = await contrastReport();
+  await app.shot(`AX-contrast-${theme}-search.png`);
+  await app.exec(`const i = document.querySelector('[data-testid=search-input]'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-testid=tab-files]').click(); return 1`);
   await app.exec(`document.querySelector('[data-testid=right-properties]').click(); document.querySelector('[data-testid=tab-tags]').click(); return 1`);
   await sleep(300);
   scenes.tagsAndProperties = await contrastReport();
