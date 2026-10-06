@@ -92,8 +92,8 @@
 //! pending and is retried on every sync; that file is not pushed meanwhile.
 //! So does a change of a file that is also synced here under another name:
 //! one file on disk reached under two names (a folder linked in twice, a
-//! symlink to another note, a hard link), which the other devices have as
-//! two files (see `refuse_alias`).
+//! symlink to another note), which the other devices have as two files
+//! (see `refuse_alias`).
 //! A local file that cannot be read is left alone. A record that does not
 //! decrypt or has an unsafe path is dropped (or held as pending, if it
 //! belongs to a file this device has). An upload that is too large, or that
@@ -1427,9 +1427,8 @@ impl SyncEngine {
 
     /// No remote change is applied through `path` while the file there is
     /// also tracked under another vault path here: one file on disk reached
-    /// under two names, through a folder linked in twice, a symlink to
-    /// another note or a hard link, which the other devices have as two
-    /// files. Writing it would change the other name too, and deleting or
+    /// under two names, through a folder linked in twice or a symlink to
+    /// another note, which the other devices have as two files. Writing it would change the other name too, and deleting or
     /// moving it through a folder link would delete or move the other one:
     /// when another device deleted its duplicate under the link's name,
     /// this device moved the real note to the trash, and its next push
@@ -1444,7 +1443,7 @@ impl SyncEngine {
         let (same, effect, fix) = if !others.is_empty() {
             let others = others.join(", ");
             (
-                format!("{path} is one file with {others} on this device, through a symlink or a hard link, while other devices have them as separate files"),
+                format!("{path} is one file with {others} on this device, through a symlink, while other devices have them as separate files"),
                 format!(": it would change {others} too"),
                 "To sync it, replace the link on this device with a copy of what it leads to",
             )

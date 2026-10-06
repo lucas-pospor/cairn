@@ -285,6 +285,9 @@ impl VaultFs for HookFs {
     fn other_names(&self, path: &str) -> Vec<String> {
         self.inner.other_names(path)
     }
+    fn via_link(&self, path: &str) -> bool {
+        self.inner.via_link(path)
+    }
     fn stat(&self, path: &str) -> cairn_core::Result<Option<FileStat>> {
         self.inner.stat(path)
     }

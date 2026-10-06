@@ -523,11 +523,13 @@ fn deleting_a_linked_note_on_another_device_keeps_it_here() {
     assert_eq!(laptop.read("link.md").as_deref(), Some(NOTE));
 }
 
-/// Two hard links are one file under two names as well: a remote write
-/// through one would change the other.
+/// Two hard links are two files, not one under two names: a change through
+/// one name never deletes or moves the other, and a write keeps both, so
+/// nothing waits. An edit of one on another device reaches both here, and
+/// from here the other one's copy elsewhere.
 #[cfg(unix)]
 #[test]
-fn editing_one_of_two_hard_links_on_another_device_is_held() {
+fn hard_links_sync_as_two_notes() {
     let srv = server();
     let mut laptop = Device::new(&srv, "laptop", &[("a.md", NOTE), ("inbox.md", "inbox\n")]);
     fs::hard_link(laptop.root.join("a.md"), laptop.root.join("b.md")).unwrap();
@@ -535,21 +537,19 @@ fn editing_one_of_two_hard_links_on_another_device_is_held() {
     laptop.sync_ok();
     let mut phone = Device::new(&srv, "phone", &[]);
     phone.sync_ok();
+    assert_eq!(phone.paths(), ["a.md", "b.md", "inbox.md"]);
     phone.write("b.md", "edited on the phone\n");
     let s = settle(&mut phone, &mut laptop);
 
-    assert_eq!((laptop.read("a.md").as_deref(), laptop.read("b.md").as_deref()), (Some(NOTE), Some(NOTE)));
-    assert_eq!(phone.read("a.md").as_deref(), Some(NOTE));
-    assert!(s.errors.is_empty(), "sync errors: {:?}", s.errors);
-    assert!(s.held("b.md", "a.md"), "the held edit is not listed: {:?}", s.skipped);
-    // b.md becomes a file of its own, and the edit applies to it only.
-    let b = laptop.root.join("b.md");
-    fs::remove_file(&b).unwrap();
-    fs::write(&b, NOTE).unwrap();
+    assert!(s.errors.is_empty() && s.skipped.is_empty(), "{:?} {:?}", s.errors, s.skipped);
+    for d in [&laptop, &phone] {
+        assert_eq!((d.read("a.md").as_deref(), d.read("b.md").as_deref()), (Some("edited on the phone\n"), Some("edited on the phone\n")), "{}", d.name);
+    }
+    phone.rm("a.md");
     let s = settle(&mut phone, &mut laptop);
     assert!(s.errors.is_empty() && s.skipped.is_empty(), "{:?} {:?}", s.errors, s.skipped);
+    assert_eq!(laptop.read("b.md").as_deref(), Some("edited on the phone\n"));
     assert_eq!(laptop.files(), phone.files());
-    assert_eq!((laptop.read("a.md").as_deref(), laptop.read("b.md").as_deref()), (Some(NOTE), Some("edited on the phone\n")));
 }
 
 /// A remote delete is applied even when the folder it empties cannot be
