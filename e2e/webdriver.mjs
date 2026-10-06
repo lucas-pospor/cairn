@@ -150,6 +150,7 @@ export class Session {
 
 export const Key = {
   ctrl: "",
+  alt: "",
   shift: "",
   enter: "",
   escape: "",

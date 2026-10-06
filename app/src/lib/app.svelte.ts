@@ -1,6 +1,7 @@
 // Application state: open vault, file list, tabs, panels and dialogs.
 
 import { EditorState } from "@codemirror/state";
+import { isolateHistory } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
@@ -153,6 +154,19 @@ class App {
   readonly coreHost: CoreHost = {
     files: () => this.filePaths,
     folders: () => this.entries.filter((e) => e.kind === "dir").map((e) => e.path),
+    activeNote: () => (this.active?.kind === "note" ? this.active.path : null),
+    canInsert: () => this.active?.kind === "note" && this.active.mode !== "preview",
+    insert: (path, text) => {
+      const v = this.view;
+      const tab = this.viewTab;
+      if (!v || !tab || tab !== this.active || tab.path !== path || tab.mode === "preview") return false;
+      // Its own undo step, also right after typing.
+      v.dispatch({ ...v.state.replaceSelection(text), scrollIntoView: true, userEvent: "input", annotations: isolateHistory.of("full") });
+      v.focus();
+      return true;
+    },
+    readNote: async (path) => (await backend.readNote(path)).content,
+    choose: (title, options) => this.choose({ title, options }),
     toast: (m, kind) => this.toast(m, kind),
     now: () => new Date(),
   };

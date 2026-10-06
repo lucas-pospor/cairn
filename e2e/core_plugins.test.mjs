@@ -5,7 +5,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { CoreApp, eventually } from "./core_lib.mjs";
+import { CoreApp, Key, eventually, sleep } from "./core_lib.mjs";
 
 // What a later version may have written: a plugin this one does not know, values of
 // the wrong type, and hotkeys of core plugin commands.
@@ -67,4 +67,59 @@ test("saving another setting keeps corePlugins and the hotkeys of core plugin co
   assert.deepEqual(saved.corePlugins, CORE);
   assert.deepEqual(saved.hotkeys, HOTKEYS);
   await app.closeSettings();
+});
+
+test("lists each core plugin with its switch", async () => {
+  await app.openSettings("core-plugins");
+  const rows = await app.exec(
+    `return [...document.querySelectorAll('[data-testid=core-plugin-row]')].map((r) => [r.dataset.id, r.querySelector('b').textContent, r.querySelector('[data-testid=core-plugin-toggle]').checked])`,
+  );
+  assert.deepEqual(rows, [["templates", "Templates", true]]);
+  await app.closeSettings();
+});
+
+test("a plugin turned off leaves the palette and the Hotkeys list, and keeps its hotkey", async () => {
+  const row = `[data-testid=hotkey-row][data-command="templates:insert"]`;
+  const toggle = `[data-testid=core-plugin-row][data-id=templates] [data-testid=core-plugin-toggle]`;
+  const focusEditor = () => app.exec(`document.querySelector('.cm-editor').__cairnView.focus()`);
+  await app.openNote("Welcome.md");
+
+  // Bind a hotkey to Insert template.
+  await app.openSettings("hotkeys");
+  await app.waitFor(`return !!document.querySelector('${row}')`);
+  await app.exec(`document.querySelector('${row} [data-testid=hotkey-add]').click()`);
+  await app.s.keys({ chord: [Key.ctrl, Key.alt, "j"] });
+  await eventually(() => JSON.stringify(app.settingsFile().hotkeys["templates:insert"]) === '["Mod+Alt+J"]', { message: "hotkey saved" });
+
+  // Off: its options and its Hotkeys row go, without closing Settings.
+  await app.openSettings("core-plugins");
+  assert.ok(await app.exec(`return document.querySelectorAll('[data-testid=core-plugin-option][data-id=templates]').length > 0`));
+  await app.click(toggle);
+  await eventually(() => app.settingsFile().corePlugins.templates?.on === false, { message: "switch saved" });
+  assert.deepEqual(app.settingsFile().corePlugins, { ...CORE, templates: { on: false } });
+  assert.equal(await app.exec(`return document.querySelectorAll('[data-testid=core-plugin-option][data-id=templates]').length`), 0);
+  await app.openSettings("hotkeys");
+  assert.equal(await app.exec(`return !!document.querySelector('${row}')`), false);
+  await app.closeSettings();
+  assert.deepEqual(await app.paletteNames("Insert template"), []);
+
+  // Its key does nothing now, and stays saved.
+  await focusEditor();
+  await app.s.keys({ chord: [Key.ctrl, Key.alt, "j"] });
+  await sleep(400);
+  assert.equal(await app.exec(`return document.querySelectorAll('.choice').length`), 0);
+  assert.ok(!(await app.toasts()).some((t) => /template/i.test(t)));
+  assert.deepEqual(app.settingsFile().hotkeys["templates:insert"], ["Mod+Alt+J"]);
+
+  // On again: listed and bound again (this vault has no Templates folder, so it says so).
+  await app.openSettings("core-plugins");
+  await app.click(toggle);
+  await eventually(() => app.settingsFile().corePlugins.templates?.on === true, { message: "switch saved" });
+  await app.openSettings("hotkeys");
+  await app.waitFor(`return document.querySelector('${row} .combo')?.textContent.includes('Ctrl+Alt+J')`);
+  await app.closeSettings();
+  assert.deepEqual(await app.paletteNames("Insert template"), ["Templates: Insert template"]);
+  await focusEditor();
+  await app.s.keys({ chord: [Key.ctrl, Key.alt, "j"] });
+  await eventually(async () => (await app.toasts()).some((t) => t.includes("There is no folder named Templates.")), { message: "hotkey runs it" });
 });

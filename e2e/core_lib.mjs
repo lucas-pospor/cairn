@@ -110,8 +110,18 @@ export class CoreApp {
   activeTab() {
     return this.exec(`return document.querySelector('[data-testid=tab][aria-selected=true]')?.dataset.path ?? null`);
   }
+  /** Open a note from the file tree, expanding the folders on the way. */
   async openNote(p) {
-    await this.exec(`document.querySelector('[data-testid=tree-row][data-path="' + arguments[0] + '"]').click()`, p);
+    const row = (q) => this.exec(`return !!document.querySelector('[data-testid=tree-row][data-path="' + arguments[0] + '"]')`, q);
+    const click = (q) => this.exec(`document.querySelector('[data-testid=tree-row][data-path="' + arguments[0] + '"]').click()`, q);
+    const parts = p.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const child = parts.slice(0, i + 1).join("/");
+      if (await row(child)) continue;
+      await click(parts.slice(0, i).join("/"));
+      await eventually(() => row(child), { message: `${child} in the tree` });
+    }
+    await click(p);
     await eventually(async () => (await this.activeTab()) === p, { message: `tab ${p} active` });
   }
 

@@ -29,6 +29,7 @@
     vault: "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5M3 18l9 5 9-5",
     arrow: "M5 12h14M13 6l6 6-6 6",
     trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+    template: "M5 4h14v5H5zM5 13h6v7H5zM15 14h4M15 17h4M15 20h4",
   };
   let { name, size = 16 }: { name: string; size?: number } = $props();
 </script>

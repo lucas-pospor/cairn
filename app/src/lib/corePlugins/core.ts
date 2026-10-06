@@ -27,6 +27,19 @@ export interface CoreHost {
   files(): string[];
   /** Every folder in the vault. */
   folders(): string[];
+  /** The note in the active tab (null: none, or the graph). */
+  activeNote(): string | null;
+  /** Whether the active tab is a note open for editing (not in reading view). */
+  canInsert(): boolean;
+  /**
+   * Put `text` in place of the selection, as one edit that one undo takes back, if `path`
+   * is still the note open for editing. False when it is not.
+   */
+  insert(path: string, text: string): boolean;
+  /** The text of a note. */
+  readNote(path: string): Promise<string>;
+  /** Let the user pick one of `options`; null if they cancel. */
+  choose(title: string, options: { value: string; label: string }[]): Promise<string | null>;
   toast(message: string, kind?: "info" | "error"): void;
   now(): Date;
 }
