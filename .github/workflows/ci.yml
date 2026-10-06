@@ -86,3 +86,88 @@ jobs:
       - name: Unit tests
         working-directory: app
         run: npx vitest run
+
+  # Builds and tests on Windows. svelte-check runs on Linux only: its result
+  # does not depend on the platform. The installer is built in a job of its
+  # own, which runs at the same time.
+  windows:
+    runs-on: windows-2025
+    # The default shell, pwsh, fails a step only on the exit code of its last
+    # command, so a step runs one command, or commands chained with &&.
+    steps:
+      # Before checkout, which honours these settings: keep the LF line endings
+      # (git on the image converts them to CRLF) and allow paths longer than
+      # 260 characters.
+      - name: Configure git
+        run: git config --global core.autocrlf false && git config --global core.longpaths true
+
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: >-
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component clippy --no-self-update
+          && rustup default stable-x86_64-pc-windows-msvc
+
+      # The cache key includes the job id, so this cache is separate from the
+      # Linux one.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Test cairn-core, cairn-sync and cairn-server
+        run: cargo test -p cairn-core -p cairn-sync -p cairn-server --no-fail-fast
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Test the app crate
+        run: cargo test -p cairn --lib
+
+      - name: Frontend unit tests
+        working-directory: app
+        run: npx vitest run
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # Proves that the Windows installer builds. It is not uploaded.
+  windows-installer:
+    runs-on: windows-2025
+    steps:
+      # As in the windows job, one command or commands chained with && per step.
+      - name: Configure git
+        run: git config --global core.autocrlf false && git config --global core.longpaths true
+
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: >-
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+          && rustup default stable-x86_64-pc-windows-msvc
+
+      # A cache of its own (release builds), as the job id is in the key.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # tauri build runs npm run build first.
+      - name: Build the NSIS installer
+        working-directory: app
+        run: npx tauri build --bundles nsis --ci
