@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- On Android, the card of an embedded file that does not show as text, such as a PDF, said that the file opens in another app. Cairn cannot do that on Android yet, and the card now says so, as a tap on its name already did.
+
 ## 1.2.0 (2026-10-06)
 
 ### Images open in a tab

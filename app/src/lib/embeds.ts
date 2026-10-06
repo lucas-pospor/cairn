@@ -5,6 +5,7 @@ import { backend } from "./backend";
 import type { LinkIndex } from "./links";
 import { headingsOf, renderMarkdown } from "./markdown";
 import { displayName, extension, isMarkdown } from "./paths";
+import { isMobile } from "./platform";
 
 const MAX_DEPTH = 3;
 
@@ -69,8 +70,11 @@ export async function fillEmbeds(
         const text = isMarkdown(path) ? (await backend.readNote(path)).content : await backend.readTextFile(path);
         if (text == null) {
           // A PDF, an archive or a big file: a card with its name, never its bytes.
+          // Android cannot hand files to other apps yet (a tap on the title
+          // only shows a toast), so there the card says so.
           const kind = extension(path) ? `${extension(path).toUpperCase()} file` : "File";
-          el.innerHTML = `${titleLink(path, null)}<div class="embed-body"><span class="embed-file">${escapeHtml(kind)}, opens in another app.</span></div>`;
+          const card = isMobile ? `${kind}. On Android, Cairn cannot open it in another app yet.` : `${kind}, opens in another app.`;
+          el.innerHTML = `${titleLink(path, null)}<div class="embed-body"><span class="embed-file">${escapeHtml(card)}</span></div>`;
           return;
         }
         const part = sub ? extractSection(text, sub) : text;

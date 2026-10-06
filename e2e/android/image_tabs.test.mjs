@@ -3,7 +3,8 @@
 // storage and in a shared folder (Storage Access Framework, read through
 // SafFs). Other attachments keep the toast. The tab follows the file: it
 // loads it again after a change made by another app and closes when the
-// file is deleted (both noticed at the next rescan, as for notes).
+// file is deleted (both noticed at the next rescan, as for notes). The card
+// of an embedded PDF says that Cairn cannot open it in another app on Android.
 //
 //   . scripts/android-env.sh
 //   node --test --test-concurrency=1 e2e/android/image_tabs.test.mjs
@@ -27,8 +28,11 @@ const F = `/sdcard/Documents/${LABEL}`;
 const PIC = fs.readFileSync(path.join(ROOT, "app/src-tauri/icons/32x32.png"));
 const PIC64 = fs.readFileSync(path.join(ROOT, "app/src-tauri/icons/64x64.png"));
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30" onload="top.__pwned='onload'"><script>top.__pwned='script'</script><rect width="40" height="30" fill="#2a7"/></svg>`;
-const NOTE = "# Note\n\nSee [[pic.png]].\n\n![[pic.png]]\n";
+const NOTE = "# Note\n\nSee [[pic.png]].\n\n![[pic.png]]\n\n![[doc.pdf]]\n";
+// Not valid UTF-8, so it embeds as a card, not as text.
+const PDF = Buffer.from("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n%%EOF\n", "latin1");
 const TOAST = /cannot open attachments in other apps yet/;
+const CARD = "PDF file. On Android, Cairn cannot open it in another app yet.";
 const d = new Device();
 let settings;
 
@@ -131,6 +135,8 @@ async function checkVault(name, { write, remove }) {
   await d.waitFor(`document.querySelector('[data-testid=tab][aria-selected=true]')?.dataset.path === 'Note.md'`);
   await d.click("[data-testid=mode-preview]");
   await d.waitFor(`document.querySelector('[data-testid=preview] img[data-path="media/pic.png"]')?.naturalWidth === 32`, 20000);
+  await d.waitFor(`!!document.querySelector('[data-testid=preview] .embed-file')`, 20000);
+  assert.equal(await d.eval(`document.querySelector('[data-testid=preview] .embed-file').textContent`), CARD);
   await tap(`[data-testid=preview] img[data-path="media/pic.png"]`);
   await shown("media/pic.png", 32);
   await d.eval(`document.querySelector('[data-testid=tab][data-path="Note.md"]').click()`);
@@ -156,7 +162,7 @@ async function checkVault(name, { write, remove }) {
 
 test("app storage: images open in an image tab; other attachments keep the toast", async () => {
   const vault = await d.createAppVault("ImgTabs");
-  const files = { "media/pic.png": PIC, "media/drawing.svg": SVG, "doc.pdf": "%PDF-1.4\n%%EOF\n", "Note.md": NOTE };
+  const files = { "media/pic.png": PIC, "media/drawing.svg": SVG, "doc.pdf": PDF, "Note.md": NOTE };
   for (const [p, c] of Object.entries(files)) writeAppFile(`${vault}/${p}`, c);
   await rescan(d);
   await checkVault("app", {
@@ -166,7 +172,7 @@ test("app storage: images open in an image tab; other attachments keep the toast
 });
 
 test("shared folder: images open in an image tab, read through the Storage Access Framework", async () => {
-  fillSharedFolder(F, { "media/pic.png": PIC, "media/drawing.svg": SVG, "doc.pdf": "%PDF-1.4\n%%EOF\n", "Note.md": NOTE });
+  fillSharedFolder(F, { "media/pic.png": PIC, "media/drawing.svg": SVG, "doc.pdf": PDF, "Note.md": NOTE });
   await d.toWelcome();
   await d.pickSafFolder(LABEL);
   await checkVault("saf", {
