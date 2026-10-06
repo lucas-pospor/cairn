@@ -60,11 +60,15 @@ mod tests {
     use super::*;
     use std::io::{Error, ErrorKind};
 
+    /// The OS's code for a denied access: EACCES, or ERROR_ACCESS_DENIED on
+    /// Windows.
+    const DENIED: i32 = if cfg!(windows) { 5 } else { 13 };
+
     #[test]
     fn io_errors_are_plain_words() {
-        let denied = CoreError::io("Locked/Locked note.md", Error::from_raw_os_error(13));
+        let denied = CoreError::io("Locked/Locked note.md", Error::from_raw_os_error(DENIED));
         assert_eq!(denied, CoreError::Io("No permission to access \"Locked/Locked note.md\".".into()));
-        assert_eq!(CoreError::io("", Error::from_raw_os_error(13)), CoreError::Io("No permission to access the notebook folder.".into()));
+        assert_eq!(CoreError::io("", Error::from_raw_os_error(DENIED)), CoreError::Io("No permission to access the notebook folder.".into()));
         assert_eq!(CoreError::io("a.md/b", ErrorKind::NotADirectory.into()), CoreError::Io("\"a.md/b\" is a file, not a folder.".into()));
         // Kinds without their own sentence keep the OS text, minus the code.
         let other = CoreError::io("x.md", Error::from_raw_os_error(24));
