@@ -368,6 +368,17 @@ Tests: for image tabs, 66 new Vitest tests (where each file type opens on the de
 
 Tests for 1.2.0: 793 Rust tests (792 in `cairn-core`, `cairn-sync` and `cairn-server`, also run with `CAIRN_FUZZ_SEEDS=200`, plus 1 unit test in the app crate), 423 Vitest tests, 522 desktop end-to-end tests and 91 Android end-to-end tests pass. The others are 36 Rust tests marked ignored (18 reproductions, 7 tests that pass and show behavior by design, and 11 slow measurements and probes), the reproductions marked todo (12 desktop tests) or expected to fail (1 Vitest test), 12 desktop tests that run only when an environment variable turns them on (performance, memory, a 50 MB note and slow plugin checks), and 3 desktop tests that skip when the title bar's close button cannot be reached through the accessibility bus.
 
+### After 1.2.0: Windows in CI
+
+- CI (GitHub Actions) now also builds and tests on Windows, with the MSVC toolchain: the Rust tests of `cairn-core`, `cairn-sync` and `cairn-server`, the unit tests of the app crate, the frontend build and Vitest, and clippy with warnings as errors. A second job builds the NSIS installer. CI runs unit tests, not the UI, so the app itself is still untested on Windows.
+- On Windows, 671 Rust tests in the three crates and 4 in the app crate pass, and 50 are marked ignored. On Linux, 797 and 5 pass, and 36 are ignored. 435 Vitest tests pass on both, and 1 is expected to fail. Section 9 lists the tests that do not run on Windows.
+- What the Windows runs found and fixed:
+  - On Windows, a name in a path in the notebook that starts with a drive letter and a colon ("D: plan.md", which sync can bring from another device) made Cairn read, write, rename or delete outside the notebook, on that drive. A colon later in a name made Cairn use a stream of another file in the notebook. Cairn on Windows now refuses any name that no Windows file can have, does not list such a name made on another system, and makes no new file or folder whose name ends in a dot or a space or is a device name. Sync lists such a file from another device under "Files not synced". A file whose name ends in a dot or a space, or is a device name, goes to the notebook's `.trash` folder, because the system trash would take another file for it.
+  - Cairn refuses device names (CON, PRN, AUX, NUL, COM0 to COM9 and LPT0 to LPT9, also with ¹, ² or ³, CONIN$ and CONOUT$, with any extension) for new notes and folders and for renames made in Cairn, on every platform, as it refuses the characters Windows does not allow. Sync still applies a rename to such a name from another device.
+  - On a file system that ignores case, the error for a new name that differs only in case from another entry now names that entry, as on Linux.
+  - On Windows the app shows and keeps the notebook folder without the `\\?\` prefix, and gives the shell plain paths to open.
+  - On Windows the journal of renames made in the app could not be locked, so a rename could miss the next sync's list of renames.
+
 ## 9. Known limits
 
 These hold in version 1.2.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), and release APKs are signed with the project's release key (see the release notes).
@@ -408,6 +419,21 @@ These hold in version 1.2.0. Each FINDING number names the tests that reproduce 
 - Sync finds names that differ only in case with Unicode lowercase, so names that a file system folds another way (such as `ſ` and `s`) are not caught. In a Linux folder with case folding turned on, a case-only rename from another device is pushed back to the old name. Nothing is lost (FINDING-004).
 - Sync setup asks before it creates a notebook the server does not have. Notebook names on the server are case-sensitive, so "Notes" and "notes" are two notebooks (FINDING-083, FINDING-164). The server cannot delete a notebook, so a notebook made by a setup that was then cancelled stays there (FINDING-163).
 - A reverse proxy must not reuse idle connections to the server for more than 10 s; the bundled Caddyfile uses 5 s. A client that keeps opening new half-sent connections can still use up the server's file descriptors, though the server closes each one after at most 10 s (FINDING-076).
+
+### Windows
+
+- The app is untested on Windows. CI builds it and its installer there and runs the unit tests, not the UI.
+- 127 Rust tests that run on Linux do not run on Windows, 1 of them in the app crate:
+  - 70 need Unix mode bits (unreadable or read-only files and folders, kept file modes, the executable bit), symlinks (Windows needs Developer Mode or admin rights to make one), or inode numbers and link counts. 31 of them were Unix-only before.
+  - 39 need two names in one folder that differ only in case, which a Windows folder cannot hold unless case sensitivity is turned on for it. 20 of them are built and marked ignored on Windows.
+  - 9 need a name that Windows refuses: a backslash, a colon or a question mark.
+  - 7 need gdb with the debug info of a Linux build, `/proc`, `ulimit` or the Unix limit on path length.
+  - 2 check the change stamp, which `StdFs` does not have on Windows (FINDING-055). They are marked ignored there.
+- Some tests check less on Windows:
+  - The test of odd names made outside Cairn leaves out the characters Windows refuses.
+  - Three tests leave out their steps with names that differ only in case: the random test of the index, the test of renames in the app, and the phone test of a note under another spelling.
+  - While a folder is being deleted, Windows reports it as access denied, so the test of a folder replaced during a scan checks only the notebook's rescan, which skips such a folder for that scan.
+  - The test that the server answers before the body arrives sends no body on Windows, where a TCP reset discards an answer that has not been read yet.
 
 ### Android
 
