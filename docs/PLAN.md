@@ -336,7 +336,7 @@ Adversarial testing before 1.0.0 led to the fixes below. Section 9 lists the fin
 
 Tests for 1.0.0: 746 Rust tests (745 in `cairn-core`, `cairn-sync` and `cairn-server`, run with `CAIRN_FUZZ_SEEDS=200`, plus 1 unit test in the app crate), 232 Vitest tests, 476 desktop end-to-end tests and 85 Android end-to-end tests pass. Reproductions of findings that are not fixed stay in the suites, marked ignored, todo or expected to fail, with their finding id; the performance and memory measurements run only when an environment variable turns them on.
 
-### After 1.0.0: core plugins (unreleased)
+### After 1.0.0: core plugins (1.1.0)
 
 - Templates (on by default): inserts a note from the template folder at the cursor, with `{{title}}`, `{{date}}`, `{{time}}`, `{{date:FORMAT}}` and `{{time:FORMAT}}` filled in, as one undoable edit. On a phone, a button in the formatting toolbar runs it.
 - Daily notes (on by default): opens today's note, named by the date (`YYYY-MM-DD` by default) in a chosen folder (the vault root by default), and creates it from an optional template when there is none. A button next to Graph view runs it, in the Files drawer on a phone.
@@ -401,7 +401,7 @@ These hold in version 1.0.0. Each FINDING number names the tests that reproduce 
 - Cairn stops a plugin and turns it off when a command runs over 30 s, the plugin misses three pings or it floods the app with messages. The only way to stop a slow command is to turn the plugin off (FINDING-069, FINDING-153, FINDING-156, FINDING-162).
 - A plugin has at most 200 commands and 16 API calls in flight, and at most 5 toasts show at once (FINDING-072, FINDING-157, FINDING-162).
 
-### Core plugins (unreleased)
+### Core plugins (1.1.0)
 
 - Their switches and options are in `.cairn/settings.json`, which Cairn sync does not copy, so with Cairn sync they are set up on each device.
 - Day and month names in dates are always English, so that devices with different system languages give a daily note the same name.

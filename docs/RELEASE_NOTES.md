@@ -1,13 +1,13 @@
 # Release notes
 
-## Unreleased
+## 1.1.0 (2026-10-06)
 
 ### Core plugins
 
 Cairn now comes with optional built-in features, turned on and off under Settings, then Core plugins. The README describes each one.
 
 - Templates (on by default) inserts a note from the template folder at the cursor, with `{{title}}`, `{{date}}` and `{{time}}` filled in.
-- Daily notes (on by default) opens today's note, named by the date, and creates it, from a template if you choose one, when there is none.
+- Daily notes (on by default) opens today's note, named by the date, and creates it when there is none, from a template if you set one.
 - Unique note creator (off by default) creates a note named by the date and time.
 - Random note (off by default) opens a note picked at random.
 
@@ -15,7 +15,7 @@ They never write over a note, and none of them does anything when a vault opens.
 
 ### Word count
 
-The status bar now shows characters as well as words, and counts the selection while there is one. Chinese and Japanese text counts each Han, Hiragana or Katakana character as a word, and Thai, Lao, Khmer and Myanmar text is split into words with the system's dictionary, so these counts are higher than in 1.0.0, which counted a run of such text as one word. Thai counts can differ a little between the desktop and Android, whose dictionaries differ.
+The status bar now shows characters as well as words, and counts the selection while there is one. In Chinese and Japanese text, each Han, Hiragana or Katakana character counts as a word, and Thai, Lao, Khmer and Myanmar text is split into words with the system's dictionary, so these counts are higher than in 1.0.0, which counted a run of such text as one word. Thai counts can differ a little between the desktop and Android, whose dictionaries differ.
 
 ## 1.0.0 (2026-10-05)
 
