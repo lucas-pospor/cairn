@@ -4,37 +4,39 @@
 
 ### Images open in a tab
 
-Images (PNG, JPEG, GIF, WebP, AVIF, SVG, BMP and ICO) now open in a tab inside Cairn instead of the system's image viewer, on the desktop and on Android. They open from the file tree, the quick switcher (once you type; before that it still lists recent notes only), a link, search, and a click on an image embedded in a note in the reading view. In Live Preview, where a plain click puts the cursor on the embed to edit it, Ctrl+click or a middle click opens the image.
+Images (PNG, JPEG, GIF, WebP, AVIF, SVG, BMP and ICO) now open in a tab inside Cairn, on the desktop and on Android. Before, the desktop handed them to the system's image viewer, and Android could not open them. They open from the file tree, the quick switcher (once you type; before that it still lists recent notes only), a link, search, and a click on an image embedded in a note in the reading view. In Live Preview, where a plain click puts the cursor on the embed to edit it, Ctrl+click or a middle click opens the image.
 
-- The tab fits the image to its size. Actual size, or a click on the image, shows it pixel for pixel, and the arrow keys scroll it.
+- The tab shrinks an image that is larger than the tab to fit it. Actual size, or a click on the image, shows it at full size, and the arrow keys scroll it.
 - An SVG is shown only as an image, so scripts in it never run.
 - The tab loads the image again when it changes on disk, follows it when it is renamed or moved, and closes when it is deleted.
 - Search lists images whose name or folder matches the words, under the notes. A query with a tag or a quoted phrase lists none.
 - The right sidebar lists the notes that link to the image.
-- On the desktop, Open in default app in the tab, and in the file tree's menu, still hands an image to the system's viewer, and other attachments open there as before. On Android, other attachments still cannot be opened in other apps.
-- Image tabs are not reopened when Cairn starts again. The saved session keeps the format of 1.1.0, so 1.0.0 and 1.1.0 still restore the other tabs from it.
+- On the desktop, Open in default app, in the tab and in the file tree's menu, still hands an image to the system's viewer, and other attachments open there as before.
 
 ### Themes
 
-Cairn now has four themes, each with a name. Limestone (the light theme so far) and Marble, a cool white theme with a blue accent, are light. Slate (the dark theme so far) and Graphite, a neutral gray with no blue tint, are dark. Settings, then Appearance, now has a Light theme and a Dark theme choice under Theme, each with a small swatch, and System uses the chosen pair as the system switches between light and dark. The choice is saved in the vault's `.cairn/settings.json` under two new keys, `lightTheme` and `darkTheme`. Cairn 1.0.0 and 1.1.0 keep these keys when they save other settings and show their own light or dark theme, so the choice comes back when the vault opens in this version again.
-
-### Contrast
-
-- Some colors were below the WCAG AA contrast ratio of 4.5:1: code comments in the light theme, matched words in search results and code comments in the dark theme, and a few others in code blocks, on hovered rows and under matches of the selected word. They are now darker or lighter. The most visible change is in Slate: matched words in search results and other matches of the selected word have a darker highlight, which shows by its color more than its brightness.
-- The editor's search (Ctrl+F) now highlights matches in the theme's own highlight color. Before, it always used a fixed yellow and orange, on which some text, such as code comments, was below 4.5:1. For this, the highlight is a little lighter in Limestone and a little darker in Slate.
-- A custom accent color is now also adjusted to stay readable on hovered rows, in code and under matches of the selected word or of a search, so some accents come out a little darker in the light themes.
-- The graph takes the new colors as soon as the theme or the accent changes.
-- With no custom accent, the accent color picker shows the accent of the theme in use instead of always the light theme's.
-
-### Sync
-
-- A file that the vault reaches under two names through symlinks (a link to a folder of the vault, two links to one folder, or a link to a note) now syncs under one name: the name it already syncs under, or for a new file the name with no link on the way. Before, both names synced, and deleting the copy under the link's name on another device moved the real notes to the trash on every device. Copies that earlier versions synced under the second name stay on your other devices, but Cairn no longer updates them or sends anything for them, with two exceptions: deleting a note on the device that has the link deletes its copy too (unless another device changed the copy meanwhile), and if another device deletes the note's own copy but keeps the second one, the second copy syncs in its place. Deleting either copy on another device is safe once every device that has the link runs this version, so update those devices first. If another device edits or renames such a copy, Settings, then Sync, lists it under "Files not synced": copy what you need into the note, then delete the copy on a device where it is a separate file. Hard links sync as separate notes, as before.
-- When sync deletes the last note in a linked folder, it keeps the link instead of failing with "Not a directory". A folder that sync cannot remove after deleting its last note no longer holds the delete back.
+Cairn now has four themes, each with a name. Limestone (the light theme so far) and Marble, a cool white theme with a blue accent, are light. Slate (the dark theme so far) and Graphite, a neutral gray with no blue tint, are dark. Settings, then Appearance, now has a Light theme and a Dark theme choice under Theme, and each theme shows a small swatch. Light and Dark use the chosen light or dark theme, and System switches between the two as the system switches between light and dark. The choice is saved in the vault's `.cairn/settings.json` under two new keys, `lightTheme` and `darkTheme`. On Android, the area behind the status and navigation bars still follows the system's light or dark mode, and so does the window's title bar on the desktop.
 
 ### Fixes
 
+- Some colors were below the WCAG AA contrast ratio, 4.5:1 for text and 3:1 for the ring around a selected row under the pointer: code comments in the light theme, matched words in search results and code comments in the dark theme, and a few others in code blocks, on hovered rows, under matches of the selected word and in the sync error in Settings. They are now darker or lighter. The most visible change is in Slate: matched words in search results and other matches of the selected word have a darker highlight, which shows by its color more than its brightness.
+- The editor's search (Ctrl+F) now highlights matches in the theme's own highlight color. Before, it always used a fixed yellow and orange, on which some text, such as code comments, was below 4.5:1. For this, the highlight is a little lighter in Limestone and a little darker in Slate.
+- A custom accent color is now also adjusted to stay readable on hovered rows, in code and under matches of the selected word or of a search, so some accents come out a little darker in the light themes and a little lighter in the dark themes.
+- The graph takes the new colors as soon as the theme, the accent or a snippet changes. Before, it kept the old ones until the next hover or reload.
+- With no custom accent, the accent color picker shows the accent of the theme in use instead of always the light theme's.
+- A file that the vault reaches under two names through symlinks (a link to a folder of the vault, two links to one folder, or a link to a note) now syncs under one name: the name it already syncs under, else the name with no link on the way, then the one in the fewest folders, then the first by character code. Before, both names synced, and deleting one copy on another device could move the real note to the trash and then delete the other copy on every device. Hard links sync as separate notes, as before. Compatibility, below, says what happens to the copies that older versions synced.
+- When sync deletes the last note in a linked folder, it keeps the link instead of failing with "Not a directory". A folder that sync cannot remove after deleting or moving its last note no longer holds the change back.
+- When another device moves a note to another folder, and on this device that note is a symlink whose target is a relative path, the move now waits and is listed under "Files not synced", because the move can break the link. To sync it, replace the link with a copy of the note.
 - Alt+Enter on a Markdown link (`[text](path)`) finds the file relative to the note, as a click does.
 - A plugin's `editor.getSelection` and `editor.replaceSelection` work only while a note is shown. Before, with the graph open, they read and changed the note last shown behind it.
+
+### Compatibility
+
+- The sync server and the sync protocol are unchanged, so a 1.0.0 or 1.1.0 server works with this version, and devices on 1.0.0 or 1.1.0 keep syncing with it.
+- Copies that 1.1.0 and older synced under a file's second name stay on your other devices. Cairn no longer updates them or sends anything for them, with two exceptions: deleting the note on the device that has the link deletes its copy too (unless another device changed the copy meanwhile), and if another device deletes the note's own copy but keeps the second one, the second copy syncs in its place. If another device edits or renames such a copy, the device with the link lists it in Settings, then Sync, under "Files not synced": copy what you need into the note, then delete the copy on a device where it is a separate file. A device that has such a link and still runs 1.1.0 or older can still lose the note when another device deletes one of the copies, so update the devices that have the links first.
+- Cairn 1.0.0 and 1.1.0 keep `lightTheme` and `darkTheme` when they save other settings. In a vault set to Marble or Graphite they show their own light or dark theme, and the choice comes back when the vault opens in this version again. The `theme` key still holds only system, light or dark, which is all that older versions read.
+- Image tabs are not reopened when Cairn starts again. The saved session keeps the format of 1.1.0, so 1.0.0 and 1.1.0 still restore the other tabs from it.
+- On Android, images open in a tab as on the desktop, but Cairn still cannot open files in other apps there, images included: the tab has no Open in default app, and a tap on another attachment shows a message, as before. A phone has no Ctrl+click or middle click, so tap an embedded image in the reading view to open it. An image in a shared folder is read whole before it shows, so a very large photo there takes a while to open.
 
 ## 1.1.0 (2026-10-06)
 
