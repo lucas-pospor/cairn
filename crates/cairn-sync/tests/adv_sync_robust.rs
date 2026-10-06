@@ -1296,6 +1296,7 @@ fn synced_old_pair(maker: Option<FsMaker>, files: &[(&str, &str)], t: std::time:
     (srv, a, b)
 }
 
+#[cfg_attr(windows, ignore = "FINDING-055: StdFs has no change stamp on Windows")]
 #[test]
 fn old_note_edited_by_a_tool_that_keeps_size_and_mtime_is_uploaded() {
     let t = day_ago();
@@ -1308,6 +1309,7 @@ fn old_note_edited_by_a_tool_that_keeps_size_and_mtime_is_uploaded() {
     assert_eq!(b.read("n.md").as_deref(), Some("the cat\n"));
 }
 
+#[cfg_attr(windows, ignore = "FINDING-055: StdFs has no change stamp on Windows")]
 #[test]
 fn old_note_replaced_by_one_of_the_same_size_and_mtime_is_uploaded() {
     let t = day_ago();
