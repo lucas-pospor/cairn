@@ -1,5 +1,22 @@
 # Release notes
 
+## Unreleased
+
+### Core plugins
+
+Cairn now comes with optional built-in features, turned on and off under Settings, then Core plugins. The README describes each one.
+
+- Templates (on by default) inserts a note from the template folder at the cursor, with `{{title}}`, `{{date}}` and `{{time}}` filled in.
+- Daily notes (on by default) opens today's note, named by the date, and creates it, from a template if you choose one, when there is none.
+- Unique note creator (off by default) creates a note named by the date and time.
+- Random note (off by default) opens a note picked at random.
+
+They never write over a note, and none of them does anything when a vault opens. They need no approval on each device, since they are part of the app. Their switches and options are saved in the vault's `.cairn/settings.json` under a new `corePlugins` key. Cairn 1.0.0 keeps that key when it saves other settings, so a vault can move between versions without losing them.
+
+### Word count
+
+The status bar now shows characters as well as words, and counts the selection while there is one. Chinese and Japanese text counts each Han, Hiragana or Katakana character as a word, and Thai, Lao, Khmer and Myanmar text is split into words with the system's dictionary, so these counts are higher than in 1.0.0, which counted a run of such text as one word. Thai counts can differ a little between the desktop and Android, whose dictionaries differ.
+
 ## 1.0.0 (2026-10-05)
 
 This is the first public release of Cairn, a local-first Markdown notes app. A vault is an ordinary folder of `.md` files, and Cairn reads and writes them directly. The [README](../README.md) covers building from source, the sync server and plugins, and section 9 of [PLAN.md](PLAN.md#9-known-limits) lists every known limit. This release was tested on Arch Linux (GNOME, Wayland, WebKitGTK 2.52) and on an Android 15 emulator.

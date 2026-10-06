@@ -93,6 +93,7 @@ cairn/
     src/                     Svelte UI
       lib/backend.ts         the only module that talks to Tauri
       lib/editor/            CodeMirror extensions (wikilinks, live preview)
+      lib/corePlugins/       core plugins: optional features with a switch in Settings
       lib/components/        tree, tabs, panels, dialogs
     src-tauri/               Tauri shell (Rust), commands, watcher
       gen/android/           (v3) generated Android project + Kotlin plugin
@@ -116,6 +117,7 @@ cairn/
 8. Delete moves files to the OS trash on desktop (falling back to `<vault>/.trash/`), and to `<vault>/.trash/` on Android.
 9. The name on disk can differ from the vault path. `StdFs` maps each NFC vault path to the real name, so files whose names are in NFD (as macOS writes them) open, save and rename in place. When one folder holds two names that are equal after NFC, Cairn lists the second as `name (Unicode twin).md` and renames nothing on disk. A name with a backslash (possible on Linux and Android) has no vault path: Cairn does not show, index or sync it, and lists it with the files not synced. SAF folders match names in NFC and have no twin names.
 10. The app, `vault://` and sync follow symlinks the user made. A folder link that leads back to a folder it is in (`loop -> .`) is not listed. A config file under `.cairn/` follows a link only to a target inside the vault; a link that leads out is replaced by a plain file. If a folder on the way to a config file leads out of the vault, the write fails with an error and writes nothing; reads still follow it. The plugin API refuses a path when a link on the way leads out of the vault, into a hidden folder, or from a note to another kind of file.
+11. Core plugins are optional features that are part of the app (`app/src/lib/corePlugins/`): Templates, Daily notes, Unique note creator and Random note. Each one has a switch under Settings, then Core plugins, and the app works the same with all of them off. They are app code, not sandboxed plugins, so they need no approval on each device: a vault can only switch them on or off and set their options. They act only through their commands and buttons, never when a vault opens. They reach the vault through a small host interface in the app (`CoreHost`), and every note they make goes through the same create call as New note, which never writes over a file; text they insert goes into the editor like typing. Their switches and options live in `<vault>/.cairn/settings.json` under `corePlugins`, holding only what the user changed (a missing value means the default). The object is kept as read, so plugin ids and options a version does not know, and values of the wrong type, stay in the file; version 1.0.0 also keeps the key when it saves other settings.
 
 ### Link resolution rules (Obsidian compatible)
 
@@ -334,6 +336,18 @@ Adversarial testing before 1.0.0 led to the fixes below. Section 9 lists the fin
 
 Tests for 1.0.0: 746 Rust tests (745 in `cairn-core`, `cairn-sync` and `cairn-server`, run with `CAIRN_FUZZ_SEEDS=200`, plus 1 unit test in the app crate), 232 Vitest tests, 476 desktop end-to-end tests and 85 Android end-to-end tests pass. Reproductions of findings that are not fixed stay in the suites, marked ignored, todo or expected to fail, with their finding id; the performance and memory measurements run only when an environment variable turns them on.
 
+### After 1.0.0: core plugins (unreleased)
+
+- Templates (on by default): inserts a note from the template folder at the cursor, with `{{title}}`, `{{date}}`, `{{time}}`, `{{date:FORMAT}}` and `{{time:FORMAT}}` filled in, as one undoable edit. On a phone, a button in the formatting toolbar runs it.
+- Daily notes (on by default): opens today's note, named by the date (`YYYY-MM-DD` by default) in a chosen folder (the vault root by default), and creates it from an optional template when there is none. A button next to Graph view runs it, in the Files drawer on a phone.
+- Unique note creator (off by default): creates a note named by the date and time (`YYYYMMDDHHmm` by default); a taken name gets a number.
+- Random note (off by default): opens a note picked at random.
+- Dates use the moment.js format letters that Obsidian uses, with English day and month names on every device. Settings shows what a format gives today, or why it cannot make a file name.
+- Commands of a plugin that is off are not in the palette or the Hotkeys list and their keys do nothing, but their hotkeys stay saved. None has a default hotkey.
+- The status bar's word count also counts characters and the selection. Chinese and Japanese count one word per Han, Hiragana or Katakana character; Thai, Lao, Khmer and Myanmar are split with `Intl.Segmenter`.
+
+Tests: 83 new Vitest tests (date formats and week numbers, template filling, note names the core would refuse, name clashes, each plugin's command against a stand-in for the app, word and character counts in Latin, Chinese, Japanese, Korean, Thai, Lao, Hindi, emoji and combining marks, and a `settings.json` with `corePlugins` read and saved by the settings code), 26 desktop end-to-end tests in 6 new files and 4 Android end-to-end tests in a new file. Each commit of the work passes its own tests. The existing end-to-end tests that use Settings, the command palette, the left sidebar, the status bar or the phone's formatting toolbar still pass.
+
 ## 9. Known limits
 
 These hold in version 1.0.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), and release APKs are signed with the project's release key (see the release notes).
@@ -386,6 +400,14 @@ These hold in version 1.0.0. Each FINDING number names the tests that reproduce 
 - Plugins have no memory limit: WebKit has no per-worker limit. A plugin that keeps allocating can make the window go blank (FINDING-161).
 - Cairn stops a plugin and turns it off when a command runs over 30 s, the plugin misses three pings or it floods the app with messages. The only way to stop a slow command is to turn the plugin off (FINDING-069, FINDING-153, FINDING-156, FINDING-162).
 - A plugin has at most 200 commands and 16 API calls in flight, and at most 5 toasts show at once (FINDING-072, FINDING-157, FINDING-162).
+
+### Core plugins (unreleased)
+
+- Their switches and options are in `.cairn/settings.json`, which Cairn sync does not copy, so with Cairn sync they are set up on each device.
+- Day and month names in dates are always English, so that devices with different system languages give a daily note the same name.
+- In a daily note's template, `{{date}}` and `{{time}}` use the date and time formats of the Templates plugin, whether it is on or not.
+- There is no option to open today's note when a vault opens: nothing is created by opening a vault.
+- Thai, Lao, Khmer and Myanmar word counts come from the system's dictionary (ICU), which is not the same in WebKitGTK and in Android's web view, so they can differ a little between the desktop and a phone.
 
 ### Editor and app
 

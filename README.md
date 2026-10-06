@@ -34,8 +34,10 @@ Cairn is a local-first Markdown notes app in the style of Obsidian. A vault is a
 - Paste or drop images and other files into a note. Cairn stores them in the vault's attachment folder and links them.
 - On the desktop, you can open a file that is not a note in the system's default app from a link, from the card of an embedded file, or from the file tree (click it, or choose Open in default app in its menu). Cairn does this only for documents, images, audio, video, archives and a few text formats (txt, log, csv, tsv, rtf, svg, json, yaml, yml, ics, vcf). It refuses any other type (programs, scripts, web pages, XML, macro-enabled Office files) and text files marked as executable, and suggests Reveal in file manager instead. On Android, Cairn cannot open attachments in other apps yet.
 - Backlinks, outgoing links, outline, properties (frontmatter) and tags panels.
+- A word and character count in the status bar, for the note or for the selection. Chinese and Japanese text counts each Han, Hiragana or Katakana character as a word. Thai, Lao, Khmer and Myanmar text is split into words with the system's dictionary, which differs a little between the desktop and Android.
 - Quick switcher (Ctrl+O), command palette (Ctrl+P), full-text search with `tag:` and `path:` filters (Ctrl+Shift+F; quote a value with spaces, as in `path:"My Folder"`), and a graph view (Ctrl+G) that also works from the keyboard.
 - Light and dark themes, accent color, fonts, and your own CSS snippets. On the desktop, Ctrl+= and Ctrl+- zoom the whole window and Ctrl+0 resets it (on layouts where that key types 0, so not on AZERTY); the Font size setting changes only the note text.
+- Optional core plugins, each with a switch under Settings, then Core plugins: Templates, Daily notes, Unique note creator and Random note. See [Core plugins](#core-plugins).
 - Customizable hotkeys for every command, all listed under Settings, then Hotkeys. A hotkey needs Ctrl, Alt or Cmd unless it is a function key. It goes by the character the key types in your keyboard layout (AZERTY, Dvorak and so on).
 - End-to-end encrypted sync between devices through your own server, with conflict copies instead of lost edits, and version history.
 - An Android app built from the same code, with a touch layout and a formatting toolbar. It has no zoom keys and cannot open attachments in other apps yet.
@@ -160,6 +162,21 @@ In two cases sync stops without uploading anything, and the sync status shows "S
 
 Connecting again, or losing the sync state on a device, does not duplicate notes: Cairn matches the device's files to the server's by path and content. It does not delete anything at that point, so a note deleted on one side comes back everywhere. On a first connect, if a new file's content matches a server note this device lacks, Cairn takes the file as that note, and the note then moves to the file's path on the other devices. This happens only when the match is one to one, and never for empty files.
 
+## Core plugins
+
+Core plugins are optional features that come with Cairn. Each one has a switch under Settings, then Core plugins, and some have options of their own, which show under the switch while the plugin is on. Cairn works the same as before with all of them off. They are part of the app, so they need no approval on each device, unlike the plugins in `.cairn/plugins/`. None of them does anything when you open a vault: they act only when you run one of their commands from the command palette or press one of their buttons. Their commands have no default hotkeys, but you can give them hotkeys under Settings, then Hotkeys. A hotkey stays saved while its plugin is off.
+
+- Templates (on by default) inserts a note from the template folder (`Templates` unless you choose another) at the cursor. In the template, `{{title}}` becomes the name of the note, and `{{date}}` and `{{time}}` become the date and time in the formats set in Settings (`YYYY-MM-DD` and `HH:mm` unless you change them). `{{date:FORMAT}}` and `{{time:FORMAT}}` use a format of their own. The template goes in as it is, frontmatter included, and one undo takes it out again. On a phone, a button in the formatting toolbar inserts a template.
+- Daily notes (on by default) opens today's note, named by the date (`YYYY-MM-DD` unless you change it) in the folder you choose (the vault root unless you change it). If there is no note for today yet, Cairn creates one, starting from a template note if you set one. A slash in the format makes folders, as in `YYYY/MM/YYYY-MM-DD`. Its button sits next to Graph view at the top of the left sidebar, and on a phone at the top of the Files drawer.
+- Unique note creator (off by default) creates a note named by the date and time (`YYYYMMDDHHmm` unless you change it), in the folder you choose and from a template note if you set one, and opens it in a new tab.
+- Random note (off by default) opens a note picked at random.
+
+Dates use the format letters of moment.js, which Obsidian uses too, so an Obsidian vault's daily notes keep their names: for example `YYYY` (year), `MM` (month), `DD` (day), `dddd` (weekday), `MMMM` (month name), `Do` (day with an ending such as 5th), `HH:mm` (time), `ww` and `WW` (week numbers) and `[text]` for text that stays as it is. Day and month names are always English, so devices with different system languages give a note the same name. Settings shows what a format gives today, or why the name it makes cannot be a file name.
+
+Core plugins never write over a note. A daily note that is already there opens as it is. If a note appears at that name while Cairn creates it (sync or another app made it, or its name differs only in case), Cairn opens that note instead. A unique note whose name is taken gets a number, such as `202610051432 1.md`. Templates change only the note you are editing, through the editor and its autosave.
+
+The switches and options are stored in `.cairn/settings.json`, under `corePlugins`, so they belong to the vault like the other settings. Cairn sync does not copy `.cairn/`, so with Cairn sync you turn the plugins on and set them up on each device. Only the values you change are written, and Cairn keeps anything under `corePlugins` that it does not know. Version 1.0.0 keeps the key too when it saves other settings.
+
 ## Plugins
 
 A plugin is a JavaScript file in `.cairn/plugins/` inside the vault. Turn it on under Settings, then Plugins, on each device where it should run. Each plugin runs in its own sandbox (a Web Worker) with no access to the page, the network or the file system. It talks to Cairn only through the `cairn` object, and only with the permissions it declares at the top of the file:
@@ -283,6 +300,7 @@ crates/cairn-server/ sync server (axum + SQLite), Dockerfile, compose file, Cadd
 app/src-tauri/       Tauri shell: commands, file watcher, sync thread, vault:// protocol
 app/src-tauri/gen/android/  Android project; SafPlugin.kt is the Storage Access Framework bridge
 app/src/             Svelte UI and CodeMirror extensions
+app/src/lib/corePlugins/  core plugins (Templates, Daily notes, Unique note creator, Random note)
 e2e/                 end-to-end tests against the built app (WebDriver on the desktop, adb on Android)
 scripts/             build, test and benchmark helpers
 docs/PLAN.md         plan, decisions, status, known limits
