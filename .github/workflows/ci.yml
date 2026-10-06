@@ -56,8 +56,10 @@ jobs:
       - name: Test the app crate
         run: cargo test -p cairn --lib
 
+      # Warnings fail CI only; local builds and tests are not affected. A new
+      # Rust release can bring new lints, which then need fixing here.
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   frontend:
     runs-on: ubuntu-latest
