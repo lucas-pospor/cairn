@@ -659,16 +659,29 @@ fn server_killed_with_sigkill_mid_upload_keeps_acknowledged_revisions() {
     let url = format!("http://127.0.0.1:{port}");
     let mut srv = spawn_server(data.path(), port);
     let mut a = Device::new_url(&url, "laptop", &[]);
-    // Enough for the upload to take well over the 400 ms before the kill.
+    // Enough for the upload to go on well past the kill.
     let n = 2000;
     fs::create_dir_all(a.root.join("n")).unwrap();
     for i in 0..n {
         fs::write(a.root.join(format!("n/{i:04}.md")), format!("note {i}\n{}\n", "x".repeat(2000))).unwrap();
     }
-    // kill -9 the server while A is uploading
+    // kill -9 the server while A is uploading, once it has stored `stored`
+    // notes. A sends one note at a time, so by then A has recorded at least
+    // all but the last of them as acknowledged. Not a fixed delay: A scans
+    // and hashes every note before the first upload, which takes longer on a
+    // slower machine.
     let pid = srv.child.id();
+    let watch_url = url.clone();
+    let stored = 20;
     let killer = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(400));
+        let t = http(&watch_url);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < deadline {
+            match t.changes(VAULT_ID, 0, stored) {
+                Ok(c) if c.heads.len() >= stored as usize => break,
+                _ => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
         unsafe_kill(pid);
     });
     let r = a.sync();
