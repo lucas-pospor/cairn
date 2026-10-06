@@ -614,7 +614,7 @@ fn one_corrupt_revision_does_not_stop_all_sync() {
 // ------------------------------------------------------------------ the real server process, killed
 
 fn server_bin() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/cairn-server");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/debug/cairn-server{}", std::env::consts::EXE_SUFFIX));
     assert!(p.exists(), "build cairn-server first: {}", p.display());
     p
 }

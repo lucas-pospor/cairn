@@ -34,7 +34,7 @@ impl Drop for Proc {
 
 fn spawn_server(data: &std::path::Path) -> (Proc, String) {
     let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/cairn-server");
+    let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/debug/cairn-server{}", std::env::consts::EXE_SUFFIX));
     let child = Command::new(bin)
         .env("CAIRN_TOKENS", TOKEN)
         .env("CAIRN_DATA", data)

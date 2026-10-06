@@ -34,7 +34,7 @@ impl Drop for Proc {
 }
 
 fn server_bin() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/cairn-server");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/debug/cairn-server{}", std::env::consts::EXE_SUFFIX));
     assert!(p.exists(), "build cairn-server first: {}", p.display());
     p
 }
