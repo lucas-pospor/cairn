@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Tauri's Linux build dependencies, plus gdb for the tests in
+      # crates/cairn-sync/tests/adv_verify_sr_01.rs.
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev gdb
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy --no-self-update
+          rustup default stable
+
+      # Caches the cargo registry and the compiled dependencies in target/, keyed
+      # on the Rust version and Cargo.lock. The workspace's own build output (the
+      # debug test binaries alone are several GB) is rebuilt on every run anyway.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # One command on purpose: some cairn-sync tests run target/debug/cairn-server
+      # and target/debug/examples/sync_dir, which this invocation builds.
+      # --no-fail-fast reports every failing test binary, not just the first.
+      - name: Test cairn-core, cairn-sync and cairn-server
+        run: cargo test -p cairn-core -p cairn-sync -p cairn-server --no-fail-fast
+
+      - name: Build the frontend
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Test the app crate
+        run: cargo test -p cairn --lib
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Type-check
+        working-directory: app
+        run: npx svelte-check --tsconfig ./tsconfig.json
+
+      - name: Unit tests
+        working-directory: app
+        run: npx vitest run
