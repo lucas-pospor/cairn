@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import type { AccentTheme, Rgb } from "./accent";
+import { DEFAULT_THEME, THEMES } from "./themes";
 
 // Vitest turns a CSS import into an empty string, even with ?raw.
 const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
@@ -47,6 +48,7 @@ function rule(selector: string, within: string | null): Rule {
 }
 
 export interface Palette {
+  id: string;
   name: string;
   scheme: "light" | "dark";
   tokens: Record<string, string>;
@@ -54,14 +56,26 @@ export interface Palette {
   systemCopy?: Record<string, string>;
 }
 
-/** The light theme is the plain :root; the dark one is written twice, for the system and for a forced dark. */
+/**
+ * The themes of themes.ts as app.css writes them: Limestone is the plain :root,
+ * another light theme is :root:where([data-light-theme=...]); a dark theme is
+ * written twice, for "System" when the system is dark and for a forced dark.
+ */
 export function palettes(): Palette[] {
-  const light = colours(rule(":root", null));
-  const dark = colours(rule(':root[data-theme="dark"]', null));
-  return [
-    { name: "light", scheme: "light", tokens: light },
-    { name: "dark", scheme: "dark", tokens: dark, systemCopy: colours(rule(':root:not([data-theme="light"])', DARK_MEDIA)) },
-  ];
+  return THEMES.map((t) => {
+    if (t.scheme === "light") {
+      const selector = t.id === DEFAULT_THEME.light ? ":root" : `:root:where([data-light-theme="${t.id}"])`;
+      return { id: t.id, name: t.name, scheme: t.scheme, tokens: colours(rule(selector, null)) };
+    }
+    const only = t.id === DEFAULT_THEME.dark ? "" : `:where([data-dark-theme="${t.id}"])`;
+    return {
+      id: t.id,
+      name: t.name,
+      scheme: t.scheme,
+      tokens: colours(rule(`:root[data-theme="dark"]${only}`, null)),
+      systemCopy: colours(rule(`:root:not([data-theme="light"])${only}`, DARK_MEDIA)),
+    };
+  });
 }
 
 export function hexRgb(value: string): Rgb {

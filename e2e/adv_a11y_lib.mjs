@@ -189,9 +189,16 @@ export class AxApp {
     await sleep(150);
   }
 
-  setTheme(theme) {
-    // Same effect as Settings > Appearance > Theme (settings.svelte.ts sets data-theme on <html>).
-    return this.s.exec(`document.documentElement.dataset.theme = arguments[0]; return 1`, theme);
+  /** `theme` "light" or "dark", in the light or dark theme `name` (Limestone or Slate when not given). */
+  setTheme(theme, name) {
+    // Same effect as Settings > Appearance > Theme and Light theme / Dark theme
+    // (settings.svelte.ts sets data-theme, data-light-theme and data-dark-theme on <html>).
+    return this.s.exec(
+      `const r = document.documentElement; r.dataset.theme = arguments[0]; r.dataset.lightTheme = arguments[1] ?? 'limestone'; r.dataset.darkTheme = arguments[2] ?? 'slate'; return 1`,
+      theme,
+      theme === "light" ? (name ?? null) : null,
+      theme === "dark" ? (name ?? null) : null,
+    );
   }
 
   async rectOf(css) {

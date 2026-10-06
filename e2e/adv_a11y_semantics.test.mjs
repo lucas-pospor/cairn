@@ -386,9 +386,10 @@ async function contrastReport() {
     return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].slice(0, 6)]));`);
 }
 
-async function contrastScenes(theme) {
+async function contrastScenes(theme, name) {
   await app.reset();
-  await app.setTheme(theme);
+  await app.setTheme(theme, name);
+  const label = name ?? theme;
   const scenes = {};
   // A code block with every syntax colour: keyword, comment, type (class name), function, number, string.
   const code = "```js\n// a comment\nclass Box { size = 42; grow(n) { return \"big\"; } }\n```\n\n";
@@ -399,14 +400,14 @@ async function contrastScenes(theme) {
   await app.exec(`document.querySelector('[data-testid=tree-row][data-path="Projects"]').click(); return 1`);
   await sleep(400);
   scenes.workspace = await contrastReport();
-  await app.shot(`AX-contrast-${theme}-workspace.png`);
+  await app.shot(`AX-contrast-${label}-workspace.png`);
   // Search results: the matched words are highlighted inside muted snippet text.
   await app.exec(`document.querySelector('[data-testid=tab-search]').click(); return 1`);
   await app.s.waitFor(`return !!document.querySelector('[data-testid=search-input]')`);
   await app.exec(`const i = document.querySelector('[data-testid=search-input]'); i.value = 'quote'; i.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
   await app.s.waitFor(`return !!document.querySelector('[data-testid=search-results] mark.hit')`, { message: "search hits shown" });
   scenes.search = await contrastReport();
-  await app.shot(`AX-contrast-${theme}-search.png`);
+  await app.shot(`AX-contrast-${label}-search.png`);
   await app.exec(`const i = document.querySelector('[data-testid=search-input]'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-testid=tab-files]').click(); return 1`);
   await app.exec(`document.querySelector('[data-testid=right-properties]').click(); document.querySelector('[data-testid=tab-tags]').click(); return 1`);
   await sleep(300);
@@ -425,7 +426,7 @@ async function contrastScenes(theme) {
   await app.palette("delete current");
   await app.s.waitFor(`return !!document.querySelector('[data-testid=dialog-ok]')`);
   scenes.deleteConfirm = await contrastReport();
-  await app.shot(`AX-contrast-${theme}-delete-confirm.png`);
+  await app.shot(`AX-contrast-${label}-delete-confirm.png`);
   await app.keys(K.esc);
   await openSettings("hotkeys");
   scenes.settingsHotkeys = await contrastReport();
@@ -453,6 +454,17 @@ test("FINDING-206: dark theme: text on the red Delete button and faint text meet
   assert.deepEqual(lines, []);
 });
 
+for (const [theme, name] of [["light", "marble"], ["dark", "graphite"]]) {
+  test(`${name} theme: all text meets WCAG AA`, async () => {
+    const scenes = await contrastScenes(theme, name);
+    const lines = summarize(scenes);
+    log(`${name} theme contrast failures`, lines.join("\n"));
+    fs.writeFileSync(path.join(EVIDENCE, `contrast-${name}.txt`), lines.join("\n") + "\n");
+    await app.setTheme("light");
+    assert.deepEqual(lines, []);
+  });
+}
+
 /** In-page helper: contrast of the colour in `css` (a colour, or a box-shadow) against what is behind `el`. */
 const EDGE = `const edge = (el, css) => { const m = css.match(/rgba?\\([^)]*\\)/); const bg = __ax.bgOf(el); return m ? Math.round(__ax.ratio(__ax.over(__ax.parse(m[0]), bg), bg) * 100) / 100 : 0; };`;
 
@@ -462,8 +474,9 @@ test("FINDING-207: non-text contrast: input borders and the selected-row outline
   await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="Empty.md"]')`);
   const out = {};
   await app.openNote("empty", "Empty.md");
-  for (const theme of ["light", "dark"]) {
-    await app.setTheme(theme);
+  for (const [theme, name] of [["light"], ["dark"], ["light", "marble"], ["dark", "graphite"]]) {
+    await app.setTheme(theme, name);
+    const label = name ?? theme;
     await app.s.waitFor(`return !!document.querySelector('.cm-placeholder')`, { message: "editor placeholder shown" });
     // A click selects a folder row (only the open note's row is "active").
     await app.exec(`document.querySelector('[data-testid=tree-row][data-path="Projects"]').click(); return 1`);
@@ -472,7 +485,7 @@ test("FINDING-207: non-text contrast: input borders and the selected-row outline
     await app.exec(`document.querySelector('[data-testid=tab-search]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=search-input]')`);
     await sleep(300);
-    out[theme] = await app.exec(`
+    out[label] = await app.exec(`
       ${EDGE}
       const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
       const r = (fg, bg) => __ax.pair(fg, bg).ratio;
@@ -492,10 +505,10 @@ test("FINDING-207: non-text contrast: input borders and the selected-row outline
     // WebKit, so measure the pixels of a screenshot.
     const rect = await app.rectOf("[data-testid=search-input]");
     const png = await app.s.screenshot();
-    fs.writeFileSync(path.join(EVIDENCE, `AX-22-placeholder-${theme}.png`), png);
+    fs.writeFileSync(path.join(EVIDENCE, `AX-22-placeholder-${label}.png`), png);
     const img = decodePng(png);
-    const k = out[theme].dpr;
-    out[theme].searchPlaceholder = regionContrast(img, (rect.x + 9) * k, (rect.y + 6) * k, (rect.x + 120) * k, (rect.y + rect.h - 6) * k);
+    const k = out[label].dpr;
+    out[label].searchPlaceholder = regionContrast(img, (rect.x + 9) * k, (rect.y + 6) * k, (rect.x + 120) * k, (rect.y + rect.h - 6) * k);
     await app.exec(`document.querySelector('[data-testid=tab-files]').click(); return 1`);
   }
   await app.setTheme("light");

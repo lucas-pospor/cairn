@@ -3,11 +3,21 @@
 
 import { backend } from "./backend";
 import { deriveAccent, parseRgb } from "./accent";
+import { themeFor } from "./themes";
 
 export type Theme = "system" | "light" | "dark";
 
 export interface Settings {
+  /** Light, dark, or the system's choice between them. */
   theme: Theme;
+  /**
+   * The light and dark theme ids (themes.ts). Kept as read, whatever they
+   * hold, and not written until chosen: an id this version does not know shows
+   * the default theme and stays in the file. Older versions keep these keys
+   * too, but replace a "theme" they do not know, so it never holds an id.
+   */
+  lightTheme?: unknown;
+  darkTheme?: unknown;
   accent: string;
   fontSize: number;
   lineWidth: number;
@@ -156,6 +166,8 @@ class SettingsStore {
     const root = document.documentElement;
     if (s.theme === "system") root.removeAttribute("data-theme");
     else root.dataset.theme = s.theme;
+    root.dataset.lightTheme = themeFor("light", s.lightTheme);
+    root.dataset.darkTheme = themeFor("dark", s.darkTheme);
     root.style.setProperty("--text-size", `${s.fontSize}px`);
     root.style.setProperty("--line-width", `${s.lineWidth}px`);
     root.style.setProperty("--font-text", FONTS[s.fontFamily] ?? FONTS.sans);

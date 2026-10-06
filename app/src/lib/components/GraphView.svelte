@@ -24,6 +24,8 @@
   let near = new Set<string>();
   let nearEdges = new Set<string>();
   let theme = colors();
+  /** The colours of the nodes, edges and labels drawn so far. */
+  let drawn = theme;
   /** The node picked from the keyboard (find box or arrow keys); Enter opens it. */
   let picked = $state<string | null>(null);
   /** The find box text that picked it, so a second Enter opens it. */
@@ -47,6 +49,32 @@
       label: css("--text", "#222"),
       dim: css("--bg-active", "#ddd"),
     };
+  }
+
+  let recolorTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * After a change of theme, accent or snippet, draw with the new colours. A
+   * moment later: settings re-add snippets one file read at a time, and the
+   * colours in between are not worth redrawing a large graph for.
+   */
+  function scheduleRecolor() {
+    clearTimeout(recolorTimer);
+    recolorTimer = setTimeout(recolor, 100);
+  }
+
+  function recolor() {
+    const c = colors();
+    const changed = (...keys: (keyof typeof c)[]) => keys.some((k) => c[k] !== drawn[k]);
+    const nodes = changed("note", "unresolved");
+    const edges = changed("edge");
+    const label = changed("label");
+    const reducers = changed("active", "dim");
+    drawn = theme = c;
+    // Only the colour changes, which tells sigma it need not index the graph again.
+    if (nodes) graph.updateEachNodeAttributes((_, a) => ({ ...a, color: a.kind === "note" ? c.note : c.unresolved }), { attributes: ["color"] });
+    if (edges) graph.updateEachEdgeAttributes((_, a) => ({ ...a, color: c.edge }), { attributes: ["color"] });
+    if (label) renderer?.setSetting("labelColor", { color: c.label });
+    else if (reducers && !nodes && !edges) renderer?.refresh({ skipIndexation: true });
   }
 
   function nodeSize(degree: number) {
@@ -240,8 +268,19 @@
     mouse.addEventListener("keydown", onCanvasKey);
     // Expose for tests.
     Object.assign(container, { __graph: graph, __sigma: renderer });
+    // The theme is set by attributes of the html element and the accent by its
+    // inline style, snippets are style elements in the head, and "System"
+    // follows the media query.
+    const observer = new MutationObserver(scheduleRecolor);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-light-theme", "data-dark-theme", "style"] });
+    observer.observe(document.head, { childList: true });
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    scheme.addEventListener("change", scheduleRecolor);
     void load();
     return () => {
+      observer.disconnect();
+      scheme.removeEventListener("change", scheduleRecolor);
+      clearTimeout(recolorTimer);
       layout?.kill();
       clearTimeout(stopTimer);
       renderer?.kill();

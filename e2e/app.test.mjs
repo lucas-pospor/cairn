@@ -357,6 +357,9 @@ test("settings: theme and CSS snippets apply", async () => {
   await s.exec(`const el = document.querySelector('[data-testid=theme-select]'); el.value = 'light'; el.dispatchEvent(new Event('change', { bubbles: true }));`);
   await s.waitFor(`return document.documentElement.dataset.theme === 'light'`);
   void sel;
+  // Below the theme rows, the button can be cut off at the bottom of Settings,
+  // and WebDriver does not scroll a partly hidden element into view.
+  await s.exec(`document.querySelector('[data-testid=snippet-new]').scrollIntoView({ block: 'center' }); return 1`);
   await s.click(await s.find("[data-testid=snippet-new]"));
   await s.exec(`const t = document.querySelector('[data-testid=snippet-css]'); t.value = ':root { --accent: rgb(200, 10, 10); }'; t.dispatchEvent(new Event('input', { bubbles: true }));`);
   await s.click(await s.find("[data-testid=snippet-save]"));

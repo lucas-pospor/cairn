@@ -1,8 +1,9 @@
-// settings.json written by a version with core plugins, read and saved again by
-// this version's settings code (which is also what 1.0.0 has): the "corePlugins"
-// key and the hotkeys of core plugin commands must come through unchanged, even
-// though nothing here reads them. This test uses only load(), update() and flush(),
-// so it runs against older versions of settings.svelte.ts too.
+// settings.json written by a version with core plugins or a choice of light and
+// dark themes, read and saved again by this version's settings code: the
+// "corePlugins", "lightTheme" and "darkTheme" keys and the hotkeys of core plugin
+// commands must come through unchanged. This test uses only load(), update() and
+// flush(), so it runs against older versions of settings.svelte.ts too (1.0.0 and
+// 1.1.0 keep keys they do not know, and replace only a "theme" they do not know).
 //
 // Run: cd app && npx vitest run src/lib/settings_compat.test.ts
 
@@ -39,18 +40,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function loadAndChangeTheme(file: unknown) {
+async function loadAndChange(file: unknown, patch: Parameters<typeof settings.update>[0]) {
   Object.assign(backend, {
     readConfig: async () => JSON.stringify(file, null, 2),
     listConfig: async () => [],
     writeConfig: async (_name: string, content: string) => void written.push(content),
   });
   await settings.load();
-  settings.update({ theme: "dark" });
+  settings.update(patch);
   await settings.flush();
   expect(written).toHaveLength(1);
   return JSON.parse(written[0]);
 }
+
+const loadAndChangeTheme = (file: unknown) => loadAndChange(file, { theme: "dark" });
 
 describe("settings.json with core plugins", () => {
   it("keeps corePlugins and the hotkeys of core plugin commands through load, update and save", async () => {
@@ -73,5 +76,36 @@ describe("settings.json with core plugins", () => {
   it("does not add corePlugins to a file that has none", async () => {
     const saved = await loadAndChangeTheme({ theme: "light" });
     expect("corePlugins" in saved).toBe(false);
+  });
+});
+
+describe("settings.json with a light and a dark theme chosen", () => {
+  const THEMES = { lightTheme: "marble", darkTheme: "graphite" };
+
+  it("keeps lightTheme and darkTheme when the theme is switched", async () => {
+    const saved = await loadAndChangeTheme({ theme: "system", ...THEMES });
+    expect(saved).toMatchObject({ theme: "dark", ...THEMES });
+  });
+
+  it("keeps them when another setting changes", async () => {
+    for (const theme of ["system", "light", "dark"]) {
+      written = [];
+      const saved = await loadAndChange({ theme, ...THEMES, fontSize: 15 }, { fontSize: 18 });
+      expect(saved).toMatchObject({ theme, ...THEMES, fontSize: 18 });
+    }
+  });
+
+  it("keeps theme ids of later versions and values of the wrong type", async () => {
+    for (const v of ["some-later-theme", 5, null, ["marble"], { id: "graphite" }]) {
+      written = [];
+      const saved = await loadAndChange({ lightTheme: v, darkTheme: v }, { fontSize: 18 });
+      expect(saved.lightTheme).toEqual(v);
+      expect(saved.darkTheme).toEqual(v);
+    }
+  });
+
+  it("would lose a theme id written into \"theme\" itself, which is why it has keys of its own", async () => {
+    const saved = await loadAndChange({ theme: "graphite" }, { fontSize: 18 });
+    expect(saved.theme).toBe("system");
   });
 });

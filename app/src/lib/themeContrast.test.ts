@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { contrast, deriveAccent, type Rgb } from "./accent";
+import { THEMES } from "./themes";
 import { accentTheme, hex, hexRgb, palettes, resolve, rules } from "./themes.testutil";
 
 /** Text: foreground -> background -> where. */
@@ -159,6 +160,21 @@ describe("theme contrast", () => {
       expect(bad).toEqual([]);
     });
   }
+
+  it("the swatches in Settings show each theme's own colours", () => {
+    for (const p of palettes()) {
+      const { swatch } = THEMES.find((t) => t.id === p.id)!;
+      expect(swatch, p.name).toEqual({ bg: p.tokens["--bg"], side: p.tokens["--bg-side"], text: p.tokens["--text"], accent: p.tokens["--accent"] });
+    }
+  });
+
+  it("Graphite's backgrounds, borders and text are pure grey, with no tint", () => {
+    const graphite = palettes().find((p) => p.id === "graphite")!;
+    const tinted = Object.entries(graphite.tokens)
+      .filter(([k]) => /^--(bg|border|text|unresolved)/.test(k))
+      .filter(([, v]) => new Set(hexRgb(v)).size > 1);
+    expect(tinted).toEqual([]);
+  });
 
   it("reads the expressions it checks", () => {
     const t = { "--a": "#000000", "--b": "#ffffff" };

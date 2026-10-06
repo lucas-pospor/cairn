@@ -5,7 +5,7 @@ import { accentTheme, palettes } from "./themes.testutil";
 const rgb = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as Rgb;
 
 // The themes from app.css.
-const THEMES: Record<string, AccentTheme> = Object.fromEntries(palettes().map((p) => [p.name, accentTheme(p.tokens)]));
+const THEMES: Record<string, AccentTheme> = Object.fromEntries(palettes().map((p) => [p.id, accentTheme(p.tokens)]));
 const under = (hit: Rgb, bg: Rgb) => hit.map((v, i) => v * 0.45 + bg[i] * 0.55) as Rgb;
 /** Where accent text is drawn: page, sidebar, hovered row, code, the tint, and under a selection match. */
 const surfaces = (theme: AccentTheme, soft: Rgb) => [theme.bg, theme.side, theme.hover, theme.code, soft, under(theme.hit, theme.bg), under(theme.hit, soft)];
@@ -42,14 +42,14 @@ describe("deriveAccent (FINDING-219)", () => {
   });
 
   it("keeps an accent that is already readable", () => {
-    expect(deriveAccent(rgb("#a84529"), THEMES.light).accent).toBe("#a84529");
-    expect(deriveAccent(rgb("#e8a33d"), THEMES.dark).accent).toBe("#e8a33d");
+    expect(deriveAccent(rgb("#a84529"), THEMES.limestone).accent).toBe("#a84529");
+    expect(deriveAccent(rgb("#e8a33d"), THEMES.slate).accent).toBe("#e8a33d");
   });
 
-  it("shades in the light theme and lightens in the dark theme", () => {
+  it("shades in a light theme and lightens in a dark theme", () => {
     const blue = rgb("#3b82f6");
-    const light = rgb(deriveAccent(blue, THEMES.light).accent);
-    const dark = rgb(deriveAccent(blue, THEMES.dark).accent);
+    const light = rgb(deriveAccent(blue, THEMES.limestone).accent);
+    const dark = rgb(deriveAccent(blue, THEMES.slate).accent);
     expect(light.every((v, i) => v < blue[i])).toBe(true);
     expect(dark.every((v, i) => v > blue[i])).toBe(true);
   });

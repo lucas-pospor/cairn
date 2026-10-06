@@ -13,6 +13,8 @@
   import { errorMessage } from "../types";
   import { CORE_PLUGINS } from "../corePlugins";
   import { option, pluginOn as corePluginOn, setOption, setPluginOn, type CorePlugin } from "../corePlugins/core";
+  import { THEMES, themeFor } from "../themes";
+  import { MediaQuery } from "svelte/reactivity";
 
   const PERMISSION_TEXT: Record<string, string> = {
     read: "read all notes",
@@ -82,6 +84,26 @@
 
   function set<K extends keyof Settings>(k: K, v: Settings[K]) {
     settings.update({ [k]: v } as Partial<Settings>);
+  }
+
+  const THEME_ROWS = [
+    { scheme: "light", key: "lightTheme", label: "Light theme", desc: "Used when the theme is Light, or System while the system is light." },
+    { scheme: "dark", key: "darkTheme", label: "Dark theme", desc: "Used when the theme is Dark, or System while the system is dark." },
+  ] as const;
+  const systemDark = new MediaQuery("(prefers-color-scheme: dark)");
+  /** The accent of the theme in use, shown by the colour picker while no custom accent is set. */
+  const themeAccent = $derived.by(() => {
+    const dark = s.theme === "dark" || (s.theme === "system" && systemDark.current);
+    const id = dark ? themeFor("dark", s.darkTheme) : themeFor("light", s.lightTheme);
+    return THEMES.find((t) => t.id === id)!.swatch.accent;
+  });
+
+  /**
+   * Save a light or dark theme. Clicking the one already shown saves it too: it
+   * may be the default standing in for an id this version does not know.
+   */
+  function chooseTheme(key: "lightTheme" | "darkTheme", id: string) {
+    if (s[key] !== id) set(key, id);
   }
 
   // ----- snippets -----
@@ -322,10 +344,25 @@
             <option value="dark">Dark</option>
           </select>
         </div>
+        {#each THEME_ROWS as row (row.key)}
+          <div class="row">
+            <div><b id="{uid}-{row.key}">{row.label}</b><p id="{uid}-{row.key}-d">{row.desc}</p></div>
+            <div class="theme-choices" role="radiogroup" aria-labelledby="{uid}-{row.key}" aria-describedby="{uid}-{row.key}-d">
+              {#each THEMES.filter((t) => t.scheme === row.scheme) as t (t.id)}
+                {@const on = themeFor(row.scheme, s[row.key]) === t.id}
+                <label class="theme-choice" class:on>
+                  <input type="radio" name="{uid}-{row.key}" value={t.id} checked={on} onclick={() => chooseTheme(row.key, t.id)} onchange={() => chooseTheme(row.key, t.id)} data-testid="theme-{t.id}" />
+                  <span class="swatch" aria-hidden="true" style:--sw-bg={t.swatch.bg} style:--sw-side={t.swatch.side} style:--sw-text={t.swatch.text} style:--sw-accent={t.swatch.accent}><i></i><i></i></span>
+                  {t.name}
+                </label>
+              {/each}
+            </div>
+          </div>
+        {/each}
         <div class="row">
           <div><b id="{uid}-accent">Accent color</b><p id="{uid}-accent-d">Used for links, selection and highlights. Made darker or lighter if needed so text stays readable.</p></div>
           <div class="inline">
-            <input type="color" aria-labelledby="{uid}-accent" aria-describedby="{uid}-accent-d" value={s.accent || "#a84529"} oninput={(e) => set("accent", e.currentTarget.value)} />
+            <input type="color" aria-labelledby="{uid}-accent" aria-describedby="{uid}-accent-d" value={s.accent || themeAccent} oninput={(e) => set("accent", e.currentTarget.value)} />
             {#if s.accent}<button class="btn" onclick={() => set("accent", "")}>Default</button>{/if}
           </div>
         </div>
@@ -703,6 +740,47 @@
     width: 16px;
     height: 16px;
   }
+  .theme-choices {
+    display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .theme-choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .theme-choice.on {
+    border-color: var(--accent);
+  }
+  .theme-choice input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  /* The theme in miniature: sidebar, page, a line of text and one of accent. */
+  .swatch {
+    display: grid;
+    grid-template-columns: 11px 1fr;
+    width: 44px;
+    height: 28px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .swatch i:first-child {
+    background: var(--sw-side);
+  }
+  .swatch i:last-child {
+    background:
+      linear-gradient(var(--sw-text), var(--sw-text)) 6px 8px / 20px 3px no-repeat,
+      linear-gradient(var(--sw-accent), var(--sw-accent)) 6px 15px / 12px 3px no-repeat,
+      var(--sw-bg);
+  }
   input[type="range"] {
     accent-color: var(--accent);
     width: 200px;
@@ -840,6 +918,11 @@
     }
     .row {
       flex-wrap: wrap;
+    }
+    /* On its own line, the group may get narrower than two cards, which then stack. */
+    .theme-choices {
+      flex-shrink: 1;
+      min-width: 0;
     }
   }
   .recording {

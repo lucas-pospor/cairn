@@ -37,6 +37,41 @@
   color-scheme: light;
 }
 
+/* The other themes. Limestone is the :root block above and Slate the two dark
+   blocks below; the rest are picked with data-light-theme and data-dark-theme on
+   <html> (themes.ts, settings.svelte.ts). Each has the specificity of the block
+   it replaces, so CSS snippets override it in the same way. Light themes apply
+   in dark mode too, but every colour is then overridden by the dark rules. */
+:root:where([data-light-theme="marble"]) {
+  --bg: #ffffff;
+  --bg-side: #f1f4f8;
+  --bg-hover: #e6eaf0;
+  --bg-active: #dce2ea;
+  --bg-input: #ffffff;
+  --bg-code: #f3f5f8;
+  --border: #e1e6ec;
+  --border-strong: #7a8491;
+  --text: #1b2738;
+  --text-muted: #4f5b6c;
+  --text-faint: #596575;
+  --accent: #1f5bbf;
+  --accent-soft: #dde7f6;
+  --accent-text: #ffffff;
+  --link: #1a55b5;
+  --unresolved: #5e6479;
+  --danger: #b4233c;
+  --danger-text: #ffffff;
+  --hit: #fde89a;
+  --shadow: 0 10px 30px rgba(20, 32, 54, 0.16), 0 2px 6px rgba(20, 32, 54, 0.08);
+
+  --tok-keyword: #8a2f9f;
+  --tok-string: #26703f;
+  --tok-number: #a34510;
+  --tok-comment: #596575;
+  --tok-fn: #1b5fb0;
+  --tok-type: #0b6d7a;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1d2022;
@@ -66,6 +101,34 @@
     --tok-fn: #8db6ea;
     --tok-type: #e2c27a;
     color-scheme: dark;
+  }
+  :root:not([data-theme="light"]):where([data-dark-theme="graphite"]) {
+    --bg: #1e1e1e;
+    --bg-side: #191919;
+    --bg-hover: #272727;
+    --bg-active: #303030;
+    --bg-input: #242424;
+    --bg-code: #272727;
+    --border: #303030;
+    --border-strong: #757575;
+    --text: #e0e0e0;
+    --text-muted: #a2a2a2;
+    --text-faint: #969696;
+    --accent: #e5774f;
+    --accent-soft: #3a2820;
+    --accent-text: #1e100a;
+    --link: #ee8c66;
+    --unresolved: #a0a0a0;
+    --danger: #f2849a;
+    --danger-text: #22090f;
+    --hit: #342c0c;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --tok-keyword: #d19ad1;
+    --tok-string: #9cc98f;
+    --tok-number: #e0a46b;
+    --tok-comment: #999999;
+    --tok-fn: #8db6ea;
+    --tok-type: #e2c27a;
   }
 }
 
@@ -97,6 +160,35 @@
   --tok-fn: #8db6ea;
   --tok-type: #e2c27a;
   color-scheme: dark;
+}
+
+:root[data-theme="dark"]:where([data-dark-theme="graphite"]) {
+  --bg: #1e1e1e;
+  --bg-side: #191919;
+  --bg-hover: #272727;
+  --bg-active: #303030;
+  --bg-input: #242424;
+  --bg-code: #272727;
+  --border: #303030;
+  --border-strong: #757575;
+  --text: #e0e0e0;
+  --text-muted: #a2a2a2;
+  --text-faint: #969696;
+  --accent: #e5774f;
+  --accent-soft: #3a2820;
+  --accent-text: #1e100a;
+  --link: #ee8c66;
+  --unresolved: #a0a0a0;
+  --danger: #f2849a;
+  --danger-text: #22090f;
+  --hit: #342c0c;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --tok-keyword: #d19ad1;
+  --tok-string: #9cc98f;
+  --tok-number: #e0a46b;
+  --tok-comment: #999999;
+  --tok-fn: #8db6ea;
+  --tok-type: #e2c27a;
 }
 
 *,

@@ -2,7 +2,7 @@
 //
 // Run: cd app && npx vitest run src/lib/settings.test.ts
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./backend", () => ({ backend: {} }));
 
@@ -56,6 +56,73 @@ describe("saving", () => {
       settings.reset();
       vi.useRealTimers();
       vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("light and dark themes", () => {
+  let root: { dataset: Record<string, string> };
+  let written: string[];
+
+  beforeEach(() => {
+    root = { dataset: {} };
+    vi.stubGlobal("document", {
+      documentElement: { style: { setProperty() {}, removeProperty() {} }, removeAttribute() {}, dataset: root.dataset },
+      querySelectorAll: () => [],
+    });
+    written = [];
+  });
+
+  afterEach(() => {
+    settings.reset();
+    vi.unstubAllGlobals();
+  });
+
+  async function load(file: unknown) {
+    Object.assign(backend, {
+      readConfig: async () => JSON.stringify(file),
+      listConfig: async () => [],
+      writeConfig: async (_name: string, content: string) => void written.push(content),
+    });
+    await settings.load();
+  }
+
+  async function saved() {
+    await settings.flush();
+    return JSON.parse(written.at(-1)!);
+  }
+
+  it("applies the saved themes, and saves a new choice", async () => {
+    await load({ theme: "system", lightTheme: "marble", darkTheme: "graphite" });
+    expect(root.dataset).toMatchObject({ lightTheme: "marble", darkTheme: "graphite" });
+    settings.update({ lightTheme: "limestone" });
+    expect(root.dataset).toMatchObject({ lightTheme: "limestone", darkTheme: "graphite" });
+    expect(await saved()).toMatchObject({ theme: "system", lightTheme: "limestone", darkTheme: "graphite" });
+  });
+
+  it("uses Limestone and Slate when none is chosen, and writes no theme keys until one is", async () => {
+    await load({ fontSize: 15 });
+    expect(root.dataset).toMatchObject({ lightTheme: "limestone", darkTheme: "slate" });
+    settings.update({ fontSize: 17 });
+    const file = await saved();
+    expect("lightTheme" in file || "darkTheme" in file).toBe(false);
+    settings.update({ darkTheme: "graphite" });
+    const chosen = await saved();
+    expect(chosen).toMatchObject({ darkTheme: "graphite" });
+    expect("lightTheme" in chosen).toBe(false);
+  });
+
+  it("shows the default for an id it does not know or a wrong value, and keeps that value in the file", async () => {
+    // A theme of a later version, a typo, a dark theme as the light one, and values of the wrong type.
+    for (const bad of ["sandstone", "Marble", "slate", 5, null, true, ["marble"], { id: "marble" }]) {
+      written = [];
+      await load({ lightTheme: bad, darkTheme: bad === "slate" ? "limestone" : bad });
+      expect(root.dataset).toMatchObject({ lightTheme: "limestone", darkTheme: "slate" });
+      settings.update({ fontSize: 18 });
+      const file = await saved();
+      expect(file.lightTheme).toEqual(bad);
+      expect(file.darkTheme).toEqual(bad === "slate" ? "limestone" : bad);
+      settings.reset();
     }
   });
 });
