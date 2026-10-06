@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Notebooks
+
+Cairn now calls the folder of notes a notebook. Before, it said vault. Only the word changes: notebooks open, sync and keep their settings as before. The `CAIRN_VAULT` variable keeps its name, and so does the sync server's API, so devices and servers on older versions keep working with this one. The server's log now says "created notebook" where it said "created vault".
+
 ### Fixes
 
 - On Android, the card of an embedded file that does not show as text, such as a PDF, said that the file opens in another app. Cairn cannot do that on Android yet, and the card now says so, as a tap on its name already did.
