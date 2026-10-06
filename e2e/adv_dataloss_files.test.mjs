@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Env, eventually, sleep } from "./adv_dataloss_helpers.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 let env;
 before(async () => {
@@ -243,7 +244,7 @@ test("a .cairn folder that links out of the vault is read but not written", asyn
     await app.s.waitFor(`return !!document.querySelector('[data-testid=settings-appearance]')`);
     await app.exec(`document.querySelector('[data-testid=settings-appearance]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-select]')`);
-    await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'light'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await app.exec(`${pickThemeMode("light")} return 1`);
     const refused = 'The ".cairn" folder leads outside the notebook.';
     await eventually(async () => (await app.toasts()).includes(`Could not save settings: ${refused}`), { message: "settings toast" });
     // Below the theme rows, the button can be cut off at the bottom of Settings,

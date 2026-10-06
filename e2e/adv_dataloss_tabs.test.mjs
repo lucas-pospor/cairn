@@ -8,6 +8,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { Env, eventually, sleep, Key } from "./adv_dataloss_helpers.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 let env;
 before(async () => {
@@ -406,7 +407,7 @@ test("closing the window when the settings cannot be saved asks first; Cancel ke
     await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-select]')`);
     fs.mkdirSync(v.p(".cairn"), { recursive: true });
     lock(0o555);
-    await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await app.exec(`${pickThemeMode("dark")} return 1`);
     await app.closeWindow();
     await answerDialog(app, /Discard unsaved changes to the settings\?/, "Cancel");
     lock(0o755);

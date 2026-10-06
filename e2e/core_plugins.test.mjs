@@ -6,6 +6,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { CoreApp, Key, eventually, sleep } from "./core_lib.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 // What a later version may have written: a plugin this one does not know, values of
 // the wrong type, and hotkeys of core plugin commands.
@@ -61,7 +62,7 @@ test("the Plugins section is as before", async () => {
 
 test("saving another setting keeps corePlugins and the hotkeys of core plugin commands", async () => {
   await app.openSettings("appearance");
-  await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true }));`);
+  await app.exec(pickThemeMode("dark"));
   await eventually(() => app.settingsFile().theme === "dark", { message: "theme saved" });
   const saved = app.settingsFile();
   assert.deepEqual(saved.corePlugins, CORE);

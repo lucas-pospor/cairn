@@ -1,8 +1,9 @@
-// Light and dark themes in the real app: Settings > Appearance lists them by
-// name, choosing one applies its colours and saves it in .cairn/settings.json,
-// the choice comes back after a restart, "System" uses the chosen light or dark
-// theme, a theme this version does not know is kept in the file, and the
-// editor's search highlights matches in the theme's colours.
+// Themes in the real app: Settings > Appearance lists System and every theme
+// by name in one Theme list, choosing a theme applies its colours and saves it
+// in .cairn/settings.json, the choice comes back after a restart, "System" uses
+// the light and dark theme picked under it, a theme this version does not know
+// is kept in the file, and the editor's search highlights matches in the
+// theme's colours.
 // Screenshots of each theme, wide and narrow, go to e2e/.tmp/themes/.
 //
 //   scripts/e2e-headless.sh e2e/themes.test.mjs
@@ -85,18 +86,51 @@ async function closeSettings(app) {
   await app.s.waitFor(`return !document.querySelector('[data-testid=settings]')`);
 }
 
-/** Settings > Appearance > Theme, as the select does it. */
-const setMode = (app, mode) =>
-  app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = arguments[0]; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`, mode);
-
-/** The light and dark theme choices: [[name, checked], ...] per group. */
-const choices = (app) =>
+/** Pick an entry of a list in Settings > Appearance ("system" or a theme id), as the select does it. */
+const pickIn = (app, testid, value) =>
   app.exec(
-    `return [...document.querySelectorAll('[data-testid=settings] [role=radiogroup]')].map(g => ({
-       label: document.getElementById(g.getAttribute('aria-labelledby')).textContent,
-       options: [...g.querySelectorAll('label')].map(l => [l.textContent.trim(), l.querySelector('input').checked, l.querySelector('input').dataset.testid, !!l.querySelector('.swatch')]),
-     }))`,
+    `const s = document.querySelector('[data-testid=' + arguments[0] + ']'); s.value = arguments[1];
+     if (s.value !== arguments[1]) throw new Error('no ' + arguments[1] + ' in ' + arguments[0]);
+     s.dispatchEvent(new Event('change', { bubbles: true })); return 1`,
+    testid,
+    value,
   );
+const pickTheme = (app, value) => pickIn(app, "theme-select", value);
+
+/**
+ * The Theme list as Settings shows it: its name, its entries by group, the one
+ * shown, the swatch next to it, and the Light and Dark lists under System.
+ */
+const themeList = (app) =>
+  app.exec(
+    `const s = document.querySelector('[data-testid=theme-select]');
+     const sw = document.querySelector('[data-testid=theme-swatch]'), v = (n) => sw?.style.getPropertyValue(n);
+     const sub = (id) => { const x = document.querySelector('[data-testid=' + id + ']'); return x && { name: x.getAttribute('aria-label'), value: x.value, options: [...x.options].map(o => [o.value, o.textContent.trim()]) }; };
+     return {
+       label: s.getAttribute('aria-labelledby').split(' ').map(id => document.getElementById(id).textContent).join(' '),
+       entries: [...s.children].map(c => c.tagName === 'OPTGROUP' ? [c.label, [...c.children].map(o => [o.value, o.textContent.trim()])] : [c.value, c.textContent.trim()]),
+       value: s.value,
+       swatch: sw && { hidden: sw.getAttribute('aria-hidden'), bg: v('--sw-bg'), side: v('--sw-side'), text: v('--sw-text'), accent: v('--sw-accent') },
+       light: sub('theme-light-select'),
+       dark: sub('theme-dark-select'),
+     };`,
+  );
+
+/** The swatch of `id`, as themeList reads it. */
+const swatchOf = (id) => ({ hidden: "true", bg: THEMES[id].bg, side: THEMES[id].side, text: THEMES[id].text, accent: THEMES[id].accent });
+
+/** The Theme list's entries: System, then the light and the dark themes. */
+const ENTRIES = [
+  ["system", "System"],
+  ["Light", Object.entries(THEMES).filter(([, t]) => t.scheme === "light").map(([id, t]) => [id, t.name])],
+  ["Dark", Object.entries(THEMES).filter(([, t]) => t.scheme === "dark").map(([id, t]) => [id, t.name])],
+];
+/** The Light or Dark list under System. */
+const subList = (scheme, value) => ({
+  name: `${scheme === "light" ? "Light" : "Dark"} theme`,
+  value,
+  options: Object.entries(THEMES).filter(([, t]) => t.scheme === scheme).map(([id, t]) => [id, t.name]),
+});
 
 const saved = (e) => JSON.parse(e.vault.read(SETTINGS));
 /** The theme keys of the saved settings (a save writes every setting). */
@@ -115,21 +149,24 @@ async function openNote(app, p) {
   await eventually(async () => (await app.exec(`return document.querySelector('[data-testid=tab][aria-selected=true]')?.dataset.path`)) === p, { message: `${p} open` });
 }
 
-test("Settings > Appearance lists the light and dark themes by name, with swatches", async () => {
+test("Settings > Appearance lists System and every theme by name in one Theme list, with a swatch of the theme in use", async () => {
   const e = env({ theme: "light" });
   const app = await start(e);
   try {
     await openAppearance(app);
-    assert.deepEqual(await choices(app), [
-      { label: "Light theme", options: [["Limestone", true, "theme-limestone", true], ["Marble", false, "theme-marble", true]] },
-      { label: "Dark theme", options: [["Slate", true, "theme-slate", true], ["Graphite", false, "theme-graphite", true]] },
-    ]);
-    // The Theme select is unchanged.
-    assert.deepEqual(await app.exec(`return [...document.querySelector('[data-testid=theme-select]').options].map(o => o.value)`), ["system", "light", "dark"]);
+    assert.deepEqual(await themeList(app), { label: "Theme", entries: ENTRIES, value: "limestone", swatch: swatchOf("limestone"), light: null, dark: null });
+    // No radio cards and no Light theme or Dark theme rows any more.
+    assert.equal(await app.exec(`return document.querySelectorAll('[data-testid=settings] [role=radiogroup], [data-testid=settings] input[type=radio]').length`), 0);
     // Nothing is written by opening Settings (a save would come 300 ms after a change).
     await sleep(600);
     assert.deepEqual(await app.invokes("write_config"), []);
     assert.deepEqual(saved(e), { theme: "light" });
+    // System shows the Light and Dark lists under it, with the themes that System uses.
+    await pickTheme(app, "system");
+    await eventually(() => saved(e).theme === "system", { message: "System saved" });
+    assert.deepEqual(savedThemes(e), { theme: "system", lightTheme: undefined, darkTheme: undefined }, "System alone writes no theme ids");
+    const l = await themeList(app);
+    assert.deepEqual({ value: l.value, light: l.light, dark: l.dark }, { value: "system", light: subList("light", "limestone"), dark: subList("dark", "slate") });
   } finally {
     await app.stop();
   }
@@ -162,18 +199,17 @@ test("choosing each theme applies its colours and saves it; the graph takes the 
   try {
     await app.exec(`document.querySelector('[data-testid=open-graph]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=graph-view] .canvas').__sigma?.getNodeDisplayData('Garden.md')`, { timeout: 10000 });
-    // Each click a change: Limestone and Slate are already chosen at the start.
+    // Each pick a change: Limestone is shown at the start.
     for (const id of ["marble", "graphite", "slate", "limestone"]) {
       const t = THEMES[id];
       await openAppearance(app);
-      await setMode(app, t.scheme);
-      await app.exec(`document.querySelector('[data-testid=theme-' + arguments[0] + ']').click(); return 1`, id);
+      await pickTheme(app, id);
       await eventually(async () => (await look(app)).bg === t.bg, { message: `${t.name} applied` });
       const l = await look(app);
       assert.deepEqual({ theme: l.theme, [t.scheme]: l[t.scheme], ...pick(l) }, { theme: t.scheme, [t.scheme]: id, ...colours(id) }, t.name);
       await eventually(() => saved(e)[`${t.scheme}Theme`] === id && saved(e).theme === t.scheme, { message: `${t.name} saved` });
-      const checked = await app.exec(`return document.querySelector('[data-testid=theme-' + arguments[0] + ']').checked`, id);
-      assert.equal(checked, true, `${t.name} checked`);
+      const list = await themeList(app);
+      assert.deepEqual({ value: list.value, swatch: list.swatch, light: list.light }, { value: id, swatch: swatchOf(id), light: null }, `${t.name} shown`);
       // With no custom accent, the colour picker shows the theme's own.
       await eventually(async () => (await app.exec(`return document.querySelector('[data-testid=settings] input[type=color]').value`)) === t.accent, { message: `${t.name}: accent picker` });
       await closeSettings(app);
@@ -229,7 +265,8 @@ test("the chosen theme comes back after a restart", async () => {
   try {
     assert.deepEqual(pick(await look(app)), colours("graphite"));
     await openAppearance(app);
-    await setMode(app, "light");
+    assert.equal((await themeList(app)).value, "graphite");
+    await pickTheme(app, "marble");
     await eventually(async () => (await look(app)).bg === THEMES.marble.bg, { message: "Marble applied" });
     await eventually(() => saved(e).theme === "light", { message: "saved" });
     await app.stop();
@@ -237,8 +274,13 @@ test("the chosen theme comes back after a restart", async () => {
     const l = await look(app);
     assert.deepEqual({ theme: l.theme, light: l.light, dark: l.dark, ...pick(l) }, { theme: "light", light: "marble", dark: "graphite", ...colours("marble") });
     await openAppearance(app);
-    const [light, dark] = await choices(app);
-    assert.deepEqual([light.options.map((o) => o[1]), dark.options.map((o) => o[1])], [[false, true], [false, true]]);
+    assert.equal((await themeList(app)).value, "marble");
+    // System keeps both: Marble and Graphite are listed under it.
+    await pickTheme(app, "system");
+    const list = await themeList(app);
+    assert.deepEqual([list.light.value, list.dark.value], ["marble", "graphite"]);
+    await eventually(() => saved(e).theme === "system", { message: "System saved" });
+    assert.deepEqual(savedThemes(e), { theme: "system", lightTheme: "marble", darkTheme: "graphite" });
   } finally {
     await app.stop();
   }
@@ -253,18 +295,37 @@ test("System uses the chosen light theme when the system is light, and the chose
       const l = await look(app);
       await openAppearance(app);
       const picker = await app.exec(`return document.querySelector('[data-testid=settings] input[type=color]').value`);
+      const list = await themeList(app);
       await closeSettings(app);
-      out[system] = { theme: l.theme, systemDark: l.systemDark, picker, ...pick(l) };
+      out[system] = { theme: l.theme, systemDark: l.systemDark, picker, list: [list.value, list.light.value, list.dark.value], swatch: list.swatch, ...pick(l) };
       await openNote(app, "Garden.md");
       await shot(app, `system-${system}`);
     } finally {
       await app.stop();
     }
   }
+  const lists = ["system", "marble", "graphite"];
   assert.deepEqual(out, {
-    light: { theme: null, systemDark: false, picker: THEMES.marble.accent, ...colours("marble") },
-    dark: { theme: null, systemDark: true, picker: THEMES.graphite.accent, ...colours("graphite") },
+    light: { theme: null, systemDark: false, picker: THEMES.marble.accent, list: lists, swatch: swatchOf("marble"), ...colours("marble") },
+    dark: { theme: null, systemDark: true, picker: THEMES.graphite.accent, list: lists, swatch: swatchOf("graphite"), ...colours("graphite") },
   });
+  // The Light and Dark lists under System change the pair and keep System.
+  const pair = env({ theme: "system" });
+  const app = await start(pair, "dark");
+  try {
+    await openAppearance(app);
+    await pickIn(app, "theme-light-select", "marble");
+    await eventually(() => saved(pair).lightTheme === "marble", { message: "Marble saved under System" });
+    assert.deepEqual(pick(await look(app)), colours("slate"), "a dark system still shows the dark theme");
+    await pickIn(app, "theme-dark-select", "graphite");
+    await eventually(async () => (await look(app)).bg === THEMES.graphite.bg, { message: "Graphite applied" });
+    await eventually(() => saved(pair).darkTheme === "graphite", { message: "Graphite saved under System" });
+    assert.deepEqual(savedThemes(pair), { theme: "system", lightTheme: "marble", darkTheme: "graphite" });
+    const list = await themeList(app);
+    assert.deepEqual({ value: list.value, swatch: list.swatch, light: list.light, dark: list.dark }, { value: "system", swatch: swatchOf("graphite"), light: subList("light", "marble"), dark: subList("dark", "graphite") });
+  } finally {
+    await app.stop();
+  }
   // Without a choice, System uses Limestone and Slate.
   const plain = env({ theme: "system" });
   for (const [system, id] of [["light", "limestone"], ["dark", "slate"]]) {
@@ -284,14 +345,14 @@ test("a theme this version does not know shows the default and stays in the file
     const l = await look(app);
     assert.deepEqual({ light: l.light, dark: l.dark, ...pick(l) }, { light: "limestone", dark: "slate", ...colours("limestone") });
     await openAppearance(app);
-    const [light] = await choices(app);
-    assert.deepEqual(light.options.map((o) => o[1]), [true, false]);
-    await app.exec(`document.querySelector('[data-testid=theme-graphite]').click(); return 1`);
+    assert.equal((await themeList(app)).value, "limestone", "the default is shown in the list");
+    await pickTheme(app, "graphite");
     await eventually(() => saved(e).darkTheme === "graphite", { message: "Graphite saved" });
-    assert.deepEqual(savedThemes(e), { theme: "light", lightTheme: "sandstone", darkTheme: "graphite" });
-    // Clicking the default shown in its place saves it.
-    await app.exec(`document.querySelector('[data-testid=theme-limestone]').click(); return 1`);
+    assert.deepEqual(savedThemes(e), { theme: "dark", lightTheme: "sandstone", darkTheme: "graphite" });
+    // Picking the default that stood in for the unknown theme saves it.
+    await pickTheme(app, "limestone");
     await eventually(() => saved(e).lightTheme === "limestone", { message: "Limestone saved" });
+    assert.deepEqual(savedThemes(e), { theme: "light", lightTheme: "limestone", darkTheme: "graphite" });
   } finally {
     await app.stop();
   }
@@ -307,8 +368,7 @@ test("a custom accent stays readable in every theme", async () => {
     const bad = [];
     for (const id of Object.keys(THEMES)) {
       await openAppearance(app);
-      await setMode(app, THEMES[id].scheme);
-      await app.exec(`document.querySelector('[data-testid=theme-' + arguments[0] + ']').click(); return 1`, id);
+      await pickTheme(app, id);
       await eventually(async () => (await look(app))[THEMES[id].scheme] === id, { message: `${id} applied` });
       // The derived accent is set inline on <html> for the theme now in use (values from accent.ts).
       await eventually(
@@ -334,8 +394,7 @@ test("a custom accent stays readable in every theme", async () => {
 async function useTheme(app, id) {
   const t = THEMES[id];
   await openAppearance(app);
-  await setMode(app, t.scheme);
-  await app.exec(`document.querySelector('[data-testid=theme-' + arguments[0] + ']').click(); return 1`, id);
+  await pickTheme(app, id);
   await eventually(async () => (await look(app)).bg === t.bg, { message: `${t.name} applied` });
   await closeSettings(app);
 }
@@ -374,7 +433,7 @@ test("the editor's search (Ctrl+F) highlights matches in each theme's own colour
   }
 });
 
-test("each theme, wide and narrow: screenshots, and the theme choices fit a phone-sized window", async () => {
+test("each theme, wide and narrow: screenshots, and the Theme list fits a phone-sized window", async () => {
   const e = env({ theme: "light" });
   const app = await start(e);
   try {
@@ -383,8 +442,7 @@ test("each theme, wide and narrow: screenshots, and the theme choices fit a phon
     for (const id of ["limestone", "marble", "slate", "graphite"]) {
       const t = THEMES[id];
       await openAppearance(app);
-      await setMode(app, t.scheme);
-      await app.exec(`document.querySelector('[data-testid=theme-' + arguments[0] + ']').click(); return 1`, id);
+      await pickTheme(app, id);
       await eventually(async () => (await look(app)).bg === t.bg, { message: `${t.name} applied` });
       await closeSettings(app);
       await sleep(300);
@@ -400,26 +458,43 @@ test("each theme, wide and narrow: screenshots, and the theme choices fit a phon
       await shot(app, `${id}-narrow`);
       await openAppearance(app);
       await sleep(200);
+      // The Theme row's lists and swatch, and the Light and Dark lists under System, inside the section.
       const fit = () =>
         app.exec(
           `const sec = document.querySelector('[data-testid=settings] section'), w = sec.getBoundingClientRect().right;
-           const out = [...document.querySelectorAll('[data-testid=settings] [role=radiogroup] label')].filter(l => { const b = l.getBoundingClientRect(); return b.left < 0 || b.right > w; }).map(l => l.textContent.trim());
-           return { innerWidth, overflow: sec.scrollWidth > sec.clientWidth + 1, cardsOutside: out };`,
+           const out = [...document.querySelectorAll('[data-testid=settings] .theme-pick select, [data-testid=settings] .theme-pick .swatch, [data-testid=settings] .theme-pick label')]
+             .filter(el => { const b = el.getBoundingClientRect(); return b.left < 0 || b.right > w; }).map(el => el.dataset.testid ?? el.textContent.trim());
+           return { innerWidth, overflow: sec.scrollWidth > sec.clientWidth + 1, outside: out, lists: document.querySelectorAll('[data-testid=settings] .theme-pick select').length };`,
         );
-      narrow[`${id} 375`] = await fit();
+      const fitBoth = async () => {
+        const one = await fit();
+        await pickTheme(app, "system");
+        await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-dark-select]')`, { message: "Light and Dark lists" });
+        const sys = await fit();
+        await pickTheme(app, id);
+        await app.s.waitFor(`return !document.querySelector('[data-testid=theme-dark-select]')`, { message: `${t.name} again` });
+        return { innerWidth: one.innerWidth, overflow: one.overflow || sys.overflow, outside: [...one.outside, ...sys.outside], lists: [one.lists, sys.lists] };
+      };
+      narrow[`${id} 375`] = await fitBoth();
       await shot(app, `${id}-narrow-settings`);
-      // 320 CSS px, the width WCAG reflow asks for: the cards stack.
+      // 320 CSS px, the width WCAG reflow asks for.
       await app.exec(`window.__TAURI_INTERNALS__.invoke('plugin:webview|set_webview_zoom', { label: 'main', value: 1.5 }); return 1`);
       await eventually(() => app.exec(`return innerWidth <= 320`), { message: "320 px window" });
       await sleep(200);
-      narrow[`${id} 320`] = await fit();
-      if (id === "marble") await shot(app, `${id}-320-settings`);
+      narrow[`${id} 320`] = await fitBoth();
+      if (id === "marble") {
+        await pickTheme(app, "system");
+        await sleep(200);
+        await shot(app, `${id}-320-settings-system`);
+        await pickTheme(app, id);
+        await eventually(async () => (await look(app)).bg === t.bg, { message: `${t.name} again` });
+      }
       await closeSettings(app);
       await app.exec(`window.__TAURI_INTERNALS__.invoke('plugin:webview|set_webview_zoom', { label: 'main', value: 1 }); return 1`);
       await app.s.cmd("POST", "/window/maximize", {});
       await eventually(() => app.exec(`return innerWidth > 760`), { message: "wide window" });
     }
-    for (const [id, n] of Object.entries(narrow)) assert.deepEqual({ overflow: n.overflow, cardsOutside: n.cardsOutside }, { overflow: false, cardsOutside: [] }, `${id} at ${n.innerWidth}px`);
+    for (const [id, n] of Object.entries(narrow)) assert.deepEqual({ overflow: n.overflow, outside: n.outside, lists: n.lists }, { overflow: false, outside: [], lists: [1, 3] }, `${id} at ${n.innerWidth}px`);
   } finally {
     await app.stop();
   }

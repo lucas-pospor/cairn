@@ -13,7 +13,7 @@
   import { errorMessage } from "../types";
   import { CORE_PLUGINS } from "../corePlugins";
   import { option, pluginOn as corePluginOn, setOption, setPluginOn, type CorePlugin } from "../corePlugins/core";
-  import { THEMES, themeFor } from "../themes";
+  import { THEMES, choiceSettings, listedTheme, themeFor, themeInUse } from "../themes";
   import { MediaQuery } from "svelte/reactivity";
 
   const PERMISSION_TEXT: Record<string, string> = {
@@ -86,25 +86,13 @@
     settings.update({ [k]: v } as Partial<Settings>);
   }
 
-  const THEME_ROWS = [
-    { scheme: "light", key: "lightTheme", label: "Light theme", desc: "Used when the theme is Light, or System while the system is light." },
-    { scheme: "dark", key: "darkTheme", label: "Dark theme", desc: "Used when the theme is Dark, or System while the system is dark." },
+  const SCHEMES = [
+    { scheme: "light", key: "lightTheme", label: "Light" },
+    { scheme: "dark", key: "darkTheme", label: "Dark" },
   ] as const;
   const systemDark = new MediaQuery("(prefers-color-scheme: dark)");
-  /** The accent of the theme in use, shown by the colour picker while no custom accent is set. */
-  const themeAccent = $derived.by(() => {
-    const dark = s.theme === "dark" || (s.theme === "system" && systemDark.current);
-    const id = dark ? themeFor("dark", s.darkTheme) : themeFor("light", s.lightTheme);
-    return THEMES.find((t) => t.id === id)!.swatch.accent;
-  });
-
-  /**
-   * Save a light or dark theme. Clicking the one already shown saves it too: it
-   * may be the default standing in for an id this version does not know.
-   */
-  function chooseTheme(key: "lightTheme" | "darkTheme", id: string) {
-    if (s[key] !== id) set(key, id);
-  }
+  /** The theme on screen: its swatch is shown next to the Theme list, and its accent by the colour picker while no custom accent is set. */
+  const shown = $derived(themeInUse(s, systemDark.current));
 
   // ----- snippets -----
   let editing = $state<{ name: string; css: string } | null>(null);
@@ -337,32 +325,41 @@
       {#if section === "appearance"}
         <h3>Appearance</h3>
         <div class="row">
-          <div><b id="{uid}-theme">Theme</b><p id="{uid}-theme-d">Follow the system, or force light or dark.</p></div>
-          <select aria-labelledby="{uid}-theme" aria-describedby="{uid}-theme-d" value={s.theme} onchange={(e) => set("theme", e.currentTarget.value as Settings["theme"])} data-testid="theme-select">
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
-        {#each THEME_ROWS as row (row.key)}
-          <div class="row">
-            <div><b id="{uid}-{row.key}">{row.label}</b><p id="{uid}-{row.key}-d">{row.desc}</p></div>
-            <div class="theme-choices" role="radiogroup" aria-labelledby="{uid}-{row.key}" aria-describedby="{uid}-{row.key}-d">
-              {#each THEMES.filter((t) => t.scheme === row.scheme) as t (t.id)}
-                {@const on = themeFor(row.scheme, s[row.key]) === t.id}
-                <label class="theme-choice" class:on>
-                  <input type="radio" name="{uid}-{row.key}" value={t.id} checked={on} onclick={() => chooseTheme(row.key, t.id)} onchange={() => chooseTheme(row.key, t.id)} data-testid="theme-{t.id}" />
-                  <span class="swatch" aria-hidden="true" style:--sw-bg={t.swatch.bg} style:--sw-side={t.swatch.side} style:--sw-text={t.swatch.text} style:--sw-accent={t.swatch.accent}><i></i><i></i></span>
-                  {t.name}
-                </label>
-              {/each}
+          <div><b id="{uid}-theme">Theme</b><p id="{uid}-theme-d">Pick a theme to always use it, or System to follow the system's light or dark mode with the light and dark theme picked below.</p></div>
+          <div class="theme-pick">
+            <div class="inline">
+              <span class="swatch" aria-hidden="true" title={shown.name} style:--sw-bg={shown.swatch.bg} style:--sw-side={shown.swatch.side} style:--sw-text={shown.swatch.text} style:--sw-accent={shown.swatch.accent} data-testid="theme-swatch"><i></i><i></i></span>
+              <select aria-labelledby="{uid}-theme" aria-describedby="{uid}-theme-d" value={listedTheme(s)} onchange={(e) => settings.update(choiceSettings(e.currentTarget.value))} data-testid="theme-select">
+                <option value="system">System</option>
+                {#each SCHEMES as g (g.scheme)}
+                  <optgroup label={g.label}>
+                    {#each THEMES.filter((t) => t.scheme === g.scheme) as t (t.id)}
+                      <option value={t.id}>{t.name}</option>
+                    {/each}
+                  </optgroup>
+                {/each}
+              </select>
             </div>
+            {#if s.theme === "system"}
+              <div class="inline system-pair">
+                {#each SCHEMES as g (g.scheme)}
+                  <label class="inline">
+                    {g.label}
+                    <select aria-label="{g.label} theme" value={themeFor(g.scheme, s[g.key])} onchange={(e) => set(g.key, e.currentTarget.value)} data-testid="theme-{g.scheme}-select">
+                      {#each THEMES.filter((t) => t.scheme === g.scheme) as t (t.id)}
+                        <option value={t.id}>{t.name}</option>
+                      {/each}
+                    </select>
+                  </label>
+                {/each}
+              </div>
+            {/if}
           </div>
-        {/each}
+        </div>
         <div class="row">
           <div><b id="{uid}-accent">Accent color</b><p id="{uid}-accent-d">Used for links, selection and highlights. Made darker or lighter if needed so text stays readable.</p></div>
           <div class="inline">
-            <input type="color" aria-labelledby="{uid}-accent" aria-describedby="{uid}-accent-d" value={s.accent || themeAccent} oninput={(e) => set("accent", e.currentTarget.value)} />
+            <input type="color" aria-labelledby="{uid}-accent" aria-describedby="{uid}-accent-d" value={s.accent || shown.swatch.accent} oninput={(e) => set("accent", e.currentTarget.value)} />
             {#if s.accent}<button class="btn" onclick={() => set("accent", "")}>Default</button>{/if}
           </div>
         </div>
@@ -740,30 +737,21 @@
     width: 16px;
     height: 16px;
   }
-  .theme-choices {
+  /* The Theme list, and under it System's light and dark theme. */
+  .theme-pick {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .system-pair {
     flex-wrap: wrap;
-    flex-shrink: 0;
-    gap: 8px;
-  }
-  .theme-choice {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 12px 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-  .theme-choice.on {
-    border-color: var(--accent);
-  }
-  .theme-choice input {
-    margin: 0;
-    accent-color: var(--accent);
+    justify-content: flex-end;
+    column-gap: 14px;
   }
   /* The theme in miniature: sidebar, page, a line of text and one of accent. */
   .swatch {
+    flex-shrink: 0;
     display: grid;
     grid-template-columns: 11px 1fr;
     width: 44px;
@@ -919,10 +907,12 @@
     .row {
       flex-wrap: wrap;
     }
-    /* On its own line, the group may get narrower than two cards, which then stack. */
-    .theme-choices {
-      flex-shrink: 1;
-      min-width: 0;
+    /* On its own line under the label, the Theme list starts at the left. */
+    .theme-pick {
+      align-items: flex-start;
+    }
+    .system-pair {
+      justify-content: flex-start;
     }
   }
   .recording {

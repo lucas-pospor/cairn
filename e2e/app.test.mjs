@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { startDriver, Session, Key } from "./webdriver.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 const APP = path.resolve(import.meta.dirname, "../target/debug/cairn");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cairn-e2e-"));
@@ -354,7 +355,7 @@ test("settings: theme and CSS snippets apply", async () => {
   await s.click(await s.find("[data-testid=open-settings]"));
   await s.click(await s.find("[data-testid=settings-appearance]"));
   const sel = await s.find("[data-testid=theme-select]");
-  await s.exec(`const el = document.querySelector('[data-testid=theme-select]'); el.value = 'light'; el.dispatchEvent(new Event('change', { bubbles: true }));`);
+  await s.exec(pickThemeMode("light"));
   await s.waitFor(`return document.documentElement.dataset.theme === 'light'`);
   void sel;
   // Below the theme rows, the button can be cut off at the bottom of Settings,

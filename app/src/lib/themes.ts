@@ -1,10 +1,13 @@
 // The colour themes. Their colours are in app.css; settings.svelte.ts names the
 // light and dark theme in use with data-light-theme and data-dark-theme on
-// <html>, and the Theme setting (system, light or dark) picks between them.
+// <html>, and the theme setting (system, light or dark) picks between them.
+// Settings shows one Theme list: System, then every theme by name.
 // The swatch colours are copies for the settings screen; themeContrast.test.ts
 // checks them against app.css.
 
 export type Scheme = "light" | "dark";
+/** The "theme" setting: a scheme, or the system's choice between them. */
+export type Mode = "system" | Scheme;
 
 export interface ThemeInfo {
   /** Saved in settings.json as lightTheme or darkTheme: never rename one. */
@@ -31,4 +34,36 @@ export const DEFAULT_THEME: Record<Scheme, string> = { light: "limestone", dark:
  */
 export function themeFor(scheme: Scheme, saved: unknown): string {
   return THEMES.some((t) => t.scheme === scheme && t.id === saved) ? (saved as string) : DEFAULT_THEME[scheme];
+}
+
+/** The theme settings, as settings.json holds them. */
+export interface ThemeSettings {
+  theme: Mode;
+  lightTheme?: unknown;
+  darkTheme?: unknown;
+}
+
+/** The theme on screen: the light or dark one, as the mode and the system say. */
+export function themeInUse(s: ThemeSettings, systemDark: boolean): ThemeInfo {
+  const scheme: Scheme = s.theme === "dark" || (s.theme === "system" && systemDark) ? "dark" : "light";
+  const id = themeFor(scheme, scheme === "light" ? s.lightTheme : s.darkTheme);
+  return THEMES.find((t) => t.id === id)!;
+}
+
+/** What the Theme list shows: "system", or the id of the theme that light or dark uses. */
+export function listedTheme(s: ThemeSettings): string {
+  if (s.theme === "system") return "system";
+  return themeFor(s.theme, s.theme === "light" ? s.lightTheme : s.darkTheme);
+}
+
+/**
+ * The settings to save for an entry of the Theme list. System keeps the light
+ * and dark theme as they are; a theme is saved as its scheme plus its id, so
+ * "theme" never holds an id (versions up to 1.2.0 would replace one).
+ */
+export function choiceSettings(entry: string): Partial<ThemeSettings> {
+  if (entry === "system") return { theme: "system" };
+  const t = THEMES.find((x) => x.id === entry);
+  if (!t) return {};
+  return t.scheme === "light" ? { theme: "light", lightTheme: t.id } : { theme: "dark", darkTheme: t.id };
 }

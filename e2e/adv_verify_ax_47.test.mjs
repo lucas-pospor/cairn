@@ -12,6 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AxApp, sleep, eventually } from "./adv_a11y_lib.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 async function changeThenSwitchVault(waitMs) {
   const app = new AxApp("cairn-ax47v-");
@@ -31,7 +32,7 @@ async function changeThenSwitchVault(waitMs) {
     }, { message: "font size 20 saved" });
     // Second change (theme dark), then Switch vault.
     await app.exec(
-      `const s = document.querySelector('[data-testid=theme-select]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true }));
+      `${pickThemeMode("dark")}
        if (arguments[0]) return 1;
        document.querySelector('.status .vault').click(); return 1`,
       waitMs,

@@ -16,6 +16,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { AxApp, K, SERVER, EVIDENCE, eventually, sleep } from "./adv_a11y_lib.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 const app = new AxApp("cairn-ax-extra-");
 const ALT = "";
@@ -560,7 +561,7 @@ test("FINDING-218: an error toast stays while hovered and has a close button tha
 test("FINDING-219: with a custom accent colour, links, tag chips and button text still meet AA contrast", async () => {
   await app.reset();
   const out = {};
-  const setTheme = (v) => app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = arguments[0]; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`, v);
+  const setTheme = (v) => app.exec(`${pickThemeMode(v)} return 1`);
   try {
     await openSettings("appearance");
     // Settings > Theme = Light (applying settings re-applies the theme, so data-theme alone would not stick).

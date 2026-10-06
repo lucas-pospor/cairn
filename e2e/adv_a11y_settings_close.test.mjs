@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AxApp, sleep } from "./adv_a11y_lib.mjs";
+import { pickThemeMode } from "./theme_mode.mjs";
 
 async function changeThemeThenClose(waitMs) {
   const app = new AxApp("cairn-ax-close-");
@@ -16,7 +17,7 @@ async function changeThemeThenClose(waitMs) {
     await app.start();
     await app.exec(`document.querySelector('[data-testid=open-settings]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-select]')`);
-    await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await app.exec(`${pickThemeMode("dark")} return 1`);
     if (waitMs) await sleep(waitMs);
     // Same as closing the window from the title bar: a close request the app
     // sees first. (WebDriver's Close Window drops the web view without one.)
@@ -45,7 +46,7 @@ test("a settings change made right before the page reloads is saved", async () =
     await app.start();
     await app.exec(`document.querySelector('[data-testid=open-settings]').click(); return 1`);
     await app.s.waitFor(`return !!document.querySelector('[data-testid=theme-select]')`);
-    await app.exec(`const s = document.querySelector('[data-testid=theme-select]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await app.exec(`${pickThemeMode("dark")} return 1`);
     await app.s.cmd("POST", "/refresh", {});
     await sleep(1500);
     const saved = app.exists(".cairn/settings.json") ? JSON.parse(app.read(".cairn/settings.json")).theme : null;
