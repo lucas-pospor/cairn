@@ -198,7 +198,7 @@ fn finding_prefix_expansion_drops_no_results() {
     let idx = index(&refs);
     let n = idx.search("pre", 1000).len();
     assert_eq!(n, 300, "query 'pre' must find every note containing a word starting with 'pre'");
-    // AND with another word: the later notes cannot be found by a prefix at all
+    // AND with another word: the later notes are found by the prefix too
     assert_eq!(paths(idx.search("pre something", 1000)).len(), 300);
 }
 

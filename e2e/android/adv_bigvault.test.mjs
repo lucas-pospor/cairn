@@ -75,7 +75,8 @@ test(`SAF: a ${N}-note shared folder opens; the app shows progress while it load
   execFileSync("adb", ["push", `${src}/.`, F], { stdio: "ignore" });
   adb("logcat", "-c");
   const t = Date.now();
-  // The user taps the folder, sees nothing happen, and taps again a second later.
+  // The user taps the folder, then taps again 1.5 s later if the welcome
+  // screen is still shown.
   await d.eval(`[...document.querySelectorAll('.recent-open')].find(b => b.textContent.includes(${JSON.stringify(LABEL)})).click()`);
   await sleep(1500);
   const feedback = await d.eval(`(() => { const t = document.body.innerText; return { welcome: !!document.querySelector('.welcome'), busy: !!document.querySelector('[aria-busy=true], .spinner, .loading, progress') || /opening|loading/i.test(t) }; })()`);

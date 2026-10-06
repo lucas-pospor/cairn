@@ -64,7 +64,7 @@ test("FINDING-105: Ctrl+O / Ctrl+N / Ctrl+W do nothing behind the open Settings 
   const problems = [];
   const before = untitled();
   try {
-    // 1) Ctrl+O: the switcher opens under Settings, focused but invisible.
+    // 1) Ctrl+O: no switcher opens under Settings (it used to, focused but invisible).
     await app.openNote("ideas", "Ideas.md");
     await openSettings();
     await app.chord(K.ctrl, "o");
@@ -88,7 +88,7 @@ test("FINDING-105: Ctrl+O / Ctrl+N / Ctrl+W do nothing behind the open Settings 
     await sleep(300);
     if ((await settingsOpen()) || (await switcherOpen())) problems.push("one Escape did not close Settings and the hidden switcher");
 
-    // 2) Ctrl+N: a new note is created behind Settings (in the active note's folder).
+    // 2) Ctrl+N: no new note is created behind Settings, in any folder of the vault.
     await openSettings();
     await app.chord(K.ctrl, "n");
     await sleep(1000);
@@ -105,7 +105,7 @@ test("FINDING-105: Ctrl+O / Ctrl+N / Ctrl+W do nothing behind the open Settings 
       await sleep(300);
     }
 
-    // 3) Ctrl+W: closes the tab behind Settings.
+    // 3) Ctrl+W: the tab behind Settings stays open.
     await app.openNote("welcome", "Welcome.md");
     const tabsBefore = await app.tabs();
     await openSettings();

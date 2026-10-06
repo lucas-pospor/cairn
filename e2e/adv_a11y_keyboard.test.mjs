@@ -614,7 +614,8 @@ test("FINDING-110: tab bar keyboard support: no invisible focused close button, 
   await app.chord(K.ctrl, K.enter);
   await eventually(async () => (await app.tabs()).length === 2);
   const problems = [];
-  // Tab from the left sidebar into the tab bar: inactive tab, its close button, active tab, ...
+  // Tab from the left sidebar into the tab bar, then Tab again: the second stop
+  // must not be a close button that is invisible or does not name its tab.
   await app.exec(`document.querySelector('[data-testid=file-tree]').focus(); return 1`);
   await app.keys(K.tab);
   const t1 = await app.focus();

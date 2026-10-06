@@ -204,7 +204,7 @@ test("SAF: Home, then a background kill, in the middle of a sync, again and agai
     if (Object.keys(listDevice(devSh, F)).filter((p) => p.startsWith("Desk/")).length >= N) break;
     if (!appPid()) {
       await d.launch();
-      if (await d.isWelcome()) await d.openRecent(LABEL); // SAF vaults are not reopened at start (FINDING-029)
+      if (await d.isWelcome()) await d.openRecent(LABEL); // in case start-up has not reopened the SAF vault
     }
     void d.eval(`window.__TAURI_INTERNALS__.invoke('sync_now').catch(() => {})`).catch(() => {});
     await sleep(1000 + Math.floor(Math.random() * 1500));

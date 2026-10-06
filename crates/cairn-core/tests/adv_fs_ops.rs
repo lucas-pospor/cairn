@@ -194,7 +194,8 @@ fn fs08_planted_temp_symlink_does_not_redirect_write() {
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("victim.txt"), "victim original").unwrap();
     let (d, v) = setup(&[("note.md", "n")]);
-    // The temp name is `.<name>.cairn-tmp-<pid>`: hidden (never shown or synced) and guessable.
+    // Temp names used to be `.<name>.cairn-tmp-<pid>`: hidden and guessable.
+    // Plant a symlink at that name; the write must not follow it.
     let tmp = format!(".note.md.cairn-tmp-{}", std::process::id());
     symlink(outside.path().join("victim.txt"), d.path().join(&tmp)).unwrap();
     let n = v.read_note("note.md").unwrap();
@@ -414,7 +415,7 @@ fn fs14_write_note_into_hidden_folder_is_refused() {
 #[test]
 fn fs21_names_cairn_refuses_cannot_be_created() {
     let (d, v) = setup(&[]);
-    // create_note validates only the last component.
+    // create_note validates the folders it adds, not only the last component.
     let a = v.create_note("bad:dir/x.md", "");
     let b = v.create_note(" lead/x.md", "");
     let c = v.create_note("trail./x.md", "");
@@ -427,7 +428,7 @@ fn fs21_names_cairn_refuses_cannot_be_created() {
 #[test]
 fn fs21_write_note_cannot_create_names_cairn_refuses() {
     let (d, v) = setup(&[]);
-    // write_note creates new files without validate_name at all.
+    // write_note checks a new file's name with validate_name too.
     let e = v.write_note("bad:name.md", "", None);
     let f = v.write_note("[x].md", "", None);
     let made: Vec<String> = names(d.path());

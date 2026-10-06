@@ -107,7 +107,7 @@ describe("FINDING-153", () => {
       // The user toggles a different plugin.
       await togglePlugin(host, other, on);
 
-      // Expected: A stays stopped (or is shown as stopped/disabled). Actual: a new live A worker, no toast.
+      // A stays stopped: no new live A worker, and no new toast.
       expect(toasts.length).toBe(toastsBefore); // no message tells the user A came back
       expect(liveWorkersFor("a.js")).toEqual([]);
     });

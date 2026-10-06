@@ -163,7 +163,7 @@ test(
     console.log(`phase 1: version history opened after ${(historyWait / 1000).toFixed(1)} s (indicator then: ${JSON.stringify(indicatorAfterHistory)})`);
     await s.exec(`document.querySelector('[data-testid=history] button[title=Close]')?.click()`);
     await s.waitFor(`return !document.querySelector('[data-testid=history]')`, { timeout: 5000 });
-    // the hung sync has ended by now (history could only run after it)
+    // history did not wait for the hung sync; release it and let it end
     hangChanges = false;
     for (const r of held) r.destroy();
     held.clear();

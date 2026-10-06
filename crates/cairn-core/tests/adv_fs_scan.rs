@@ -241,7 +241,7 @@ fn fs05_two_symlink_loops_do_not_hang_open() {
     fs::write(d.path().join("n.md"), "x").unwrap();
     symlink(".", d.path().join("loop1")).unwrap();
     symlink(".", d.path().join("loop2")).unwrap();
-    // Run the open in a child process so the runaway listing can be killed.
+    // Run the open in a child process so a runaway listing can be killed.
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "fs05_two_symlink_loops_do_not_hang_open", "--nocapture", "--test-threads=1"])
         .env("ADV_FS_LOOP_CHILD", d.path())

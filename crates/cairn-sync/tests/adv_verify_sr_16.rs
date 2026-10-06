@@ -157,9 +157,9 @@ fn uploader_does_not_redownload_its_pushes() {
     let r = a.sync_ok();
     let (d5, h5, _, _) = take(&c);
     eprintln!("next sync (no change): pulled {} | fetched {h5} heads, {d5} blob bytes", r.pulled);
-    // The one-off nature: a further sync fetches nothing.
+    // The third sync fetches nothing.
     assert_eq!(h3, 0, "third sync should fetch nothing");
-    // The defect: own uploads come back once.
+    // Own uploads used to come back once after a push; now they do not.
     assert_eq!(h2, 0, "2nd sync re-fetched {h2} of this device's own uploads ({d2} bytes; vault {bytes} bytes)");
     assert_eq!(h5, 0, "sync after the edit push re-fetched {h5} own uploads ({d5} bytes)");
 }

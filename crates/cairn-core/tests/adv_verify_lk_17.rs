@@ -44,7 +44,7 @@ fn control_latin_and_cjk_prefix() {
     assert_eq!(hits(&v, "tokyo"), vec!["en.md"]);
     assert_eq!(hits(&v, "今日"), vec!["ja.md"]);
     assert_eq!(hits(&v, "我们"), vec!["zh.md"]);
-    // The whole clause is one token, so even this is found.
+    // The whole clause is found too (by its character pairs, as a phrase).
     assert_eq!(hits(&v, "今日は東京で会議があります"), vec!["ja.md"]);
 }
 

@@ -154,8 +154,8 @@ fn reconnect_recovers_and_local_data_is_kept() {
     // hostile hook was never written.
     assert_eq!(d.read("Local.md").as_deref(), Some(b"my local note, edited while sync is broken".as_slice()));
     assert!(!d.root.join(".git").exists(), "hidden path written");
-    // The defect: even after the user's only recovery action, sync fails
-    // and the local note never reaches the server.
+    // After the user's only recovery action (disconnect + set up again),
+    // sync works and the local note reaches the server.
     assert!(r3.is_ok(), "still broken after disconnect + reconnect: {:?}", r3.err());
     assert!(kh.live_paths().iter().any(|p| p == "Local.md"), "Local.md never pushed");
 }

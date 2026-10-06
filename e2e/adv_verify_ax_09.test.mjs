@@ -97,7 +97,7 @@ test("FINDING-110: a focused inactive tab (or its close button) shows visible fo
   if (st.isClose && st.opacity === "0") problems.push(`focused close button has opacity 0 (focus-visible=${st.focusVisible}, hover=${st.hover})`);
   if (st.isClose && diff === 0) problems.push("moving focus from the tab to its close button changes no pixels: the focus is invisible");
 
-  // Consequence: Enter on the invisible control closes the inactive tab.
+  // With the defect, Enter on the invisible control closed the inactive tab: check it stays open.
   // (Only pressed there: elsewhere Enter would act on whatever has focus.)
   if (st.isClose) {
     await app.keys(K.enter);

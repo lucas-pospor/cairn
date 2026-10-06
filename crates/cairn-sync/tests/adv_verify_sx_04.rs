@@ -165,7 +165,8 @@ fn nul_record_does_not_block_in_sync_device() {
     eprintln!("last_seq before/after: {seq_before} / {}", a.last_seq());
     eprintln!("After.md pulled: {}; New.md pushed: {}", a.exists("After.md"), kh.server_paths().iter().any(|p| p == "New.md"));
 
-    // Where it fails: as a local I/O error, i.e. past the engine's validation.
+    // With the defect, sync failed here as a local I/O error, i.e. past the
+    // engine's validation; now every sync succeeds (asserted below).
     let first_is_local_io = matches!(&errs[0], Some(SyncError::Local(m)) if m.contains("NUL"));
     eprintln!("first error is a local I/O error (not 'unsafe path'): {first_is_local_io}");
 

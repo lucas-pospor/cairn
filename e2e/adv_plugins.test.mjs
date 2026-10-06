@@ -584,7 +584,7 @@ setInterval(() => { cairn.notes.write("ticks/" + id + ".md", String(++n)); }, 25
     await sleep(1500);
     const b = snapshot(v);
     const stillTicking = Object.keys(b).filter((f) => a[f] !== b[f]);
-    // Switch to a different vault: does the orphan write into it?
+    // Switch to a different vault: nothing from the old vault may write into it.
     await escapeAll();
     await runCommand("Switch vault");
     await s.type(await s.findWait("[data-testid=vault-path]", 8000), next.dir);

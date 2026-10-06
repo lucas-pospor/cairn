@@ -103,8 +103,8 @@ fn receiver_can_push_its_own_notes() {
     let mut b = Device::new(&srv, "phone", &[("phone-note.md", b"written on the phone")]);
     let rb = b.engine.sync();
     println!("receiver sync: {:?}", rb.as_ref().map(|r| (r.pulled, r.pushed)).map_err(|e| e.to_string()));
-    // Does phone-note.md ever reach a third device? (It cannot: the third device
-    // would hit the same oversized page, so check the server feed size instead.)
+    // The receiver's whole round must complete: then its own note is uploaded
+    // too (push runs after pull), and the big file has arrived.
     assert!(rb.is_ok(), "receiver sync failed, so its own note was never uploaded: {:?}", rb.err());
     assert!(b.exists("big.bin"));
 }

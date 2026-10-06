@@ -88,7 +88,7 @@ test(
     await env.closeSettings();
     const backend = await env.invoke("sync_status");
 
-    // The banner offers "Save my version": what does it do?
+    // If a conflict banner is shown, record what its "Save my version" does.
     const banner = await s.exec(`return document.querySelector('[data-testid=conflict-banner]')?.textContent.trim() ?? null`);
     let afterSaveMine = null;
     if (banner) {

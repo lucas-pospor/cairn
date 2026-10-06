@@ -71,7 +71,8 @@ test("FINDING-106: Ctrl+O, Ctrl+P, Escape, Escape closes both the switcher and t
   await app.keys(K.esc);
   await sleep(250);
   log.afterEsc2 = await state();
-  // Does the switcher hotkey bring focus back? (switcherOpen is already true.)
+  // Does the switcher hotkey bring focus back? (With the defect, switcherOpen
+  // was still true here.)
   await app.chord(K.ctrl, "o");
   await sleep(250);
   log.afterCtrlO = await state();

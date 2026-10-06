@@ -73,7 +73,8 @@ test("FINDING-112: left drawer opened from the keyboard", async () => {
     info.esc = esc;
     if (esc.open) problems.push(`Escape (${esc.keys.join(",")}) leaves the drawer open`);
 
-    // Control 1: Shift+Tab from the toggle reaches the drawer's controls.
+    // Control 1 (logged): Shift+Tab from the toggle. With the defect the drawer
+    // was still open and this reached its controls; Escape has closed it now.
     await app.exec(`document.querySelector('[data-testid=mobile-files]').focus(); return 1`);
     let back = null;
     for (let i = 1; i <= 15; i++) {
@@ -85,7 +86,8 @@ test("FINDING-112: left drawer opened from the keyboard", async () => {
     }
     info.shiftTab = back;
 
-    // Control 2: Enter on the toggle closes the drawer again.
+    // Control 2 (logged): Enter on the toggle. With the defect this closed the
+    // still-open drawer; Escape has closed it now, so this opens it again.
     await app.exec(`document.querySelector('[data-testid=mobile-files]').focus(); return 1`);
     await app.keys(K.enter);
     await sleep(250);

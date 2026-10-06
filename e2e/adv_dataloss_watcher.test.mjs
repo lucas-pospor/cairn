@@ -97,8 +97,8 @@ test("5,000 files copied into the vault while a note is open: index matches disk
     await app.openFromTree("Open.md");
     await app.source();
     await app.insertEnd("MINE");
-    // Let the autosave finish first: a save that lands within 60 ms of the
-    // bulk "created" event cancels the tree refresh (FINDING-048).
+    // Let the autosave finish first. A save that landed within 60 ms of the
+    // bulk "created" event used to cancel the tree refresh (FINDING-048).
     await eventually(() => v.read("Open.md") === "open note\nMINE", { message: "autosaved" });
     await app.waitSaved();
     await sleep(500);

@@ -103,9 +103,8 @@ fn token_only_garbage_head_stops_no_device() {
     eprintln!("phone sync: {phone_res:?}");
     let mut fresh = Device::new(&srv, "tablet", &[]);
     let fresh_res = fresh.engine.sync().map(|r| (r.pulled, r.pushed));
-    // Heads are served in seq order, so B.md (seq 2) comes before the garbage
-    // head (seq 3) and IS applied on a fresh device; only heads newer than the
-    // garbage one are cut off (and no device can push, so none appear).
+    // On a fresh device the garbage head (A.md) is skipped and A.md is not
+    // pulled; the other head, B.md with the laptop's later edit, is applied.
     eprintln!("fresh tablet sync: {fresh_res:?}, has B.md: {:?}, has A.md: {:?}", fresh.read("B.md").is_some(), fresh.read("A.md").is_some());
 
     // No data loss either way: both devices keep their local notes as they were.

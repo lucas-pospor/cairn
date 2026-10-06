@@ -366,8 +366,8 @@ fn interrupted_sync_after_same_path_created_twice_converges() {
 
 #[test]
 fn crash_sweep_with_local_rename_vs_remote_edit() {
-    // the full scenario including the rename/edit pair: every interruption
-    // in the push phase leaves A and B with different file names
+    // the full scenario including the rename/edit pair: after every
+    // interruption in the push phase, A and B converge on the same files
     let mut failures = Vec::new();
     for fault in [Fault::ErrBefore, Fault::ErrAfter, Fault::PanicBefore, Fault::PanicAfter] {
         for k in 1..4 {

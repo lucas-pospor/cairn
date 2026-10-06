@@ -41,7 +41,8 @@ fn pulled_rename_txt_to_md_is_indexed() {
     assert!(!b.exists("todo.txt"));
     let st = indexed(&b, "todo.md");
     eprintln!("phone (search, backlinks, tag) for todo.md: {st:?}");
-    // A second sync round (rescan first) does not repair it either.
+    // A second sync round (rescan first), whose result is only printed;
+    // the assertion below is on the state after the first pull.
     b.sync();
     let st2 = indexed(&b, "todo.md");
     eprintln!("phone after another sync: {st2:?}");

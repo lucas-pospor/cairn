@@ -119,7 +119,7 @@ test(
 
     // The key really reached the page (so the harness is not the problem).
     assert.ok(facts.escapeLog.length >= 1, "Escape keydown reached the page");
-    // Control holds: once inside, Escape closes it (handler exists but is on the backdrop's bubbling path).
+    // Control (run only if the first Escape left it open): once focus is inside, Escape closes it.
     if (typeof facts.tabsToReachDialog === "number") assert.equal(facts.openAfterEscapeFromInside, false, "Escape closes once focus is inside");
 
     const problems = [];

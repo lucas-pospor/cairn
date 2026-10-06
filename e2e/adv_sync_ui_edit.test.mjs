@@ -182,7 +182,7 @@ test(
     const afterIndicator = await env.indicator();
     await env.openSyncSettings();
     const listed = await s.exec(`return [...document.querySelectorAll('[data-testid=settings] .linkish')].map(b => b.textContent.trim())`);
-    // Click the stale entry: what happens?
+    // Click the deleted copy's entry, if Settings still lists it.
     await s.exec(`[...document.querySelectorAll('[data-testid=settings] .linkish')].find(b => b.textContent.trim() === arguments[0])?.click()`, copy);
     await sleep(1000);
     const tabState = await s.exec(`return { tabs: [...document.querySelectorAll('[data-testid=tab]')].map(t => t.dataset.path), pane: document.querySelector('[data-testid=editor]')?.parentElement?.innerText.slice(0, 200) }`);

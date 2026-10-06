@@ -117,7 +117,8 @@ fn after_a_server_reset_the_device_that_did_not_reconnect_is_told_to_reconnect()
     let r = a.sync_ok();
     eprintln!("laptop after turn off + connect: pulled {} pushed {}", r.pulled, r.pushed);
 
-    // the phone's background sync no longer fails
+    // the phone's background sync keeps failing: its cursor is still
+    // above the new server's head
     let r = b.sync();
     eprintln!("phone next sync: {:?}", r.as_ref().map(|r| (r.pulled, r.pushed)).map_err(|e| e.to_string()));
 

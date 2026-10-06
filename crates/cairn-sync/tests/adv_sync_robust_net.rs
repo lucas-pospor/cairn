@@ -36,7 +36,7 @@ fn an_8mb_attachment_reaches_the_other_device() {
     assert_eq!(up.pushed, 2, "upload accepted by the server");
     let mut b = Device::new(&srv, "phone", &[]);
     let r = b.sync();
-    // the uploader itself pulls its own heads again on the next sync
+    // the uploader's next sync, which used to pull its own heads again
     let again = a.sync();
     assert!(
         r.is_ok() && again.is_ok(),

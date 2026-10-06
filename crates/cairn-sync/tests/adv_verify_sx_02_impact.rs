@@ -235,7 +235,7 @@ fn one_flipped_bit_in_server_storage_does_not_stop_sync() {
         db.execute("UPDATE revisions SET blob = ?1 WHERE seq = ?2", rusqlite::params![blob, seq]).unwrap();
     }
 
-    // Unrelated edit on the phone; it never reaches the laptop.
+    // Unrelated edit on the phone; it still reaches the laptop.
     fs::write(phone.root.join("B.md"), b"bravo, edited on the phone").unwrap();
     let pr = phone.engine.sync();
     eprintln!("phone sync with one corrupted blob in the feed: {:?}", pr.as_ref().map(|r| (r.pulled, r.pushed)).map_err(|e| e.to_string()));
