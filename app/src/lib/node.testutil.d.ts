@@ -1,7 +1,8 @@
 // Types for the Node built-ins that tests use: node:buffer and node:vm, which
 // adv_verify_pl_09.test.ts uses to run the plugin host's real worker bootstrap
 // under Vitest, and node:fs, which themes.testutil.ts uses to read app.css
-// (Vitest turns a CSS import into an empty string, even with ?raw).
+// (Vitest turns a CSS import into an empty string, even with ?raw) and
+// wording.test.ts uses to read the app's source files.
 //
 // The app runs in a webview, so its tsconfig leaves out @types/node on purpose:
 // a Node API used by mistake in app code should fail the type check. Only the
@@ -24,4 +25,6 @@ declare module "node:vm" {
 declare module "node:fs" {
   /** The text of a file. */
   export function readFileSync(path: URL, encoding: "utf8"): string;
+  /** The paths of everything under a folder, relative to it, with `/` separators on Linux. */
+  export function readdirSync(path: URL, options: { recursive: true }): string[];
 }
