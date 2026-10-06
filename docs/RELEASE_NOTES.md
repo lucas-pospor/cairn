@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 1.2.0 (2026-10-06)
 
 ### Images open in a tab
 

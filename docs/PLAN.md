@@ -350,7 +350,7 @@ Tests for 1.0.0: 746 Rust tests (745 in `cairn-core`, `cairn-sync` and `cairn-se
 
 Tests: 83 new Vitest tests (date formats and week numbers, template filling, note names the core would refuse, name clashes, each plugin's command against a stand-in for the app, word and character counts in Latin, Chinese, Japanese, Korean, Thai, Lao, Hindi, emoji and combining marks, and a `settings.json` with `corePlugins` read and saved by the settings code), 26 desktop end-to-end tests in 6 new files and 4 Android end-to-end tests in a new file. Each commit of the work passes its own tests. The existing end-to-end tests that use Settings, the command palette, the left sidebar, the status bar or the phone's formatting toolbar still pass.
 
-### After 1.1.0: image tabs, themes and files under two names (unreleased)
+### After 1.1.0: image tabs, themes and files under two names (1.2.0)
 
 - Images (png, jpg, jpeg, gif, webp, avif, svg, bmp and ico) open in a tab inside Cairn, on the desktop and on Android: from the file tree, the quick switcher, search, links, the outgoing links panel and images embedded in a note. On the desktop, other files still open in the system's default app, and an image tab has Open in default app. On Android, a tap on another file still shows a message.
 - The tab loads the image through `vault://` into an `<img>` only, so an SVG runs none of its scripts. The image's URL changes with each change to the file on disk, because the web view keeps the images it has shown in memory by URL. The tab follows renames and moves and closes when the file is deleted. An image replaces the active tab only when that tab shows an image too.
@@ -431,7 +431,7 @@ These hold in version 1.2.0. Each FINDING number names the tests that reproduce 
 - There is no option to open today's note when a vault opens: nothing is created by opening a vault.
 - Thai, Lao, Khmer and Myanmar word counts come from the system's dictionary (ICU), which is not the same in WebKitGTK and in Android's web view, so they can differ a little between the desktop and a phone.
 
-### Themes (unreleased)
+### Themes (1.2.0)
 
 - Cairn 1.0.0 and 1.1.0 show Limestone or Slate in a vault set to Marble or Graphite. They keep the choice, so it comes back in 1.2.0 and later.
 - On Android, the area behind the status and navigation bars follows the system's light or dark mode, not the theme chosen in Cairn. On the desktop (tested on Linux), the window's title bar does the same.

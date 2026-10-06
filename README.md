@@ -145,7 +145,7 @@ docker build -f crates/cairn-server/Dockerfile -t cairn-server .
 docker run -d --name cairn -p 8787:8787 -v cairn-data:/data -e CAIRN_TOKENS=your-secret cairn-server
 ```
 
-To use the image from a release instead of building it, load it with `docker load -i cairn-server-1.1.0-docker-image.tar.gz` and use `cairn-server:1.1.0` as the image name.
+To use the image from a release instead of building it, load it with `docker load -i cairn-server-1.2.0-docker-image.tar.gz` and use `cairn-server:1.2.0` as the image name.
 
 Or run the binary without Docker: `cargo run --release -p cairn-server` with `CAIRN_TOKENS` set. The server reads its settings from environment variables: `CAIRN_TOKENS` (required, comma-separated), `CAIRN_DATA` (database folder, default `./data`), `CAIRN_ADDR` (default `0.0.0.0:8787`), `CAIRN_MAX_BODY_MB` (default 200). Cairn sends and reads at most 200 MB per request, and files travel base64-encoded, so the largest file that syncs is about 150 MB. A lower `CAIRN_MAX_BODY_MB` lowers that limit, but a higher one does not raise it.
 
