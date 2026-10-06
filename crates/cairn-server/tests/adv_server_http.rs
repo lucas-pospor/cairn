@@ -552,6 +552,7 @@ fn unknown_path_is_answered_without_reading_body() {
     }
 }
 
+#[cfg(target_os = "linux")] // Only Linux has /proc.
 fn vm_hwm_kib(pid: u32) -> u64 {
     let s = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
     s.lines().find(|l| l.starts_with("VmHWM:")).unwrap().split_whitespace().nth(1).unwrap().parse().unwrap()
@@ -593,6 +594,7 @@ fn spawn_bin(dir: &std::path::Path, port: u16, extra_env: &[(&str, &str)]) -> Pr
 /// fallback buffered the body, one unauthenticated 100 MB POST to /nope would
 /// raise the server's peak RSS by about 100 MB, and N parallel requests would
 /// cost N x 200 MB with the default limit.
+#[cfg(target_os = "linux")] // The peak memory comes from /proc, which only Linux has.
 #[test]
 fn unauthenticated_post_to_unknown_path_does_not_grow_memory() {
     let dir = tempfile::tempdir().unwrap();
@@ -652,6 +654,7 @@ fn partial_request_is_closed_after_a_timeout() {
 /// attacker keeps every socket open. Connections waiting in the listen backlog
 /// are accepted in order, so the normal client only gets in after the batches
 /// of half-sent requests ahead of it have timed out: allow a few timeouts.
+#[cfg(unix)] // ulimit -n sets the server's limit on open files. Windows has no such limit for sockets.
 #[test]
 fn idle_connections_cannot_lock_out_clients() {
     let dir = tempfile::tempdir().unwrap();

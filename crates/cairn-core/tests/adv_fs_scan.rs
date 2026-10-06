@@ -298,6 +298,7 @@ fn fs20_notes_deeper_than_64_levels_are_invisible() {
     assert!(v.entries().iter().any(|e| e.path.ends_with("/deep.md")), "deep.md is not in the index");
 }
 
+#[cfg(unix)] // PATH_MAX is a Unix limit, and sh builds the tree.
 #[test]
 fn paths_beyond_path_max_are_skipped_without_failing_open() {
     let d = tempfile::tempdir().unwrap();

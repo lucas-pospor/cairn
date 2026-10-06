@@ -14,6 +14,10 @@
 //!   cargo build -p cairn-sync --example sync_dir
 //!   cargo test -p cairn-sync --test adv_verify_sr_01
 
+// gdb needs the DWARF debug info of a Linux build. The gdb on Windows
+// runners cannot read the PDB files of an MSVC build.
+#![cfg(target_os = "linux")]
+
 #[path = "adv_sync_robust_common.rs"]
 mod common;
 
