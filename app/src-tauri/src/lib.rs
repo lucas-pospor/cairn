@@ -6,6 +6,8 @@ mod config;
 mod protocol;
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(any(target_os = "android", test))]
+mod listing;
 mod sync;
 #[cfg(desktop)]
 mod watcher;

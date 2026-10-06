@@ -140,7 +140,7 @@ impl VaultFs for SafFs {
             .run_mobile_plugin("list", PathArgs { tree: &self.tree, path: dir })
             // A missing vault folder (renamed or moved elsewhere) is reported by its name.
             .map_err(|e| err(if dir.is_empty() { &self.name } else { dir }, e))?;
-        Ok(r.entries.into_iter().filter(|e| !vpath::is_hidden(&e.path)).map(to_stat).collect())
+        Ok(r.entries.into_iter().filter(|e| crate::listing::shown(dir, &e.path)).map(to_stat).collect())
     }
 
     fn stat(&self, path: &str) -> cairn_core::Result<Option<FileStat>> {

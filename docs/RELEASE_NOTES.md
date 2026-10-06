@@ -13,6 +13,7 @@ Cairn now calls the folder of notes a notebook. Before, it said vault. Only the 
 - On Android, pasting or dropping a file into a note, such as an image, did not save it. Cairn showed "Could not save" with the error "Invalid path: expected raw bytes". The file is now saved in the attachment folder and linked in the note, as on the desktop.
 - Cairn no longer makes a note or folder, or renames one, with the name of a Windows device such as CON, NUL, COM1 or LPT1 (also with an extension). Many Windows programs, File Explorer among them, cannot open, rename or delete such a file. Cairn refuses these names as it already refused the characters Windows does not allow.
 - On Windows, which is still untested, a note name that starts with a drive letter and a colon, such as "D: plan.md", from another device could make Cairn write outside the notebook folder, and the notebook folder showed with a `\\?\` prefix. Both are fixed.
+- On Android, in a folder opened from storage, Settings listed no CSS snippets and no plugins, and snippets and plugins turned on in `.cairn/settings.json` did not load. A snippet made in Settings was saved but did not show. Settings now lists the files in `.cairn/snippets/` and `.cairn/plugins/` there too. As everywhere, a plugin runs only once you turn it on under Settings, then Plugins, on that device.
 
 ## 1.2.0 (2026-10-06)
 
