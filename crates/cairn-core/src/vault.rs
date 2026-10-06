@@ -348,11 +348,14 @@ impl Vault {
             return Err(CoreError::NotANote(path));
         }
         let _g = self.op.lock();
+        let mut idx = self.index.write();
+        // Before the file system is asked: where it ignores case (Windows,
+        // macOS) it finds the twin under this name too, and the error must
+        // name the entry that is there.
+        Self::check_case_twins(&idx, &path, None)?;
         if self.fs.stat(&path)?.is_some() {
             return Err(CoreError::AlreadyExists(path));
         }
-        let mut idx = self.index.write();
-        Self::check_case_twins(&idx, &path, None)?;
         self.check_new_folders(&idx, &path)?;
         let mut changes = Vec::new();
         self.ensure_parents(&mut idx, &path, &mut changes)?;
@@ -389,12 +392,15 @@ impl Vault {
     /// rejects.
     fn new_file(&self, path: String, data: &[u8], checked: bool) -> Result<WriteResult> {
         let _g = self.op.lock();
+        let mut idx = self.index.write();
+        // First, as in `create_note`.
+        if checked {
+            Self::check_case_twins(&idx, &path, None)?;
+        }
         if self.fs.stat(&path)?.is_some() {
             return Err(CoreError::AlreadyExists(path));
         }
-        let mut idx = self.index.write();
         if checked {
-            Self::check_case_twins(&idx, &path, None)?;
             self.check_new_folders(&idx, &path)?;
         }
         let mut changes = Vec::new();
@@ -538,11 +544,12 @@ impl Vault {
         let path = vpath::normalize(path)?;
         Self::check_new_path(&path)?;
         let _g = self.op.lock();
+        let mut idx = self.index.write();
+        // First, as in `create_note`.
+        Self::check_case_twins(&idx, &path, None)?;
         if self.fs.stat(&path)?.is_some() {
             return Err(CoreError::AlreadyExists(path));
         }
-        let mut idx = self.index.write();
-        Self::check_case_twins(&idx, &path, None)?;
         self.check_new_folders(&idx, &path)?;
         let mut changes = Vec::new();
         self.ensure_parents(&mut idx, &path, &mut changes)?;
