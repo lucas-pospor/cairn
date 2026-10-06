@@ -6,14 +6,35 @@
 
 Cairn now calls the folder of notes a notebook. Before, it said vault. Only the word changes: notebooks open, sync and keep their settings as before. The `CAIRN_VAULT` variable keeps its name, and so does the sync server's API, so devices and servers on older versions keep working with this one. The server's log now says "created notebook" where it said "created vault".
 
+### One Theme list
+
+Settings, then Appearance, now has one Theme list in place of the Theme choice and the Light theme and Dark theme rows. It holds System, then every theme by name, light and dark, with a swatch of the theme in use beside it. Picking a theme uses it always. With System, two small lists under it, Light and Dark, pick the theme to use while the system is light and while it is dark.
+
+### High-contrast themes
+
+Two new themes, High contrast light (black on white) and High contrast dark (white on black), keep all text at 7:1 or more against everything it is drawn on, which is WCAG AAA: muted text, Markdown marks, code colors, links and error text included. Borders and the scrollbar keep 3:1. Selected rows in the command palette, the quick switcher, version history, menus and autocomplete, the open note in the file tree, the Settings section shown, pressed panel buttons and focused controls get a ring or a bar in the accent color, so none of them shows by a tint alone. A custom accent color is darkened or lightened to 7:1 in these themes. They are not picked by the system's high-contrast setting; choose them under Settings, then Appearance.
+
+### Your own font
+
+Under Settings, then Appearance, then Font file, you can pick a font file for note text: woff2, woff, ttf or otf, up to 20 MB. Cairn saves it in the notebook's `.cairn/fonts/` and names it in `.cairn/settings.json` under a new key, `textFont`, so it moves with the notebook folder. The Text font choice stays and is used wherever the font file is not: on another device where it has not been picked (Cairn sync copies neither the file nor the settings), if the file is missing or broken, and in older versions. Picking a file with another name, or Remove, moves the old one to the trash; a file with the same name is saved over it. A file that is not one of these fonts, a font collection (ttc), or a file over 20 MB is refused with a message, and nothing is saved.
+
 ### Fixes
 
+- In every theme, a matching bracket, a bracket with no match, the mark the editor shows in place of an invisible or control character, the cursor shown while dragging text into a note, and the box behind a hovered label in the graph now take the theme's colors. Before, they kept CodeMirror's and the graph's own colors, on which some text was below 4.5:1 and the dragging cursor was black on the dark themes. For the outline of a matching bracket, Slate's input borders are a little lighter.
+- Links to missing notes in the outgoing links panel are now dashed, as in the editor, so they do not differ from other links by color alone.
+- A focused text field in Settings, such as the attachment folder, now shows the accent border as other text fields do, not only a faint tint.
 - On Android, the card of an embedded file that does not show as text, such as a PDF, said that the file opens in another app. Cairn cannot do that on Android yet, and the card now says so, as a tap on its name already did.
 - On the desktop, the card of an embedded file that Cairn does not open in another app (a program, a script, a file of an unknown type or with no extension, a link to such a file, or a text file marked as executable) said that the file opens in another app. The card now says that Cairn does not open it, as a click on its name already did.
 - On Android, pasting or dropping a file into a note, such as an image, did not save it. Cairn showed "Could not save" with the error "Invalid path: expected raw bytes". The file is now saved in the attachment folder and linked in the note, as on the desktop.
 - Cairn no longer makes a note or folder, or renames one, with the name of a Windows device such as CON, NUL, COM1 or LPT1 (also with an extension). Many Windows programs, File Explorer among them, cannot open, rename or delete such a file. Cairn refuses these names as it already refused the characters Windows does not allow.
 - On Windows, which is still untested, a note name that starts with a drive letter and a colon, such as "D: plan.md", from another device could make Cairn write outside the notebook folder, and the notebook folder showed with a `\\?\` prefix. Both are fixed.
 - On Android, in a folder opened from storage, Settings listed no CSS snippets and no plugins, and snippets and plugins turned on in `.cairn/settings.json` did not load. A snippet made in Settings was saved but did not show. Settings now lists the files in `.cairn/snippets/` and `.cairn/plugins/` there too. As everywhere, a plugin runs only once you turn it on under Settings, then Plugins, on that device.
+
+### Compatibility
+
+- The high-contrast themes are stored in `lightTheme` and `darkTheme` like the others. Cairn 1.2.0 keeps them when it saves other settings and shows Limestone or Slate in their place; Cairn 1.0.0 and 1.1.0 do the same, as they do for Marble and Graphite. The `theme` key still holds only system, light or dark.
+- Cairn 1.2.0 and older keep `textFont` when they save other settings and use the Text font, which is still saved under `fontFamily` as before.
+- Cairn sync does not copy `.cairn/`, so the font file, like snippets and the settings, does not reach your other devices through it. Another device uses the Text font until the file is picked there under Settings, then Appearance, then Font file.
 
 ## 1.2.0 (2026-10-06)
 
