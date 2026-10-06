@@ -160,6 +160,7 @@ pub fn run() {
             commands::graph,
             commands::note_info,
             commands::open_externally,
+            commands::open_externally_check,
             commands::reveal_in_file_manager,
             commands::sync_status,
             commands::sync_setup,

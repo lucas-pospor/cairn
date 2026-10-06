@@ -273,6 +273,46 @@ test("FINDING-039: a small text file still embeds as text; a PDF or a big file g
   }, { shot: "ED-08-embed-cards" });
 });
 
+test("the card of an embedded file says that Cairn does not open a type it refuses, a link to one, or a text file marked as executable", async () => {
+  const bin = (head) => Buffer.from(`${head}\n\xe2\xe3\xcf\xd3\n`, "latin1"); // not valid UTF-8, so a card
+  const files = {
+    "R.md": "![[tool.exe]]\n\n![[noext]]\n\n![[run.log]]\n\n![[looks.pdf]]\n\n![[doc.pdf]]\n\nend\n",
+    "tool.exe": bin("MZ"),
+    noext: bin("data"),
+    "run.log": "a log line\n".repeat(30_000),
+    "doc.pdf": bin("%PDF-1.4"),
+  };
+  await withApp(files, async (app, env) => {
+    fs.chmodSync(`${env.vault.root}/run.log`, 0o755);
+    fs.symlinkSync("tool.exe", `${env.vault.root}/looks.pdf`);
+    await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="looks.pdf"]')`, { message: "looks.pdf listed" });
+    await app.open("R.md");
+    // Live Preview draws no embed on the cursor's line: move the cursor off the first one.
+    await app.fakeFocus();
+    await app.focusEnd();
+    const read = (root) =>
+      app.exec(`return [...document.querySelectorAll(arguments[0] + ' span.embed')].map(e => [e.querySelector('.embed-title')?.dataset.href ?? null, e.querySelector('.embed-file')?.textContent ?? null])`, root);
+    const want = [
+      ["tool.exe", "EXE file. Cairn does not open this type of file in another app."],
+      ["noext", "File. Cairn does not open this type of file in another app."],
+      ["run.log", "LOG file. Cairn does not open it in another app, because it is marked as executable."],
+      ["looks.pdf", "PDF file. Cairn does not open it in another app, because it links to a type of file that Cairn does not open."],
+      ["doc.pdf", "PDF file, opens in another app."],
+    ];
+    const filled = (root) => `const e = [...document.querySelectorAll('${root} span.embed')]; return e.length === 5 && e.every(x => x.querySelector('.embed-file'))`;
+    await app.s.waitFor(filled(".cm-lp-embed"), { message: "Live Preview cards filled" });
+    assert.deepEqual(await read(".cm-lp-embed"), want, "Live Preview");
+    await app.setMode("preview");
+    await app.s.waitFor(filled("article.md-render"), { message: "Reading view cards filled" });
+    assert.deepEqual(await read("article.md-render"), want, "Reading view");
+    // A click on the title of a refused file gets the refusal the card announced.
+    await app.exec(`document.querySelector('article.md-render .embed-title[data-href="tool.exe"]').click(); return 1`);
+    await eventually(async () => (await app.toasts()).some((t) => t.includes("tool.exe") && t.includes("does not open programs, scripts or unknown file types")), {
+      message: "refusal toast for tool.exe",
+    });
+  }, { shot: "embed-cards-refused" });
+});
+
 test(
   "FINDING-099: clicking a rendered image, note embed or horizontal rule moves the cursor to its source line",
   async () => {

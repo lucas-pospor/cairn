@@ -68,6 +68,8 @@ export const backend = {
   graph: (includeUnresolved: boolean) => invoke<GraphData>("graph", { includeUnresolved }),
   noteInfo: (path: string) => invoke<NoteInfo | null>("note_info", { path }),
   openExternally: (path: string) => invoke<void>("open_externally", { path }),
+  /** What openExternally would do with the file, without opening it. */
+  openExternallyCheck: (path: string) => invoke<"opens" | "type" | "linktype" | "executable" | "notfile">("open_externally_check", { path }),
   revealInFileManager: (path: string) => invoke<void>("reveal_in_file_manager", { path }),
   saveAttachment: (dir: string, name: string, bytes: Uint8Array) =>
     invoke<string>("save_attachment", bytes, {

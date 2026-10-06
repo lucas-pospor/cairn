@@ -43,6 +43,21 @@ export function extractSection(text: string, sub: string): string | null {
   return lines.slice(heads[i].line, next?.line ?? lines.length).join("\n").trimEnd();
 }
 
+/** The text of the card of `path`: its type and what a click on its title does. */
+async function cardText(path: string): Promise<string> {
+  const kind = extension(path) ? `${extension(path).toUpperCase()} file` : "File";
+  // Android cannot hand files to other apps yet (a tap on the title only
+  // shows a toast).
+  if (isMobile) return `${kind}. On Android, Cairn cannot open it in another app yet.`;
+  // The desktop opens only some types (open_externally decides).
+  const check = await backend.openExternallyCheck(path).catch(() => null);
+  if (check === "opens") return `${kind}, opens in another app.`;
+  if (check === "type") return `${kind}. Cairn does not open this type of file in another app.`;
+  if (check === "linktype") return `${kind}. Cairn does not open it in another app, because it links to a type of file that Cairn does not open.`;
+  if (check === "executable") return `${kind}. Cairn does not open it in another app, because it is marked as executable.`;
+  return `${kind}.`;
+}
+
 export async function fillEmbeds(
   root: HTMLElement,
   sourcePath: string,
@@ -70,10 +85,7 @@ export async function fillEmbeds(
         const text = isMarkdown(path) ? (await backend.readNote(path)).content : await backend.readTextFile(path);
         if (text == null) {
           // A PDF, an archive or a big file: a card with its name, never its bytes.
-          // Android cannot hand files to other apps yet (a tap on the title
-          // only shows a toast), so there the card says so.
-          const kind = extension(path) ? `${extension(path).toUpperCase()} file` : "File";
-          const card = isMobile ? `${kind}. On Android, Cairn cannot open it in another app yet.` : `${kind}, opens in another app.`;
+          const card = await cardText(path);
           el.innerHTML = `${titleLink(path, null)}<div class="embed-body"><span class="embed-file">${escapeHtml(card)}</span></div>`;
           return;
         }

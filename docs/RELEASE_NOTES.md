@@ -5,6 +5,7 @@
 ### Fixes
 
 - On Android, the card of an embedded file that does not show as text, such as a PDF, said that the file opens in another app. Cairn cannot do that on Android yet, and the card now says so, as a tap on its name already did.
+- On the desktop, the card of an embedded file that Cairn does not open in another app (a program, a script, a file of an unknown type or with no extension, a link to such a file, or a text file marked as executable) said that the file opens in another app. The card now says that Cairn does not open it, as a click on its name already did.
 
 ## 1.2.0 (2026-10-06)
 

@@ -531,33 +531,67 @@ fn open_kind(p: &std::path::Path) -> Option<OpenKind> {
     }
 }
 
+/// What `open_externally` does with a file.
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenCheck {
+    /// It opens in the system's default app.
+    Opens,
+    /// Refused: its type is not in `OPEN_EXTERNALLY` or `OPEN_EXTERNALLY_TEXT`,
+    /// or it has no extension.
+    Type,
+    /// Refused: a symlink whose own type is allowed leads to a file whose
+    /// type is not.
+    LinkType,
+    /// Refused: a text type with an executable bit.
+    Executable,
+    /// Refused: not a file.
+    NotFile,
+}
+
+/// The checks of `open_externally`, in its order, on the file at `p`.
+fn open_check(p: &std::path::Path) -> std::io::Result<OpenCheck> {
+    let Some(kind) = open_kind(p) else { return Ok(OpenCheck::Type) };
+    // A symlink must point to an allowed type too: the system may open the
+    // file it points to by that file's own name.
+    let real = std::fs::canonicalize(p)?;
+    let Some(real_kind) = open_kind(&real) else { return Ok(OpenCheck::LinkType) };
+    let meta = std::fs::metadata(&real)?;
+    if !meta.is_file() {
+        return Ok(OpenCheck::NotFile);
+    }
+    if (kind == OpenKind::Text || real_kind == OpenKind::Text) && is_executable(&meta) {
+        return Ok(OpenCheck::Executable);
+    }
+    Ok(OpenCheck::Opens)
+}
+
 /// Open a file with the system's default application. Only the types in
 /// `OPEN_EXTERNALLY` and `OPEN_EXTERNALLY_TEXT`; anything else would let a
 /// disguised attachment (`report.pdf.desktop`) run code on a click.
 #[tauri::command]
 pub async fn open_externally(state: State<'_, AppState>, path: String) -> CmdResult<()> {
-    let refused = || {
-        CoreError::Io(
-            "Cairn does not open programs, scripts or unknown file types. Use Reveal in file manager to open it yourself."
-                .into(),
-        )
-    };
     let p = os_path(&state, &path)?;
-    let kind = open_kind(&p).ok_or_else(refused)?;
-    // A symlink must point to an allowed type too: the system may open the
-    // file it points to by that file's own name.
-    let real = std::fs::canonicalize(&p).map_err(|e| CoreError::io(&path, e))?;
-    let real_kind = open_kind(&real).ok_or_else(refused)?;
-    let meta = std::fs::metadata(&real).map_err(|e| CoreError::io(&path, e))?;
-    if !meta.is_file() {
-        return Err(CoreError::Io("it is not a file.".into()));
-    }
-    if (kind == OpenKind::Text || real_kind == OpenKind::Text) && is_executable(&meta) {
-        return Err(CoreError::Io(
-            "it is marked as executable. Use Reveal in file manager to open it yourself.".into(),
-        ));
+    let refusal = match open_check(&p).map_err(|e| CoreError::io(&path, e))? {
+        OpenCheck::Opens => None,
+        OpenCheck::Type | OpenCheck::LinkType => Some(
+            "Cairn does not open programs, scripts or unknown file types. Use Reveal in file manager to open it yourself.",
+        ),
+        OpenCheck::Executable => Some("it is marked as executable. Use Reveal in file manager to open it yourself."),
+        OpenCheck::NotFile => Some("it is not a file."),
+    };
+    if let Some(why) = refusal {
+        return Err(CoreError::Io(why.into()));
     }
     tauri_plugin_opener::open_path(&p, None::<&str>).map_err(|e| CoreError::Io(e.to_string()))
+}
+
+/// What `open_externally` would do with a file, without opening it. The card
+/// of an embedded file says what a click on its title does.
+#[tauri::command]
+pub async fn open_externally_check(state: State<'_, AppState>, path: String) -> CmdResult<OpenCheck> {
+    let p = os_path(&state, &path)?;
+    open_check(&p).map_err(|e| CoreError::io(&path, e))
 }
 
 #[cfg(unix)]
@@ -701,4 +735,69 @@ pub fn default_device_name() -> String {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| std::env::consts::OS.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// A fresh folder under the system's temp folder.
+    fn temp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cairn-open-check-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn file(dir: &Path, name: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, b"x").unwrap();
+        p
+    }
+
+    #[test]
+    fn open_check_follows_the_type_lists() {
+        let d = temp("types");
+        assert_eq!(open_check(&file(&d, "a.pdf")).unwrap(), OpenCheck::Opens);
+        assert_eq!(open_check(&file(&d, "B.PDF")).unwrap(), OpenCheck::Opens);
+        assert_eq!(open_check(&file(&d, "notes.log")).unwrap(), OpenCheck::Opens);
+        assert_eq!(open_check(&file(&d, "tool.exe")).unwrap(), OpenCheck::Type);
+        assert_eq!(open_check(&file(&d, "run.sh")).unwrap(), OpenCheck::Type);
+        assert_eq!(open_check(&file(&d, "page.html")).unwrap(), OpenCheck::Type);
+        assert_eq!(open_check(&file(&d, "report.pdf.desktop")).unwrap(), OpenCheck::Type);
+        assert_eq!(open_check(&file(&d, "noext")).unwrap(), OpenCheck::Type);
+        std::fs::create_dir(d.join("folder.zip")).unwrap();
+        assert_eq!(open_check(&d.join("folder.zip")).unwrap(), OpenCheck::NotFile);
+        // A type that is not allowed is refused before the file is looked at.
+        assert_eq!(open_check(&d.join("missing.exe")).unwrap(), OpenCheck::Type);
+        assert!(open_check(&d.join("missing.pdf")).is_err());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_check_refuses_executable_text_and_links_to_refused_types() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let d = temp("unix");
+        let set_exec = |p: &Path| std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let log = file(&d, "run.log");
+        set_exec(&log);
+        assert_eq!(open_check(&log).unwrap(), OpenCheck::Executable);
+        // The bit does not count for binary types (exFAT and NTFS set it on every file).
+        let pdf = file(&d, "x.pdf");
+        set_exec(&pdf);
+        assert_eq!(open_check(&pdf).unwrap(), OpenCheck::Opens);
+        // A link is checked by the file it leads to as well.
+        let exe = file(&d, "tool.exe");
+        symlink(&exe, d.join("looks.pdf")).unwrap();
+        assert_eq!(open_check(&d.join("looks.pdf")).unwrap(), OpenCheck::LinkType);
+        symlink(d.join("x.pdf"), d.join("named.exe")).unwrap();
+        assert_eq!(open_check(&d.join("named.exe")).unwrap(), OpenCheck::Type);
+        symlink(&log, d.join("text.txt")).unwrap();
+        assert_eq!(open_check(&d.join("text.txt")).unwrap(), OpenCheck::Executable);
+        symlink(&pdf, d.join("other.pdf")).unwrap();
+        assert_eq!(open_check(&d.join("other.pdf")).unwrap(), OpenCheck::Opens);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 }
