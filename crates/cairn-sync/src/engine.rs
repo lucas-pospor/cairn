@@ -85,15 +85,22 @@
 //!   the file here meanwhile, unless the user renamed the file here too. The
 //!   same file here under a name that differs only in case takes the remote
 //!   name there, unless a folder name differs (then the remote file waits).
+//! * one file under two names here (a folder linked in twice, a symlink to
+//!   a note) syncs under one of them (see `regroup`). A second copy that an
+//!   older version uploaded under the other name is a duplicate: nothing is
+//!   sent for it but its delete, with the note's when the note is deleted
+//!   here. Its remote changes are not applied: a delete, or a version with
+//!   the content the file has here, is recorded, and the rest waits and is
+//!   listed. It syncs on in place of the note when another device deletes
+//!   the note's copy
 //! * remote deletions go to the trash, never straight to oblivion
 //!
 //! One file never stops the others. A remote change that cannot be applied
 //! here (a name this file system refuses, a file where a folder is) stays
 //! pending and is retried on every sync; that file is not pushed meanwhile.
-//! So does a change of a file that is also synced here under another name:
-//! one file on disk reached under two names (a folder linked in twice, a
-//! symlink to another note), which the other devices have as two files
-//! (see `refuse_alias`).
+//! So does any other change of a duplicate (see `Tracked::alias_of`), and
+//! any change through a name of a file that is also synced here under
+//! another name (see `refuse_alias`).
 //! A local file that cannot be read is left alone. A record that does not
 //! decrypt or has an unsafe path is dropped (or held as pending, if it
 //! belongs to a file this device has). An upload that is too large, or that
@@ -184,6 +191,35 @@ pub struct Tracked {
     /// delete then keeps the file, as it keeps one the scan finds renamed.
     #[serde(default, skip_serializing_if = "is_false")]
     pub renamed: bool,
+    /// For a duplicate, the id of the file it duplicates: the vault reaches
+    /// one file here under two names (a folder linked in twice, a symlink
+    /// to a note), and an older version uploaded it under both, so other
+    /// devices have two files (FINDING-224). Only the other one syncs from
+    /// here. Nothing is sent for a duplicate but its delete, when the note
+    /// is deleted here. A change of it from another device is not applied:
+    /// a delete, or a version with the content the file has here, is
+    /// recorded; anything else waits and is listed. See `regroup` and
+    /// `heir`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias_of: Option<String>,
+    /// For a duplicate that took the place of the note it duplicated (see
+    /// `heir`), the content hash the note had here then. That content is
+    /// synced already, under the note's id: until this file's next upload,
+    /// a delete of it from another device applies while it still has it,
+    /// though its own last version is older.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub took_over: Option<String>,
+    /// For a duplicate: the note it duplicates was deleted here, and on
+    /// the server too, so its delete goes up as well, as when the note's
+    /// delete is pushed from here.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub delete_with_note: bool,
+    /// For a duplicate: its name went here while the note it duplicates
+    /// stayed (the link removed, or the note moved away from it), so it is
+    /// no copy that a link here makes any more. A delete of the note here
+    /// does not delete it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub detached: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -316,6 +352,15 @@ pub struct SyncEngine {
     /// since the last sync (`Status::Renamed`): their state still has the
     /// old path. For `tracked_aliases`.
     renamed_here: HashSet<String>,
+    /// The names of files here that are not synced because the file syncs
+    /// under another name, with that name, as the last scan found them
+    /// (see `regroup`).
+    kept: HashMap<String, String>,
+    /// The files whose delete is in the batch of the pull being applied.
+    deleting: HashSet<String>,
+    /// New files reached through a link that wait for the last batch of
+    /// the pull (see `apply_batch`).
+    linked_waits: HashSet<String>,
 }
 
 fn write_json<T: Serialize>(path: &Path, v: &T) -> Result<(), SyncError> {
@@ -409,11 +454,6 @@ pub fn rename(vault: &Vault, dir: &Path, from: &str, to: &str) -> cairn_core::Re
 
 /// A change to upload: file id, parent revision, path, deleted.
 type Upload = (String, Option<u64>, String, bool);
-
-/// Where `status` has tracked files that were renamed here.
-fn renamed_to(status: &HashMap<String, Status>) -> HashSet<String> {
-    status.values().filter_map(|s| if let Status::Renamed(to) = s { Some(to.clone()) } else { None }).collect()
-}
 
 /// What a remote change would do to a file here (see `refuse_alias`).
 #[derive(Clone, Copy)]
@@ -659,6 +699,9 @@ impl SyncEngine {
             journal,
             pull_batch: PULL_BATCH,
             renamed_here: HashSet::new(),
+            kept: HashMap::new(),
+            deleting: HashSet::new(),
+            linked_waits: HashSet::new(),
         })
     }
 
@@ -686,6 +729,9 @@ impl SyncEngine {
             journal,
             pull_batch: PULL_BATCH,
             renamed_here: HashSet::new(),
+            kept: HashMap::new(),
+            deleting: HashSet::new(),
+            linked_waits: HashSet::new(),
         })
     }
 
@@ -1220,7 +1266,10 @@ impl SyncEngine {
         // files have that content, a pair needs the same name or folder. An
         // empty file says nothing about where it went. The rest were deleted.
         let empty = hex_hash(b"");
-        let dels: Vec<(&String, &Tracked)> = gone.iter().map(|f| (f, &self.state.files[f])).filter(|(_, t)| t.hash != empty).collect();
+        // Nor does a duplicate (see `Tracked::alias_of`): a new file is
+        // never taken for one, and `regroup` finds where it went.
+        let dels: Vec<(&String, &Tracked)> =
+            gone.iter().map(|f| (f, &self.state.files[f])).filter(|(_, t)| t.hash != empty && t.alias_of.is_none()).collect();
         let del_keys: Vec<(&str, &str)> = dels.iter().map(|(_, t)| (t.path.as_str(), t.hash.as_str())).collect();
         let cres: Vec<(&str, &str)> = created.iter().map(|p| (p.as_str(), local[p].hash.as_str())).filter(|(_, h)| *h != empty).collect();
         let mut renamed_to = HashSet::new();
@@ -1242,6 +1291,275 @@ impl SyncEngine {
             }
         }
         (status, created)
+    }
+
+    /// Sync one name of each file that the vault reaches under several (see
+    /// `VaultFs::other_names`: a folder linked in twice, a symlink to a
+    /// note), so that other devices get one copy of it (FINDING-224). The
+    /// other names stay in the vault but leave `created`, so they are not
+    /// uploaded, and go into `self.kept` with the name that syncs. That is
+    /// the name of the tracked file there, so it stays while that file is
+    /// there; otherwise the name with no link on the way, then the one with
+    /// the fewest folders, then the first in byte order. A name in a folder
+    /// that cannot be read now counts as there, as the listing before
+    /// found it.
+    ///
+    /// Older versions uploaded every name. Of several tracked files at one
+    /// file's names, the one at the name chosen so syncs on, and the others
+    /// become its duplicates (`Tracked::alias_of`); other devices keep their
+    /// copies. A duplicate is tracked where it is now, a name of the file
+    /// it duplicates, so that it can sync on in its place (see `heir`). If
+    /// only duplicates are left there (the file they duplicate went), one
+    /// of them syncs on. A duplicate that is a file of its own here (its
+    /// link replaced by a copy) syncs as one again. One that is gone here,
+    /// as the note it duplicates is: if another device changed it
+    /// meanwhile, it syncs again and the change applies (edit beats
+    /// delete); if the note was deleted here, its delete goes up with the
+    /// note's; if another device deleted the note, it is downloaded again
+    /// as a file of its own, as the other devices have it.
+    ///
+    /// A new file with the content of a tracked file in a folder that
+    /// cannot be read now may be another name of it, which only the listing
+    /// that could read the folder knows: it is not uploaded meanwhile, and
+    /// is listed. Also notes where tracked files were renamed
+    /// (`self.renamed_here`). Returns whether the state changed.
+    fn regroup(&mut self, local: &HashMap<String, LocalFile>, status: &mut HashMap<String, Status>, created: &mut HashSet<String>, report: &mut SyncReport) -> bool {
+        let fs = self.vault.fs().clone();
+        let unreadable = self.vault.unreadable_folders();
+        let unknown = |p: &str| unreadable.iter().any(|d| vpath::is_same_or_inside(p, d));
+        let there = |p: &str| local.contains_key(p) || unknown(p);
+        // Where each live tracked file is now.
+        let mut at: HashMap<String, String> = HashMap::new();
+        self.renamed_here.clear();
+        for (fid, t) in self.state.files.iter().filter(|(_, t)| !t.deleted) {
+            let here = match status.get(fid) {
+                Some(Status::Renamed(to)) => {
+                    if t.alias_of.is_none() {
+                        self.renamed_here.insert(to.clone());
+                    }
+                    to
+                }
+                Some(Status::Deleted) => continue,
+                _ => &t.path,
+            };
+            if there(here) {
+                at.insert(here.clone(), fid.clone());
+            }
+        }
+        let mut paths: Vec<&String> = local.keys().collect();
+        paths.sort();
+        let mut grouped: HashSet<String> = HashSet::new();
+        let mut groups: Vec<Vec<String>> = Vec::new();
+        for p in paths {
+            if grouped.contains(p) {
+                continue;
+            }
+            let mut names: Vec<String> = fs.other_names(p).into_iter().filter(|o| there(o)).collect();
+            if names.is_empty() {
+                continue;
+            }
+            names.push(p.clone());
+            names.sort();
+            names.dedup();
+            grouped.extend(names.iter().cloned());
+            groups.push(names);
+        }
+        let best = |names: Vec<&String>| names.into_iter().min_by_key(|p| (fs.via_link(p), p.matches('/').count(), p.as_str())).cloned();
+        let mut changed = false;
+        let mut in_group: HashSet<String> = HashSet::new();
+        self.kept.clear();
+        for names in groups {
+            let ids: Vec<(&String, String)> = names.iter().filter_map(|p| Some((p, at.get(p)?.clone()))).collect();
+            let synced: Vec<&String> = ids.iter().filter(|(_, f)| self.state.files[f].alias_of.is_none()).map(|(p, _)| *p).collect();
+            let dups: Vec<&String> = ids.iter().filter(|(_, f)| self.state.files[f].alias_of.is_some()).map(|(p, _)| *p).collect();
+            let kept = match synced.as_slice() {
+                [one] => Some((*one).clone()),
+                [] if dups.is_empty() => best(names.iter().filter(|p| local.contains_key(*p)).collect()),
+                [] => best(dups),
+                _ => best(synced),
+            };
+            let Some(kept) = kept else { continue };
+            let kept_fid = at.get(&kept).cloned();
+            let mut placed: Vec<(String, String)> = ids.iter().map(|(p, f)| ((*p).clone(), f.clone())).collect();
+            // Duplicates of this file that are no longer at the name they
+            // had (their link renamed or moved; `classify` never takes a
+            // duplicate for renamed): at a name of the file that no tracked
+            // file has, the same file name first.
+            if let Some(k) = &kept_fid {
+                let mut free: Vec<&String> = names.iter().filter(|p| **p != kept && !at.contains_key(*p) && local.contains_key(*p)).collect();
+                let lost: Vec<String> = self
+                    .state
+                    .files
+                    .iter()
+                    .filter(|(f, t)| !t.deleted && t.alias_of.as_ref() == Some(k) && !ids.iter().any(|(_, g)| g == *f))
+                    .filter(|(f, t)| matches!(status.get(*f), Some(Status::Deleted)) && !unknown(&t.path))
+                    .map(|(f, _)| f.clone())
+                    .collect();
+                for fid in lost {
+                    let name = vpath::file_name(&self.state.files[&fid].path).to_string();
+                    let Some(i) = free.iter().position(|p| vpath::file_name(p) == name).or((!free.is_empty()).then_some(0)) else { break };
+                    placed.push((free.remove(i).clone(), fid));
+                }
+            }
+            for (name, fid) in &placed {
+                in_group.insert(fid.clone());
+                let want = kept_fid.clone().filter(|k| k != fid);
+                let t = self.state.files.get_mut(fid).expect("tracked");
+                if t.alias_of != want {
+                    log::info!("sync: {} syncs as {kept} only, the same file here", t.path);
+                    t.alias_of = want;
+                    changed = true;
+                }
+                // A duplicate is tracked where it is, with the server's name
+                // kept for a rename should it sync on (nothing is sent
+                // for it before), and has the status of that name.
+                if t.alias_of.is_some() && t.path != *name {
+                    let server = t.server_path.take().unwrap_or_else(|| t.path.clone());
+                    t.server_path = (server != *name).then_some(server);
+                    t.path = name.clone();
+                    t.seen = None;
+                    let same = local.get(name).is_some_and(|lf| lf.hash == t.hash);
+                    status.insert(fid.clone(), if same { Status::Unchanged } else { Status::Modified });
+                    changed = true;
+                }
+                if t.detached {
+                    t.detached = false;
+                    changed = true;
+                }
+            }
+            for p in names.into_iter().filter(|p| *p != kept) {
+                created.remove(&p);
+                self.kept.insert(p, kept.clone());
+            }
+        }
+        // Duplicates outside every group.
+        let lone: Vec<String> =
+            self.state.files.iter().filter(|(f, t)| !t.deleted && t.alias_of.is_some() && !in_group.contains(*f)).map(|(f, _)| f.clone()).collect();
+        for fid in lone {
+            let t = &self.state.files[&fid];
+            let here = matches!(status.get(&fid), Some(Status::Unchanged | Status::Modified)) && local.contains_key(&t.path);
+            let original = t.alias_of.as_ref().and_then(|o| self.state.files.get(o)).is_some_and(|o| !o.deleted);
+            if here {
+                log::info!("sync: {} is a file of its own here now; it syncs again", t.path);
+                self.state.files.get_mut(&fid).expect("tracked").alias_of = None;
+                changed = true;
+            } else if original || unknown(&t.path) {
+                // Still a name of a file that syncs, or may be. One gone here
+                // while that file stays is a copy no link here makes now.
+                let note_here = t.alias_of.as_ref().is_some_and(|o| status.get(o) != Some(&Status::Deleted));
+                if original && !unknown(&t.path) && status.get(&fid) == Some(&Status::Deleted) && note_here && !t.detached {
+                    self.state.files.get_mut(&fid).expect("tracked").detached = true;
+                    changed = true;
+                }
+            } else if self.state.pending.contains_key(&fid) {
+                // The note it duplicates is gone, and another device changed
+                // this copy meanwhile: that change is applied as to any file
+                // deleted here (edit beats delete).
+                self.state.files.get_mut(&fid).expect("tracked").alias_of = None;
+                changed = true;
+            } else if !t.delete_with_note || t.detached {
+                // Another device deleted the note, and this name is gone
+                // here, or the note was deleted here after this copy was
+                // detached from it: the copy that the other devices keep is
+                // downloaded again, as a file of its own.
+                log::info!("sync: {} is a copy that other devices keep of a note gone here; downloading it", t.path);
+                let seq = t.seq;
+                self.state.files.remove(&fid);
+                let _ = std::fs::remove_file(self.base_path(&fid));
+                self.state.pending.insert(fid, seq);
+                changed = true;
+            }
+            // Otherwise the note was deleted here: the push deletes this
+            // copy too.
+        }
+        // New files that may be another name of a tracked file that cannot
+        // be read now.
+        if !unreadable.is_empty() {
+            let empty = hex_hash(b"");
+            let mut waiting: Vec<(String, String)> = Vec::new();
+            for p in created.iter() {
+                let hash = &local[p].hash;
+                let other = self.state.files.values().find(|t| !t.deleted && t.hash == *hash && *hash != empty && unknown(&t.path));
+                if let Some(t) = other {
+                    waiting.push((p.clone(), t.path.clone()));
+                }
+            }
+            for (p, other) in waiting {
+                created.remove(&p);
+                report.skip(&p, format!("this may be another name of {other}, which is in a folder this device cannot read now, so it is not uploaded. It syncs when that folder can be read again"));
+            }
+        }
+        changed
+    }
+
+    /// The duplicate of file `fid` that syncs on when another device deletes
+    /// `fid`, unchanged here (see `regroup`): one at a name of the same file
+    /// here, the one `regroup` would choose. Not one whose own delete comes
+    /// in the same batch of the pull: then the note was deleted under both
+    /// names. (When that delete comes later, it applies through
+    /// `Tracked::took_over`.) When the only duplicates are in a folder that
+    /// cannot be read now, they may still be names of the file, and the
+    /// delete waits; so it does while another device's file at another name
+    /// of this one waits to sync here.
+    fn heir(&self, fid: &str, path: &str, local: &HashMap<String, LocalFile>) -> Result<Option<String>, SyncError> {
+        let unreadable = self.vault.unreadable_folders();
+        let fs = self.vault.fs();
+        let dups: Vec<(&String, &Tracked)> =
+            self.state.files.iter().filter(|(f, t)| !t.deleted && t.alias_of.as_deref() == Some(fid) && !self.deleting.contains(*f)).collect();
+        let heir = dups
+            .iter()
+            .filter(|(_, t)| local.contains_key(&t.path))
+            .min_by_key(|(_, t)| (fs.via_link(&t.path), t.path.matches('/').count(), t.path.clone()))
+            .map(|(f, _)| (*f).clone());
+        if heir.is_some() {
+            return Ok(heir);
+        }
+        let maybe: Vec<&str> = dups.iter().filter(|(_, t)| unreadable.iter().any(|d| vpath::is_same_or_inside(&t.path, d))).map(|(_, t)| t.path.as_str()).collect();
+        if !maybe.is_empty() {
+            return Err(SyncError::Local(format!(
+                "another device deleted this file, but {path} may be one file with {} on this device, which is in a folder it cannot read now, so the delete is not applied here. To sync it, make that folder readable again",
+                maybe.join(", ")
+            )));
+        }
+        // A copy that another device keeps under another name of the file
+        // here, which waits to sync (see `apply_remote`): deleting the file
+        // would delete that name too.
+        let mut names = fs.other_names(path);
+        names.extend(self.kept.iter().filter(|(_, k)| *k == path).map(|(n, _)| n.clone()));
+        if !names.is_empty() {
+            for (f, seq) in &self.state.pending {
+                if self.state.files.get(f).is_some_and(|t| !t.deleted) {
+                    continue;
+                }
+                let Some((held, _)) = self.held(f, *seq).and_then(|h| self.open(&h).ok()) else { continue };
+                if names.contains(&held) {
+                    return Err(SyncError::Local(format!(
+                        "another device deleted this file, but a different file waits to sync at {held}, which on this device is another name of {path}, so the delete is not applied here: it would delete {held} too. To sync it, rename or delete {held} on the device that has it"
+                    )));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Why a remote change of duplicate `t` (see `Tracked::alias_of`) is
+    /// not applied here; `rpath` is its name there.
+    fn duplicate_reason(&self, t: &Tracked, rpath: &str) -> String {
+        let kept = t.alias_of.as_ref().and_then(|o| self.state.files.get(o)).filter(|o| !o.deleted).map(|o| o.path.as_str());
+        let copy = match kept {
+            Some(k) if self.exists(&t.path) => format!("an older copy of {k}: on this device both names are one file, through a symlink, which syncs as {k} only"),
+            Some(k) => format!("an older copy of {k}, which this device does not keep (it syncs {k} only)"),
+            None => "an older copy of a note that this device syncs under another name".into(),
+        };
+        let keep = match kept {
+            Some(k) => format!("copy what you need from it into {k}, then delete this copy on a device where it is a separate file, not another name of {k} through a link"),
+            None => "copy what you need from it into the note, then delete this copy on a device where it is a separate file".into(),
+        };
+        if rpath != t.server_path.as_deref().unwrap_or(&t.path) {
+            format!("another device renamed this file ({} here), {copy}. The rename is not applied here. To sync it, {keep}", t.path)
+        } else {
+            format!("another device changed this file, {copy}. The change is not applied here. To keep it, {keep}")
+        }
     }
 
     fn exists(&self, path: &str) -> bool {
@@ -1416,17 +1734,36 @@ impl SyncEngine {
     }
 
     /// The other vault paths of the file at `path` here that are where a
-    /// tracked file is now: one file on disk under two names (see
-    /// `VaultFs::other_names`). A tracked file that the scan found renamed
-    /// here counts under its new name.
+    /// tracked file that is not a duplicate is now: one file on disk under
+    /// two names (see `VaultFs::other_names`). A tracked file that the scan
+    /// found renamed here counts under its new name.
     fn tracked_aliases(&self, path: &str) -> Vec<String> {
         let mut others = self.vault.fs().other_names(path);
-        others.retain(|p| self.renamed_here.contains(p) || self.state.files.values().any(|t| !t.deleted && t.path == *p));
+        others.retain(|p| self.renamed_here.contains(p) || self.state.files.values().any(|t| !t.deleted && t.alias_of.is_none() && t.path == *p));
         others
     }
 
+    /// The name of a tracked file that `path`, reached through a link here,
+    /// is another name of now: one with the same file name. For a name the
+    /// last scan did not see (written through the link in this pull).
+    fn linked_name_of(&self, path: &str) -> Option<String> {
+        let fs = self.vault.fs();
+        if !fs.via_link(path) {
+            return None;
+        }
+        let name = vpath::file_name(path);
+        self.state
+            .files
+            .values()
+            .filter(|t| !t.deleted && t.alias_of.is_none() && t.path != path && vpath::file_name(&t.path) == name)
+            .find(|t| fs.same_file(&t.path, path))
+            .map(|t| t.path.clone())
+    }
+
     /// No remote change is applied through `path` while the file there is
-    /// also tracked under another vault path here: one file on disk reached
+    /// also synced under another vault path here (a tracked file there that
+    /// is not a duplicate; a duplicate's own changes wait in `apply_remote`):
+    /// one file on disk reached
     /// under two names, through a folder linked in twice or a symlink to
     /// another note, which the other devices have as two files. Writing it would change the other name too, and deleting or
     /// moving it through a folder link would delete or move the other one:
@@ -1448,7 +1785,7 @@ impl SyncEngine {
                 "To sync it, replace the link on this device with a copy of what it leads to",
             )
         } else {
-            let maybe = self.unknown_aliases(path);
+            let maybe = self.unknown_aliases(path, matches!(act, Act::Delete));
             if maybe.is_empty() {
                 return Ok(());
             }
@@ -1466,20 +1803,27 @@ impl SyncEngine {
         }))
     }
 
-    /// Tracked files in folders that this device cannot read now, last
-    /// synced with the content of the file at `path`: the listing could not
-    /// see whether they are other names of it, as through a link in such a
-    /// folder (which only a listing made by this app while the folder was
-    /// readable knows). An empty file says nothing.
-    fn unknown_aliases(&self, path: &str) -> Vec<String> {
+    /// Tracked files, not duplicates, in folders that this device cannot
+    /// read now, last synced with the content of the file at `path`, or for
+    /// a delete (`by_name`) with its file name too, as a folder link keeps
+    /// names: the listing could not see whether they are other names of it,
+    /// as through a link in such a folder (which only a listing made by
+    /// this app while the folder was readable knows). An empty file says
+    /// nothing by its content.
+    fn unknown_aliases(&self, path: &str, by_name: bool) -> Vec<String> {
         let unreadable = self.vault.unreadable_folders();
+        if unreadable.is_empty() {
+            return Vec::new();
+        }
         let hash = self.state.files.values().find(|t| !t.deleted && t.path == path).map(|t| t.hash.as_str());
-        let Some(hash) = hash.filter(|h| !h.is_empty() && !unreadable.is_empty() && *h != hex_hash(b"")) else { return Vec::new() };
+        let hash = hash.filter(|h| !h.is_empty() && *h != hex_hash(b""));
+        let name = vpath::file_name(path);
         let mut found: Vec<String> = self
             .state
             .files
             .values()
-            .filter(|t| !t.deleted && t.path != path && t.hash == hash && unreadable.iter().any(|d| vpath::is_same_or_inside(&t.path, d)))
+            .filter(|t| !t.deleted && t.alias_of.is_none() && t.path != path && unreadable.iter().any(|d| vpath::is_same_or_inside(&t.path, d)))
+            .filter(|t| Some(t.hash.as_str()) == hash || (by_name && vpath::file_name(&t.path) == name))
             .map(|t| t.path.clone())
             .collect();
         found.sort();
@@ -1539,7 +1883,7 @@ impl SyncEngine {
     /// later batch, which a new round would not reach.
     fn retire(&mut self, head: &RemoteHead, path: &str, data: &[u8], status: &HashMap<String, Status>) -> Result<bool, SyncError> {
         let hash = hex_hash(data);
-        let Some((here, t)) = self.state.files.iter().find(|(_, t)| !t.deleted && t.path == path) else { return Ok(false) };
+        let Some((here, t)) = self.state.files.iter().find(|(_, t)| !t.deleted && t.alias_of.is_none() && t.path == path) else { return Ok(false) };
         let unchanged = *status.get(here).unwrap_or(&Status::Unchanged) == Status::Unchanged;
         if !unchanged || t.hash != hash || t.server_path.is_some() || self.state.pending.contains_key(here) {
             return Ok(false);
@@ -1577,10 +1921,10 @@ impl SyncEngine {
         };
         log::info!("sync: {path} was uploaded twice with the same content; keeping one");
         let _ = std::fs::remove_file(self.base_path(old));
-        let gone = Tracked { path: path.to_string(), seq, hash: String::new(), deleted: true, seen: None, server_path: None, renamed: false };
+        let gone = Tracked { path: path.to_string(), seq, hash: String::new(), deleted: true, seen: None, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
         self.state.files.insert(old.clone(), gone);
         if here_first {
-            let kept = Tracked { path: path.to_string(), seq: head.seq, hash, deleted: false, seen, server_path: None, renamed: false };
+            let kept = Tracked { path: path.to_string(), seq: head.seq, hash, deleted: false, seen, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
             self.state.files.insert(head.file_id.clone(), kept);
             self.save_base(&head.file_id, path, data);
         }
@@ -1613,7 +1957,7 @@ impl SyncEngine {
         for h in heads.iter().filter(|h| h.deleted) {
             let Some(t) = self.state.files.get(&h.file_id) else { continue };
             let unchanged = status.get(&h.file_id) == Some(&Status::Unchanged);
-            if t.deleted || !unchanged || t.server_path.is_some() || self.state.pending.contains_key(&h.file_id) {
+            if t.deleted || !unchanged || t.server_path.is_some() || t.alias_of.is_some() || self.state.pending.contains_key(&h.file_id) {
                 continue;
             }
             if let Ok((path, _)) = self.open(h)
@@ -1687,6 +2031,7 @@ impl SyncEngine {
 
     fn rename(&self, from: &str, to: &str, report: &mut SyncReport) -> Result<(), SyncError> {
         self.refuse_alias(from, Act::Move)?;
+        self.refuse_link_move(from, to)?;
         report.changes.extend(self.vault.ensure_folder(vpath::parent(to))?);
         report.changes.extend(self.vault.rename(from, to)?);
         self.prune(vpath::parent(from), report);
@@ -1709,6 +2054,22 @@ impl SyncEngine {
         }
         self.prune(vpath::parent(path), report);
         Ok(())
+    }
+
+    /// A symlink to a note with a relative target leads somewhere else once
+    /// it is moved into another folder: such a rename waits, listed, and
+    /// nothing changes on disk.
+    fn refuse_link_move(&self, from: &str, to: &str) -> Result<(), SyncError> {
+        if vpath::parent(from) == vpath::parent(to) {
+            return Ok(());
+        }
+        let Some(abs) = self.vault.fs().os_path(from) else { return Ok(()) };
+        match std::fs::read_link(&abs) {
+            Ok(target) if target.is_relative() => Err(SyncError::Local(format!(
+                "another device moved this note ({from} here) to this name, but on this device {from} is a link to another file by a relative path, which the move would break. To sync it, replace the link with a copy of the note"
+            ))),
+            _ => Ok(()),
+        }
     }
 
     /// Remove folder `dir` and the folders above it while they are empty,
@@ -1877,6 +2238,10 @@ impl SyncEngine {
                 seen: None,
                 server_path: None,
                 renamed: false,
+                alias_of: None,
+                took_over: None,
+                delete_with_note: false,
+                detached: false,
             };
             self.state.files.insert(f.fid.clone(), t);
             linked.push(f.fid.clone());
@@ -1921,8 +2286,10 @@ impl SyncEngine {
         let fresh = self.state.files.is_empty() && self.state.last_seq == 0;
         let (mut local, unreadable) = self.scan(report)?;
         let (mut status, created) = self.classify(&local, &unreadable);
-        self.renamed_here = renamed_to(&status);
         let mut created: HashSet<String> = created.into_iter().collect();
+        if self.regroup(&local, &mut status, &mut created, report) {
+            self.save_state()?;
+        }
         // Files that are one file on disk are forgotten here and downloaded
         // again below, as new files: the path is taken, so they get conflict
         // copy names, and whatever the disk file holds is pushed as a new file.
@@ -1943,6 +2310,7 @@ impl SyncEngine {
         let mut cursor = self.state.last_seq;
         let (mut heads, mut more) = self.read_batch(&mut cursor)?;
         let mut retry: Vec<(String, u64)> = self.state.pending.iter().map(|(f, s)| (f.clone(), *s)).collect();
+        self.linked_waits.clear();
         let mut rebuild = fresh && !created.is_empty();
         let mut failed = HashMap::new();
         // The files that this pull has changed or tried to (and those relink
@@ -1957,9 +2325,10 @@ impl SyncEngine {
             // as in a new round: the vault is scanned again.
             if batch.iter().any(|h| touched.contains(&h.file_id) && !self.applied(h)) {
                 let (l, unreadable) = self.scan(report)?;
-                let (s, c) = self.classify(&l, &unreadable);
-                self.renamed_here = renamed_to(&s);
-                (local, status, created) = (l, s, c.into_iter().collect());
+                let (mut s, c) = self.classify(&l, &unreadable);
+                let mut c: HashSet<String> = c.into_iter().collect();
+                self.regroup(&l, &mut s, &mut c, report);
+                (local, status, created) = (l, s, c);
             }
             // A lost state is rebuilt from the whole feed: what is not in
             // this batch is read ahead for it (and read again to apply it).
@@ -1976,7 +2345,7 @@ impl SyncEngine {
             // copy is in this batch too (see `keep_retired_copies`).
             self.keep_retired_copies(&batch, &status)?;
             touched.extend(batch.iter().map(|h| h.file_id.clone()));
-            self.apply_batch(batch, &mut local, &status, &created, &mut failed, report)?;
+            self.apply_batch(batch, more, &mut local, &status, &created, &mut failed, report)?;
             self.state.last_seq = cursor;
             self.save_state()?;
             if !more {
@@ -1985,7 +2354,13 @@ impl SyncEngine {
             // Deletions go first only within a batch: a change held in this
             // one may need a path that a deletion in the next one frees. It
             // is tried once more with the next batch.
-            retry = self.state.pending.iter().filter(|(f, s)| held.get(*f) != Some(*s)).map(|(f, s)| (f.clone(), *s)).collect();
+            retry = self
+                .state
+                .pending
+                .iter()
+                .filter(|(f, s)| held.get(*f) != Some(*s) || self.linked_waits.contains(*f))
+                .map(|(f, s)| (f.clone(), *s))
+                .collect();
             (heads, more) = self.read_batch(&mut cursor)?;
         }
 
@@ -1994,11 +2369,25 @@ impl SyncEngine {
         // parent revision is not the server's head. An unchanged file goes up
         // if the server has it under another name.
         let (local, unreadable) = self.scan(report)?;
-        let (status, created) = self.classify(&local, &unreadable);
+        let (mut status, created) = self.classify(&local, &unreadable);
+        let mut created: HashSet<String> = created.into_iter().collect();
+        self.regroup(&local, &mut status, &mut created, report);
         let mut ops: Vec<Upload> = Vec::new();
         for (fid, st) in &status {
-            let t = &self.state.files[fid];
+            // `regroup` may have forgotten it.
+            let Some(t) = self.state.files.get(fid) else { continue };
             if self.state.pending.contains_key(fid) {
+                continue;
+            }
+            // Nothing is sent for a duplicate but its delete, when the note
+            // was deleted here: its delete goes up now, or went up already
+            // (or another device deleted the note too, see
+            // `delete_with_note`).
+            if let Some(original) = &t.alias_of {
+                let gone = status.get(original) == Some(&Status::Deleted) || t.delete_with_note;
+                if *st == Status::Deleted && gone && !t.detached && !self.state.pending.contains_key(original) {
+                    ops.push((fid.clone(), Some(t.seq), t.server_path.clone().unwrap_or_else(|| t.path.clone()), true));
+                }
                 continue;
             }
             match st {
@@ -2009,6 +2398,8 @@ impl SyncEngine {
                 Status::Deleted => ops.push((fid.clone(), Some(t.seq), t.path.clone(), true)),
             }
         }
+        let mut created: Vec<String> = created.into_iter().collect();
+        created.sort();
         for path in created {
             // Re-creating a file at the path of a deleted one revives its id.
             let revive = self
@@ -2032,9 +2423,18 @@ impl SyncEngine {
                 (*deleted || server != path).then(|| server.clone())
             })
             .collect();
-        let ops = upload_order(ops, &frees);
+        let mut ops = upload_order(ops, &frees);
+        // The deletes of duplicates go first: a note whose duplicate's delete
+        // did not go up stays, and both go up in a later sync (once the
+        // note's delete is recorded, nothing tells that it was made here).
+        let is_dup = |op: &Upload| op.3 && self.state.files.get(&op.0).is_some_and(|t| !t.deleted && t.alias_of.is_some());
+        ops.sort_by_key(|op| !is_dup(op));
+        let mut blocked: HashSet<String> = HashSet::new();
         let max_file = self.transport.max_file_size();
         for (fid, parent, path, deleted) in ops {
+            if blocked.contains(&fid) {
+                continue;
+            }
             // Not read and encrypted on every sync only to be refused.
             if !deleted && self.stat(&path).0 > max_file {
                 report.skip(&path, too_large(max_file));
@@ -2063,15 +2463,24 @@ impl SyncEngine {
                 Ok(o) => o,
                 Err(e @ SyncError::Upload(_)) => {
                     // Too large, stalled or cut off: the other files still
-                    // go up, and this one is tried again on the next sync.
+                    // go up, and this one is tried again on the next sync
+                    // (with the note it duplicates, if it is a duplicate).
                     log::warn!("sync: cannot upload {path}: {e}");
                     report.skip(&path, reason(&e));
+                    blocked.extend(self.state.files.get(&fid).and_then(|t| t.alias_of.clone()));
                     continue;
                 }
                 Err(e) => return Err(e),
             };
             match outcome {
                 PutOutcome::Stored(seq) => {
+                    // A note deleted here: its duplicates' deletes follow,
+                    // also those that cannot be seen now (see `regroup`).
+                    if deleted && self.state.files.get(&fid).is_some_and(|t| t.alias_of.is_none()) {
+                        for t in self.state.files.values_mut().filter(|t| !t.deleted && !t.detached && t.alias_of.as_deref() == Some(fid.as_str())) {
+                            t.delete_with_note = true;
+                        }
+                    }
                     let hash = if deleted { String::new() } else { hex_hash(&payload.data) };
                     if !deleted {
                         self.save_base(&fid, &path, &payload.data);
@@ -2080,7 +2489,7 @@ impl SyncEngine {
                     }
                     // Not `seen`: the next scan hashes the file again, so a
                     // save made since the read above is pushed then.
-                    self.state.files.insert(fid.clone(), Tracked { path, seq, hash, deleted, seen: None, server_path: None, renamed: false });
+                    self.state.files.insert(fid.clone(), Tracked { path, seq, hash, deleted, seen: None, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false });
                     // The server has taken no other change (of any vault)
                     // since the last one this device has seen: the next
                     // pull starts after this one, rather than download it.
@@ -2189,9 +2598,11 @@ impl SyncEngine {
     /// Apply a batch of heads from `with_pending`. `failed` has the reason
     /// in `report` for each file whose change could not be applied in an
     /// earlier batch, to take back if it is applied now.
+    #[allow(clippy::too_many_arguments)]
     fn apply_batch(
         &mut self,
         heads: Vec<RemoteHead>,
+        more: bool,
         local: &mut HashMap<String, LocalFile>,
         status: &HashMap<String, Status>,
         created: &HashSet<String>,
@@ -2207,8 +2618,10 @@ impl SyncEngine {
         // some of them can go, or a ring of them can be broken; then they go
         // as they are.
         let mut ahead: HashSet<String> = heads.iter().map(|h| h.file_id.clone()).collect();
+        self.deleting = heads.iter().filter(|h| h.deleted).map(|h| h.file_id.clone()).collect();
         let mut queue: VecDeque<(RemoteHead, Option<Opened>)> = heads.into_iter().map(|h| (h, None)).collect();
         let mut waiting: Vec<(RemoteHead, Opened)> = Vec::new();
+        let mut deferred: HashSet<String> = HashSet::new();
         let (mut wait, mut went) = (true, false);
         loop {
             let Some((head, opened)) = queue.pop_front() else {
@@ -2249,6 +2662,28 @@ impl SyncEngine {
                     continue;
                 }
             };
+            // Once, after the rest of the batch: a change of a duplicate
+            // whose note has a change in it too (it may bring the content
+            // the duplicate has), and a new file reached through a link
+            // here, for a file at its own name (see `regroup`). One through
+            // a link to a folder of the vault waits for the last batch of
+            // the pull, unlisted: the file at its own name may come later.
+            if !head.deleted && !deferred.contains(&fid) {
+                let tracked = self.state.files.get(&fid).filter(|t| !t.deleted);
+                let dup = tracked.and_then(|t| t.alias_of.as_ref()).is_some_and(|o| ahead.contains(o));
+                let linked = tracked.is_none() && self.vault.fs().via_link(&path);
+                if linked && more && !self.vault.fs().leads_outside(&path) {
+                    self.hold(&head);
+                    ahead.remove(&fid);
+                    self.linked_waits.insert(fid);
+                    continue;
+                }
+                if (dup || linked) && !queue.is_empty() {
+                    deferred.insert(fid);
+                    queue.push_back((head, Some((path, data))));
+                    continue;
+                }
+            }
             if wait && !head.deleted && self.blocker(&fid, &path, &ahead).is_some() {
                 waiting.push((head, (path, data)));
                 continue;
@@ -2358,15 +2793,61 @@ impl SyncEngine {
             seen: None,
             server_path: (path != rpath && !head.deleted).then(|| rpath.to_string()),
             renamed: false,
+            alias_of: None,
+            took_over: None,
+            delete_with_note: false,
+            detached: false,
         };
         let old = self.state.files.get(&fid).cloned();
         let st = old.as_ref().filter(|t| !t.deleted).map(|_| status.get(&fid).cloned().unwrap_or(Status::Unchanged));
+
+        // A duplicate of a file that syncs here under another id (see
+        // `regroup`): its delete is recorded, and nothing else of it is
+        // applied, as that would change the file it duplicates.
+        if let Some(t) = old.as_ref().filter(|t| !t.deleted && t.alias_of.is_some()) {
+            // A version of it that is what the file here holds, under its
+            // server name or a name of the file here (an older version with
+            // the same link uploads one whenever the note changes or is
+            // renamed), is recorded, under that name.
+            let fs = self.vault.fs();
+            let original = t.alias_of.as_ref().and_then(|o| self.state.files.get(o)).filter(|o| !o.deleted).map(|o| o.path.as_str());
+            let name_here = rpath == t.path || fs.same_file(rpath, &t.path) || original.is_some_and(|o| fs.same_file(rpath, o));
+            let at = if name_here { rpath } else { t.path.as_str() };
+            let named = at == rpath || rpath == t.server_path.as_deref().unwrap_or(&t.path);
+            if !head.deleted && named && self.vault.read_file(at).is_ok_and(|d| hex_hash(&d) == rhash) {
+                let server_path = (at != rpath).then(|| rpath.to_string());
+                self.state.files.insert(fid.clone(), Tracked { path: at.to_string(), seq: head.seq, hash: rhash, seen: None, server_path, ..t.clone() });
+                self.save_base(&fid, at, rdata);
+                return Ok(());
+            }
+            if !head.deleted {
+                return Err(SyncError::Local(self.duplicate_reason(t, rpath)));
+            }
+            self.state.files.insert(fid.clone(), remote_tracked(&t.path));
+            let _ = std::fs::remove_file(self.base_path(&fid));
+            return Ok(());
+        }
 
         // A remote file that is new to us (or was deleted when we last saw it).
         let Some(st) = st else {
             if head.deleted {
                 self.state.files.insert(fid.clone(), remote_tracked(rpath));
                 let _ = std::fs::remove_file(self.base_path(&fid));
+                return Ok(());
+            }
+            // A name that is not synced here, as the file syncs under another
+            // one (see `regroup`): a copy that another device has of it, with
+            // the same content, is that file's duplicate. Nothing is written
+            // here: another file there would replace that file.
+            if let Some(kept) = self.kept.get(rpath).cloned().filter(|_| self.exists(rpath)).or_else(|| self.linked_name_of(rpath)) {
+                if !self.vault.read_file(rpath).is_ok_and(|d| hex_hash(&d) == rhash) {
+                    return Err(SyncError::Local(format!(
+                        "another device has a different file at this name, but on this device this name is another name of {kept}, through a link, so it is not written here: it would replace {kept}. If it is an older copy of {kept}, copy what you need from it into {kept}, then delete it on a device where it is a separate file; otherwise rename it there"
+                    )));
+                }
+                let original = self.state.files.iter().find(|(_, t)| !t.deleted && t.alias_of.is_none() && t.path == kept).map(|(f, _)| f.clone());
+                self.state.files.insert(fid.clone(), Tracked { alias_of: original, ..remote_tracked(rpath) });
+                self.save_base(&fid, rpath, rdata);
                 return Ok(());
             }
             // Whether the path is free is decided with the vault as it is now,
@@ -2440,6 +2921,15 @@ impl SyncEngine {
             return Ok(());
         };
         let old = old.unwrap();
+        // A duplicate that took the note's place is behind on the server,
+        // not edited: a delete applies while it has the note's content
+        // (also under a name it was moved to, see `regroup`).
+        let (old, st) = match (&old.took_over, st) {
+            (Some(h), Status::Modified) if head.deleted && local.get(&old.path).is_some_and(|lf| lf.hash == *h) => {
+                (Tracked { hash: h.clone(), ..old }, Status::Unchanged)
+            }
+            (_, st) => (old, st),
+        };
         // A rename here that the server does not have yet: the file is
         // handled as renamed here from the server's path since the last sync.
         // A remote delete of it, unchanged here, is applied where it is, as
@@ -2458,14 +2948,61 @@ impl SyncEngine {
             (_, st) => (old, st),
         };
 
+        // The remote name is another name of this file here, one no other
+        // tracked file has (another device renamed its copy to the name of
+        // its second copy, after deleting that): nothing moves on disk.
+        let same_file = rpath != old.path
+            && !head.deleted
+            && self.vault.fs().other_names(&old.path).iter().any(|p| p == rpath)
+            && !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.alias_of.is_none() && t.path == rpath);
         match st {
             Status::Unreadable => return Err(SyncError::Local(format!("cannot read {} on this device", old.path))),
             Status::Shared => return Err(SyncError::Local(format!("{} is the same file as another one on this device: their names differ only in case", old.path))),
             Status::Unchanged => {
+                if head.deleted
+                    && let Some(heir) = self.heir(&fid, &old.path, local)?
+                {
+                    // Another device deleted this copy of the note but has
+                    // a duplicate of it, which is this file here too: the
+                    // note stays, and syncs on as that one (FINDING-224).
+                    log::info!("sync: {} was deleted elsewhere; it syncs on as its other copy", old.path);
+                    self.state.files.insert(fid.clone(), remote_tracked(&old.path));
+                    let _ = std::fs::remove_file(self.base_path(&fid));
+                    for t in self.state.files.values_mut().filter(|t| t.alias_of.as_deref() == Some(fid.as_str())) {
+                        t.alias_of = Some(heir.clone());
+                    }
+                    if let Some(t) = self.state.files.get_mut(&heir) {
+                        t.alias_of = None;
+                        t.took_over = Some(old.hash.clone());
+                    }
+                    return Ok(());
+                }
+                if same_file {
+                    if rhash != old.hash {
+                        self.write(&old.path, rdata, Some(&old.hash), report)?;
+                    }
+                    self.state.files.insert(fid.clone(), remote_tracked(rpath));
+                    self.save_base(&fid, rpath, rdata);
+                    return Ok(());
+                }
                 if head.deleted {
+                    let others = self.vault.fs().other_names(&old.path);
                     self.delete(&old.path, &old.hash, report)?;
                     self.state.files.insert(fid.clone(), remote_tracked(&old.path));
                     let _ = std::fs::remove_file(self.base_path(&fid));
+                    // Deleting a symlink to a note leaves the note: the file
+                    // goes under its other names too, as the note was
+                    // deleted (through a folder link it is gone already).
+                    // (A duplicate there whose own delete comes in this batch
+                    // is no reason to keep it.)
+                    for o in others {
+                        let kept = |(f, t): (&String, &Tracked)| {
+                            !t.deleted && t.path == o && !(t.alias_of.as_deref() == Some(fid.as_str()) && self.deleting.contains(f))
+                        };
+                        if matches!(self.vault.fs().stat(&o), Ok(Some(st)) if st.kind == EntryKind::File) && !self.state.files.iter().any(kept) {
+                            self.delete(&o, &old.hash, report)?;
+                        }
+                    }
                     return Ok(());
                 }
                 let mut path = old.path.clone();
@@ -2492,6 +3029,15 @@ impl SyncEngine {
                     // Edit beats delete: keep ours; it is revived on push.
                     self.state.files.insert(fid.clone(), remote_tracked(&old.path));
                     let _ = std::fs::remove_file(self.base_path(&fid));
+                    return Ok(());
+                }
+                if same_file {
+                    let lf_hash = local.get(&old.path).map(|l| l.hash.clone()).unwrap_or_default();
+                    if rhash != lf_hash {
+                        self.merge(&fid, &old.path, &lf_hash, rdata, created, report)?;
+                    }
+                    self.state.files.insert(fid.clone(), remote_tracked(rpath));
+                    self.save_base(&fid, rpath, rdata);
                     return Ok(());
                 }
                 let mut path = old.path.clone();
@@ -2528,6 +3074,13 @@ impl SyncEngine {
                     let path = if head.deleted { old.path.clone() } else { rpath.to_string() };
                     self.state.files.insert(fid.clone(), remote_tracked(&path));
                     let _ = std::fs::remove_file(self.base_path(&fid));
+                    // Its duplicates go with it, as when its delete is pushed
+                    // from here (see `regroup`).
+                    if head.deleted {
+                        for t in self.state.files.values_mut().filter(|t| !t.deleted && !t.detached && t.alias_of.as_deref() == Some(fid.as_str())) {
+                            t.delete_with_note = true;
+                        }
+                    }
                     return Ok(());
                 }
                 // A new file here with the remote content is that version: a
@@ -2644,7 +3197,20 @@ impl SyncEngine {
     /// The file at `path` now; deleted files that had this name before are
     /// not it.
     fn file_id_for(&self, path: &str) -> Option<String> {
-        self.state.files.iter().find(|(_, t)| !t.deleted && t.path == path).map(|(f, _)| f.clone()).or_else(|| self.renamed_to(path))
+        self.synced_at(path).map(|(f, _)| f).or_else(|| self.renamed_to(path))
+    }
+
+    /// The tracked file that syncs the file at `path` now, with its id: the
+    /// one at `path`, or what that one duplicates (see `Tracked::alias_of`),
+    /// or the one at another name of the same file here.
+    fn synced_at(&self, path: &str) -> Option<(String, Tracked)> {
+        let live = |p: &str| self.state.files.iter().find(|(_, t)| !t.deleted && t.path == p).map(|(f, t)| (f.clone(), t.clone()));
+        let original = |o: &String| self.state.files.get(o).filter(|t| !t.deleted).map(|t| (o.clone(), t.clone()));
+        match live(path) {
+            Some((_, t)) if t.alias_of.is_some() => t.alias_of.as_ref().and_then(original),
+            Some(found) => Some(found),
+            None => self.vault.fs().other_names(path).iter().filter_map(|p| live(p)).find(|(_, t)| t.alias_of.is_none()),
+        }
     }
 
     /// A tracked file renamed to `path` since the last sync: its old path is
@@ -2679,7 +3245,7 @@ impl SyncEngine {
     /// refuses, so sync first and the current text stays in the history.
     pub fn restore(&self, path: &str, seq: u64) -> Result<Vec<Change>, SyncError> {
         let not_synced = || SyncError::Local(format!("{path} has changes that are not synced yet, so nothing was restored"));
-        let synced = self.state.files.values().find(|t| !t.deleted && !t.hash.is_empty() && t.path == path).ok_or_else(not_synced)?;
+        let (_, synced) = self.synced_at(path).filter(|(_, t)| !t.hash.is_empty()).ok_or_else(not_synced)?;
         let r = self.transport.revision(&self.settings.vault_id, seq)?;
         if r.deleted {
             return Err(SyncError::Local("that version is a deletion; it has no text to restore".into()));

@@ -96,6 +96,12 @@ pub trait VaultFs: Send + Sync {
     fn via_link(&self, _path: &str) -> bool {
         false
     }
+    /// True if vault paths `a` and `b` are one file on disk now, as for
+    /// `other_names`, also for a name that no listing has seen yet. The
+    /// default is false.
+    fn same_file(&self, _a: &str, _b: &str) -> bool {
+        false
+    }
     /// True if `path` really is outside the vault's notes on disk: a symlink
     /// on the way to it, or to the part of it that exists, leads out of the
     /// vault, into what the app keeps out of it (`.git`, `.cairn`, `.trash`),
@@ -968,6 +974,10 @@ impl VaultFs for StdFs {
         }
     }
 
+    fn same_file(&self, a: &str, b: &str) -> bool {
+        matches!((self.id_now(a), self.id_now(b)), (Ok(Some(x)), Ok(Some(y))) if x == y)
+    }
+
     fn via_link(&self, path: &str) -> bool {
         let abs = self.abs(path);
         let Ok(rel) = abs.strip_prefix(&self.root) else { return false };
@@ -1693,6 +1703,8 @@ mod tests {
         for (p, linked) in [("notes/x.md", false), ("n.md", false), ("hard.md", false), ("alias/x.md", true), ("link.md", true), ("notes/up.md", true), ("work/s.md", true)] {
             assert_eq!(fs.via_link(p), linked, "{p}");
         }
+        assert!(fs.same_file("alias/x.md", "notes/x.md") && fs.same_file("link.md", "n.md"));
+        assert!(!fs.same_file("hard.md", "n.md") && !fs.same_file("solo.md", "n.md") && !fs.same_file("alias/new.md", "notes/new.md"));
         // A listing of one folder keeps them; the next one of the whole
         // vault follows the disk.
         fs.list_partial("alias").unwrap();

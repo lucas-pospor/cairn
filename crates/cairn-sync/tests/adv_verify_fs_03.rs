@@ -154,10 +154,13 @@ fn fs03_link_that_cannot_be_followed_is_not_deleted_elsewhere() {
     let locked = outside.path().join("locked");
     fs::create_dir(&locked).unwrap();
     fs::write(locked.join("o.md"), "outside\n").unwrap();
+    // Two files: two links to one file would be one file under two names,
+    // which syncs once (FINDING-224).
+    fs::write(locked.join("p.md"), "outside too\n").unwrap();
     let mut laptop = robust::Device::new(&srv, "laptop", &[("n.md", "n\n")]);
     fs::create_dir(laptop.root.join("refs")).unwrap();
     std::os::unix::fs::symlink(locked.join("o.md"), laptop.root.join("refs/o.md")).unwrap();
-    std::os::unix::fs::symlink(locked.join("o.md"), laptop.root.join("top.md")).unwrap();
+    std::os::unix::fs::symlink(locked.join("p.md"), laptop.root.join("top.md")).unwrap();
     laptop.sync_ok();
     let mut phone = robust::Device::new(&srv, "phone", &[]);
     phone.sync_ok();
@@ -172,6 +175,6 @@ fn fs03_link_that_cannot_be_followed_is_not_deleted_elsewhere() {
     assert!(after_restart.is_ok(), "laptop sync after a restart failed: {}", after_restart.err().unwrap());
     phone.sync_ok();
     assert_eq!(phone.read("refs/o.md").as_deref(), Some("outside\n"));
-    assert_eq!(phone.read("top.md").as_deref(), Some("outside\n"));
+    assert_eq!(phone.read("top.md").as_deref(), Some("outside too\n"));
     assert!(phone.trash().is_empty(), "phone trash: {:?}", phone.trash());
 }

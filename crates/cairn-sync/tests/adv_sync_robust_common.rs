@@ -288,6 +288,15 @@ impl VaultFs for HookFs {
     fn via_link(&self, path: &str) -> bool {
         self.inner.via_link(path)
     }
+    fn same_file(&self, a: &str, b: &str) -> bool {
+        self.inner.same_file(a, b)
+    }
+    fn leads_outside(&self, path: &str) -> bool {
+        self.inner.leads_outside(path)
+    }
+    fn os_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        self.inner.os_path(path)
+    }
     fn stat(&self, path: &str) -> cairn_core::Result<Option<FileStat>> {
         self.inner.stat(path)
     }
