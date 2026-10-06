@@ -26,6 +26,11 @@ Cairn now has four themes, each with a name. Limestone (the light theme so far) 
 - The graph takes the new colors as soon as the theme or the accent changes.
 - With no custom accent, the accent color picker shows the accent of the theme in use instead of always the light theme's.
 
+### Sync
+
+- A folder reached under two names through symlinks (a link to a folder of the vault, or two links to one folder) still syncs under both names, but when another device deletes, renames or edits one of the two copies, the device with the link no longer applies that through the link. Before, deleting the copy under the link's name on another device moved the real notes to the trash on every device. Now the change waits, and Settings, then Sync, lists the file under "Files not synced" with its other name. To sync it, replace the link with a copy of what it leads to. The same goes for a note and a symlink to it, and, on Linux, macOS and Android, for hard links.
+- When sync deletes the last note in a linked folder, it keeps the link instead of failing with "Not a directory". A folder that sync cannot remove after deleting its last note no longer holds the delete back.
+
 ### Fixes
 
 - Alt+Enter on a Markdown link (`[text](path)`) finds the file relative to the note, as a click does.

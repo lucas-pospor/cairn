@@ -90,6 +90,10 @@
 //! One file never stops the others. A remote change that cannot be applied
 //! here (a name this file system refuses, a file where a folder is) stays
 //! pending and is retried on every sync; that file is not pushed meanwhile.
+//! So does a change of a file that is also synced here under another name:
+//! one file on disk reached under two names (a folder linked in twice, a
+//! symlink to another note, a hard link), which the other devices have as
+//! two files (see `refuse_alias`).
 //! A local file that cannot be read is left alone. A record that does not
 //! decrypt or has an unsafe path is dropped (or held as pending, if it
 //! belongs to a file this device has). An upload that is too large, or that
@@ -308,6 +312,10 @@ pub struct SyncEngine {
     journal: Journal,
     /// See [`PULL_BATCH`].
     pull_batch: u64,
+    /// Where the last scan found tracked files that were renamed here
+    /// since the last sync (`Status::Renamed`): their state still has the
+    /// old path. For `tracked_aliases`.
+    renamed_here: HashSet<String>,
 }
 
 fn write_json<T: Serialize>(path: &Path, v: &T) -> Result<(), SyncError> {
@@ -401,6 +409,19 @@ pub fn rename(vault: &Vault, dir: &Path, from: &str, to: &str) -> cairn_core::Re
 
 /// A change to upload: file id, parent revision, path, deleted.
 type Upload = (String, Option<u64>, String, bool);
+
+/// Where `status` has tracked files that were renamed here.
+fn renamed_to(status: &HashMap<String, Status>) -> HashSet<String> {
+    status.values().filter_map(|s| if let Status::Renamed(to) = s { Some(to.clone()) } else { None }).collect()
+}
+
+/// What a remote change would do to a file here (see `refuse_alias`).
+#[derive(Clone, Copy)]
+enum Act {
+    Delete,
+    Move,
+    Write,
+}
 
 /// The path and content of a remote change (see `open`).
 type Opened = (String, Vec<u8>);
@@ -627,7 +648,18 @@ impl SyncEngine {
         std::fs::create_dir_all(dir.join("bases"))?;
         write_json(&dir.join("config.json"), &settings)?;
         write_bytes(&dir.join("key"), b64(key.as_bytes()).as_bytes())?;
-        Ok(SyncEngine { vault, transport, key, settings, dir: dir.to_path_buf(), state, state_hash, journal, pull_batch: PULL_BATCH })
+        Ok(SyncEngine {
+            vault,
+            transport,
+            key,
+            settings,
+            dir: dir.to_path_buf(),
+            state,
+            state_hash,
+            journal,
+            pull_batch: PULL_BATCH,
+            renamed_here: HashSet::new(),
+        })
     }
 
     /// Load a configuration saved by `connect`. `None` if sync is not set up.
@@ -653,6 +685,7 @@ impl SyncEngine {
             state_hash,
             journal,
             pull_batch: PULL_BATCH,
+            renamed_here: HashSet::new(),
         })
     }
 
@@ -1275,7 +1308,10 @@ impl SyncEngine {
     /// replaced, and without, the file is only created where there is none.
     fn write(&self, path: &str, data: &[u8], expect: Option<&str>, report: &mut SyncReport) -> Result<(), SyncError> {
         let r = match expect {
-            Some(_) => self.vault.write_file(path, data, expect)?,
+            Some(_) => {
+                self.refuse_alias(path, Act::Write)?;
+                self.vault.write_file(path, data, expect)?
+            }
             None => self.vault.write_new_file(path, data)?,
         };
         report.changes.extend(r.changes);
@@ -1370,11 +1406,85 @@ impl SyncEngine {
     }
 
     /// The tracked file at `path`, if it can move aside: it is here as the
-    /// server has it, maybe edited, and has no pending remote change.
+    /// server has it, maybe edited, has no pending remote change, and is
+    /// not synced under another name too (see `refuse_alias`).
     fn movable(&self, path: &str, status: &HashMap<String, Status>) -> Option<String> {
         let (fid, t) = self.state.files.iter().find(|(_, t)| !t.deleted && t.path == path)?;
         let here = matches!(status.get(fid).unwrap_or(&Status::Unchanged), Status::Unchanged | Status::Modified);
-        (here && t.server_path.is_none() && !self.state.pending.contains_key(fid)).then(|| fid.clone())
+        let free = t.server_path.is_none() && !self.state.pending.contains_key(fid) && self.refuse_alias(path, Act::Move).is_ok();
+        (here && free).then(|| fid.clone())
+    }
+
+    /// The other vault paths of the file at `path` here that are where a
+    /// tracked file is now: one file on disk under two names (see
+    /// `VaultFs::other_names`). A tracked file that the scan found renamed
+    /// here counts under its new name.
+    fn tracked_aliases(&self, path: &str) -> Vec<String> {
+        let mut others = self.vault.fs().other_names(path);
+        others.retain(|p| self.renamed_here.contains(p) || self.state.files.values().any(|t| !t.deleted && t.path == *p));
+        others
+    }
+
+    /// No remote change is applied through `path` while the file there is
+    /// also tracked under another vault path here: one file on disk reached
+    /// under two names, through a folder linked in twice, a symlink to
+    /// another note or a hard link, which the other devices have as two
+    /// files. Writing it would change the other name too, and deleting or
+    /// moving it through a folder link would delete or move the other one:
+    /// when another device deleted its duplicate under the link's name,
+    /// this device moved the real note to the trash, and its next push
+    /// deleted that note on every device (FINDING-224). The change stays
+    /// pending and is listed instead, as for a name this storage cannot
+    /// hold. Replacing the link with a copy of what it leads to makes the
+    /// names separate files here too, and the change applies to its own.
+    /// A tracked file in a folder this device cannot read now, which may be
+    /// another name of the file (see `unknown_aliases`), holds it too.
+    fn refuse_alias(&self, path: &str, act: Act) -> Result<(), SyncError> {
+        let others = self.tracked_aliases(path);
+        let (same, effect, fix) = if !others.is_empty() {
+            let others = others.join(", ");
+            (
+                format!("{path} is one file with {others} on this device, through a symlink or a hard link, while other devices have them as separate files"),
+                format!(": it would change {others} too"),
+                "To sync it, replace the link on this device with a copy of what it leads to",
+            )
+        } else {
+            let maybe = self.unknown_aliases(path);
+            if maybe.is_empty() {
+                return Ok(());
+            }
+            let maybe = maybe.join(", ");
+            (
+                format!("{path} may be one file with {maybe} on this device, which is in a folder it cannot read now"),
+                String::new(),
+                "To sync it, make that folder readable again",
+            )
+        };
+        Err(SyncError::Local(match act {
+            Act::Delete => format!("another device deleted this file, but {same}, so the delete is not applied here. {fix}"),
+            Act::Move => format!("another device renamed this file ({path} here) to this name, but {same}, so the rename is not applied here. {fix}"),
+            Act::Write => format!("another device changed this file, but {same}, so the change is not applied here{effect}. {fix}"),
+        }))
+    }
+
+    /// Tracked files in folders that this device cannot read now, last
+    /// synced with the content of the file at `path`: the listing could not
+    /// see whether they are other names of it, as through a link in such a
+    /// folder (which only a listing made by this app while the folder was
+    /// readable knows). An empty file says nothing.
+    fn unknown_aliases(&self, path: &str) -> Vec<String> {
+        let unreadable = self.vault.unreadable_folders();
+        let hash = self.state.files.values().find(|t| !t.deleted && t.path == path).map(|t| t.hash.as_str());
+        let Some(hash) = hash.filter(|h| !h.is_empty() && !unreadable.is_empty() && *h != hex_hash(b"")) else { return Vec::new() };
+        let mut found: Vec<String> = self
+            .state
+            .files
+            .values()
+            .filter(|t| !t.deleted && t.path != path && t.hash == hash && unreadable.iter().any(|d| vpath::is_same_or_inside(&t.path, d)))
+            .map(|t| t.path.clone())
+            .collect();
+        found.sort();
+        found
     }
 
     /// Move the file `fid` from `path` to a conflict copy name, and return
@@ -1577,9 +1687,10 @@ impl SyncEngine {
     }
 
     fn rename(&self, from: &str, to: &str, report: &mut SyncReport) -> Result<(), SyncError> {
+        self.refuse_alias(from, Act::Move)?;
         report.changes.extend(self.vault.ensure_folder(vpath::parent(to))?);
         report.changes.extend(self.vault.rename(from, to)?);
-        report.changes.extend(self.vault.prune_empty_folders(vpath::parent(from))?);
+        self.prune(vpath::parent(from), report);
         Ok(())
     }
 
@@ -1587,6 +1698,7 @@ impl SyncEngine {
     /// if it still is. One saved since the scan is kept: the edit beats the
     /// delete, and the file is revived on push.
     fn delete(&self, path: &str, hash: &str, report: &mut SyncReport) -> Result<(), SyncError> {
+        self.refuse_alias(path, Act::Delete)?;
         match self.vault.delete_file(path, hash) {
             Ok(c) => report.changes.extend(c),
             Err(CoreError::NotFound(_)) => {}
@@ -1596,8 +1708,19 @@ impl SyncEngine {
             }
             Err(e) => return Err(e.into()),
         }
-        report.changes.extend(self.vault.prune_empty_folders(vpath::parent(path))?);
+        self.prune(vpath::parent(path), report);
         Ok(())
+    }
+
+    /// Remove folder `dir` and the folders above it while they are empty,
+    /// after a remote change moved or deleted the last file in it. The
+    /// change is made by then: a folder that cannot be removed (a mount
+    /// point, no permission) stays, and does not hold the change back.
+    fn prune(&self, dir: &str, report: &mut SyncReport) {
+        match self.vault.prune_empty_folders(dir) {
+            Ok(c) => report.changes.extend(c),
+            Err(e) => log::warn!("sync: cannot remove the emptied folder {dir}: {e}"),
+        }
     }
 
     fn stat(&self, path: &str) -> (u64, i64) {
@@ -1799,6 +1922,7 @@ impl SyncEngine {
         let fresh = self.state.files.is_empty() && self.state.last_seq == 0;
         let (mut local, unreadable) = self.scan(report)?;
         let (mut status, created) = self.classify(&local, &unreadable);
+        self.renamed_here = renamed_to(&status);
         let mut created: HashSet<String> = created.into_iter().collect();
         // Files that are one file on disk are forgotten here and downloaded
         // again below, as new files: the path is taken, so they get conflict
@@ -1835,6 +1959,7 @@ impl SyncEngine {
             if batch.iter().any(|h| touched.contains(&h.file_id) && !self.applied(h)) {
                 let (l, unreadable) = self.scan(report)?;
                 let (s, c) = self.classify(&l, &unreadable);
+                self.renamed_here = renamed_to(&s);
                 (local, status, created) = (l, s, c.into_iter().collect());
             }
             // A lost state is rebuilt from the whole feed: what is not in

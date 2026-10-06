@@ -54,7 +54,9 @@ pub trait VaultFs: Send + Sync {
     /// excluding hidden entries. `dir` itself is not included. Symlinks are
     /// followed, but a folder that leads back to one the listing is in (a
     /// loop: `loop -> .`, a link to a parent, a bind mount of one) is
-    /// skipped, and no operation goes through it.
+    /// skipped, and no operation goes through it. Any other folder link is
+    /// listed, also one that shows a folder a second time (see
+    /// `other_names`).
     fn list(&self, dir: &str) -> Result<Vec<FileStat>>;
     /// Like `list`, but a folder that cannot be read (no permission), or an
     /// entry that cannot be looked up, is skipped instead of failing the
@@ -75,6 +77,18 @@ pub trait VaultFs: Send + Sync {
     /// itself.
     fn real_path(&self, _path: &str) -> Option<String> {
         None
+    }
+    /// The other vault paths under which the last listing of the whole
+    /// vault found the file at `path` (less any that is another file now):
+    /// one file on disk reached under more than one name, through a folder
+    /// that is linked in twice (`alias -> notes`, two links to one folder
+    /// outside the vault, a bind mount), a symlink to another note, or a
+    /// hard link (not on Windows, where nothing writes through one).
+    /// Sorted; empty for a file found under one path. Sync applies no
+    /// remote change through such a path while one of its other names is
+    /// synced (FINDING-224). The default is none.
+    fn other_names(&self, _path: &str) -> Vec<String> {
+        Vec::new()
     }
     /// True if `path` really is outside the vault's notes on disk: a symlink
     /// on the way to it, or to the part of it that exists, leads out of the
@@ -169,6 +183,9 @@ pub struct StdFs {
     /// What the last listing of each folder (on-disk path) found that a
     /// lookup by vault name cannot find by itself.
     listed: RwLock<HashMap<PathBuf, Listed>>,
+    /// The other names of each file that the last listing of the whole
+    /// vault found under more than one vault path (see `other_names`).
+    names: RwLock<HashMap<String, Vec<String>>>,
 }
 
 /// Names in one folder that a lookup by vault name cannot find by itself.
@@ -256,6 +273,71 @@ fn dir_id(abs: &Path, _md: &fs::Metadata) -> Option<DirId> {
     abs.canonicalize().ok()
 }
 
+/// Identity of a file on disk, to tell one that a listing reaches under
+/// more than one vault path.
+#[cfg(unix)]
+type FileId = (u64, u64);
+#[cfg(not(unix))]
+type FileId = PathBuf;
+
+/// The device and inode, which every name of the file shares: a folder
+/// reached through two links, a link to the file, a hard link. None for
+/// inode 0, which some FUSE file systems give every file.
+#[cfg(unix)]
+fn file_id(_real_dir: Option<&Path>, _abs: &Path, _link: bool, md: &fs::Metadata) -> Option<FileId> {
+    use std::os::unix::fs::MetadataExt;
+    (md.ino() != 0).then(|| (md.dev(), md.ino()))
+}
+
+/// Without a file id in stable std, the canonical path of the file at
+/// `abs`: a folder reached through two links and a link to a file are
+/// found, a hard link is not (nothing writes through one here, see
+/// `hard_links`). `real_dir`, the canonical path of its folder if known,
+/// saves resolving each file that is not a `link` itself.
+#[cfg(not(unix))]
+fn file_id(real_dir: Option<&Path>, abs: &Path, link: bool, _md: &fs::Metadata) -> Option<FileId> {
+    match (real_dir, abs.file_name()) {
+        (Some(dir), Some(name)) if !link => Some(dir.join(name)),
+        _ => abs.canonicalize().ok(),
+    }
+}
+
+/// For each file of listing `out` that is one file on disk with others,
+/// the paths of the others, sorted. `ids` has the id and the index in
+/// `out` of each file.
+fn other_names_of(mut ids: Vec<(FileId, usize)>, out: &[FileStat]) -> HashMap<String, Vec<String>> {
+    ids.sort_unstable();
+    let mut names = HashMap::new();
+    for same in ids.chunk_by(|a, b| a.0 == b.0).filter(|s| s.len() > 1) {
+        let mut paths: Vec<&str> = same.iter().map(|(_, i)| out[*i].path.as_str()).collect();
+        paths.sort_unstable();
+        for p in &paths {
+            names.insert(p.to_string(), paths.iter().filter(|q| *q != p).map(|q| q.to_string()).collect());
+        }
+    }
+    names
+}
+
+/// What a partial listing could not read (`unreadable`) is unknown, not
+/// gone: the other names that the listing before it (`old`) found there
+/// still count, as for a link in a folder that lost its read permission.
+/// They are added to `names`, the other names this listing found.
+fn keep_unknown(names: &mut HashMap<String, Vec<String>>, old: &HashMap<String, Vec<String>>, unreadable: &[String]) {
+    if unreadable.is_empty() {
+        return;
+    }
+    let unknown = |p: &str| unreadable.iter().any(|u| vpath::is_same_or_inside(p, u));
+    for (p, others) in old {
+        let kept: Vec<&String> = others.iter().filter(|o| unknown(p) || unknown(o)).collect();
+        if !kept.is_empty() {
+            let list = names.entry(p.clone()).or_default();
+            list.extend(kept.into_iter().cloned());
+            list.sort_unstable();
+            list.dedup();
+        }
+    }
+}
+
 /// State of one listing.
 struct Walk {
     /// The folders being listed, from the vault root down.
@@ -263,6 +345,10 @@ struct Walk {
     /// Folders and entries that could not be read, when the caller takes a
     /// partial listing (`None`: an unreadable folder fails the listing).
     unreadable: Option<Vec<String>>,
+    /// The id of each file listed and its index in the listing, when the
+    /// whole vault is listed (`None` otherwise), to find the files it
+    /// reaches under more than one vault path.
+    files: Option<Vec<(FileId, usize)>>,
 }
 
 /// A vault path followed on disk, see `StdFs::follow`.
@@ -294,7 +380,7 @@ impl StdFs {
         if !root.is_dir() {
             return Err(CoreError::io(&root.to_string_lossy(), std::io::ErrorKind::NotADirectory.into()));
         }
-        Ok(StdFs { root, trash, listed: RwLock::new(HashMap::new()) })
+        Ok(StdFs { root, trash, listed: RwLock::new(HashMap::new()), names: RwLock::new(HashMap::new()) })
     }
 
     pub fn root(&self) -> &Path {
@@ -449,10 +535,32 @@ impl StdFs {
         if way.looped {
             return Err(loop_error(dir));
         }
-        let mut walk = Walk { ancestors: way.dirs, unreadable };
+        // A listing of the whole vault also finds the files it reaches
+        // under more than one vault path.
+        let mut walk = Walk { ancestors: way.dirs, unreadable, files: dir.is_empty().then(Vec::new) };
         let mut out = Vec::new();
         self.list_into(dir, &way.abs, 0, &mut walk, &mut out)?;
+        if let Some(files) = walk.files {
+            let mut names = other_names_of(files, &out);
+            let unreadable = walk.unreadable.as_deref().unwrap_or_default();
+            let mut known = self.names.write();
+            keep_unknown(&mut names, &known, unreadable);
+            *known = names;
+        }
         Ok((out, walk.unreadable.unwrap_or_default()))
+    }
+
+    /// The id of the file at vault path `path` now, as a listing finds it:
+    /// `Ok(None)` if there is no file there, `Err` if it cannot be looked
+    /// up (no permission).
+    fn id_now(&self, path: &str) -> std::result::Result<Option<FileId>, ()> {
+        let Ok(abs) = self.op_abs(path) else { return Ok(None) };
+        match fs::metadata(&abs) {
+            Ok(md) if md.is_dir() => Ok(None),
+            Ok(md) => Ok(file_id(None, &abs, true, &md)),
+            Err(e) if is_gone(&e) => Ok(None),
+            Err(_) => Err(()),
+        }
     }
 
     /// What to do when folder (or entry) `dir` cannot be read: a folder
@@ -490,6 +598,9 @@ impl StdFs {
         let mut listed = Listed::default();
         // (vault name, form rank, on-disk name) of each visible entry
         let mut names: Vec<(String, u8, OsString)> = Vec::new();
+        // Entries that are links themselves, for the ids of files where
+        // there is no file id (see `file_id`).
+        let mut links: HashSet<OsString> = HashSet::new();
         for ent in rd {
             let ent = match ent {
                 Ok(ent) => ent,
@@ -510,6 +621,9 @@ impl StdFs {
                 }
                 continue;
             };
+            if cfg!(not(unix)) && walk.files.is_some() && ent.file_type().is_ok_and(|t| t.is_symlink()) {
+                links.insert(os_name.clone());
+            }
             let rank = form_rank(&name, &os_name);
             names.push((name.into_owned(), rank, os_name));
         }
@@ -542,6 +656,11 @@ impl StdFs {
         } else if !self.listed.read().is_empty() {
             self.listed.write().remove(abs);
         }
+        // Where this folder really is, for the ids of its files.
+        #[cfg(not(unix))]
+        let real_dir = walk.files.as_ref().and_then(|_| abs.canonicalize().ok());
+        #[cfg(unix)]
+        let real_dir: Option<PathBuf> = None;
         for (name, _, os_name) in &names {
             let path = vpath::join(dir, name);
             let ent_abs = abs.join(os_name);
@@ -552,6 +671,9 @@ impl StdFs {
                     // its entries can be looked up: it cannot be read.
                     if fs::metadata(abs.join(".")).is_err_and(|e| is_denied(&e)) {
                         out.truncate(start);
+                        if let Some(files) = &mut walk.files {
+                            files.retain(|(_, i)| *i < start);
+                        }
                         return self.read_failed(dir, e, walk);
                     }
                     // Only this entry cannot (a link into a folder this user
@@ -572,6 +694,12 @@ impl StdFs {
             }
             let st = stat_from_meta(path.clone(), &md);
             let is_dir = st.kind == EntryKind::Dir;
+            if !is_dir
+                && let Some(files) = &mut walk.files
+                && let Some(id) = file_id(real_dir.as_deref(), &ent_abs, links.contains(os_name), &md)
+            {
+                files.push((id, out.len()));
+            }
             out.push(st);
             if is_dir {
                 let n = walk.ancestors.len();
@@ -832,6 +960,25 @@ impl VaultFs for StdFs {
         (way.looped && !way.ends_at_loop).then_some(way.real)
     }
 
+    /// Checked again on disk: a name that is another file now (its inode
+    /// number reused since the listing) is left out. One that is gone, or
+    /// cannot be looked up (no permission), still counts until the next
+    /// listing: it may have moved (a link renamed) after the listing.
+    fn other_names(&self, path: &str) -> Vec<String> {
+        let Some(others) = self.names.read().get(path).cloned() else { return Vec::new() };
+        match self.id_now(path) {
+            Ok(Some(id)) => others
+                .into_iter()
+                .filter(|o| match self.id_now(o) {
+                    Ok(Some(other)) => other == id,
+                    Ok(None) | Err(()) => true,
+                })
+                .collect(),
+            Ok(None) => Vec::new(),
+            Err(()) => others,
+        }
+    }
+
     fn leads_outside(&self, path: &str) -> bool {
         // The deepest part of the path that exists (a dangling link does),
         // with every link on the way followed: anything missing below it
@@ -980,6 +1127,12 @@ impl VaultFs for StdFs {
             return Ok(false);
         }
         let abs = self.op_abs(path)?;
+        // A symlink to a folder is a link the user made, not a folder of
+        // the vault: it stays when the folder it leads to is empty, as
+        // after sync deleted the last note through it (FINDING-224).
+        if fs::symlink_metadata(&abs).is_ok_and(|md| md.file_type().is_symlink()) {
+            return Ok(false);
+        }
         match fs::read_dir(&abs) {
             Ok(mut rd) => {
                 if rd.next().is_some() {
@@ -1501,6 +1654,110 @@ mod tests {
         fs.write("a/x.md", b"edited").unwrap();
         fs.rename("a/x.md", "a/y.md").unwrap();
         assert_eq!(fs.read("a/y.md").unwrap(), b"edited");
+    }
+
+    /// A listing of the whole vault finds the files it reaches under more
+    /// than one vault path: through a folder linked in twice, a link to a
+    /// note, a hard link. A loop is not listed, so it gives no other name.
+    #[cfg(unix)]
+    #[test]
+    fn other_names_of_a_file_reached_twice() {
+        use std::os::unix::fs::symlink;
+        let (d, fs) = setup();
+        let outside = tempfile::tempdir().unwrap();
+        let (r, o) = (d.path(), outside.path());
+        fs.create_dir("notes").unwrap();
+        fs.write("notes/x.md", b"x").unwrap();
+        fs.write("n.md", b"n").unwrap();
+        fs.write("solo.md", b"s").unwrap();
+        std::fs::create_dir(o.join("shared")).unwrap();
+        std::fs::write(o.join("shared/s.md"), "s").unwrap();
+        symlink("notes", r.join("alias")).unwrap();
+        symlink(o.join("shared"), r.join("projects")).unwrap();
+        symlink(o.join("shared"), r.join("work")).unwrap();
+        symlink("n.md", r.join("link.md")).unwrap();
+        std::fs::hard_link(r.join("n.md"), r.join("hard.md")).unwrap();
+        symlink(".", r.join("loop")).unwrap();
+        // Only a listing of the whole vault finds them.
+        fs.list("notes").unwrap();
+        assert!(fs.other_names("notes/x.md").is_empty());
+        fs.list("").unwrap();
+        assert_eq!(fs.other_names("notes/x.md"), ["alias/x.md"]);
+        assert_eq!(fs.other_names("alias/x.md"), ["notes/x.md"]);
+        assert_eq!(fs.other_names("work/s.md"), ["projects/s.md"]);
+        assert_eq!(fs.other_names("n.md"), ["hard.md", "link.md"]);
+        assert_eq!(fs.other_names("link.md"), ["hard.md", "n.md"]);
+        for p in ["solo.md", "notes", "alias", "projects", "missing.md", "loop/n.md"] {
+            assert!(fs.other_names(p).is_empty(), "{p}");
+        }
+        // A listing of one folder keeps them; the next one of the whole
+        // vault follows the disk.
+        fs.list_partial("alias").unwrap();
+        assert_eq!(fs.other_names("notes/x.md"), ["alias/x.md"]);
+        std::fs::remove_file(r.join("alias")).unwrap();
+        std::fs::remove_file(r.join("hard.md")).unwrap();
+        fs.list_partial("").unwrap();
+        assert!(fs.other_names("notes/x.md").is_empty());
+        assert_eq!(fs.other_names("n.md"), ["link.md"]);
+        // A name that is another file now is no other name any more. One
+        // that is gone may have moved: it counts until the next listing.
+        std::fs::remove_file(r.join("link.md")).unwrap();
+        std::fs::write(r.join("link.md"), "n").unwrap();
+        assert!(fs.other_names("n.md").is_empty());
+        std::fs::rename(r.join("work"), r.join("job")).unwrap();
+        assert_eq!(fs.other_names("projects/s.md"), ["work/s.md"]);
+        fs.list_partial("").unwrap();
+        assert_eq!(fs.other_names("projects/s.md"), ["job/s.md"]);
+    }
+
+    /// What a partial listing cannot read is unknown, not gone: the other
+    /// names found there before still count.
+    #[cfg(unix)]
+    #[test]
+    fn other_names_in_a_folder_that_cannot_be_read_still_count() {
+        use std::os::unix::fs::PermissionsExt;
+        let (d, fs) = setup();
+        let r = d.path();
+        fs.create_dir("notes").unwrap();
+        fs.write("notes/x.md", b"x").unwrap();
+        std::fs::create_dir(r.join("private")).unwrap();
+        std::os::unix::fs::symlink("../notes", r.join("private/link")).unwrap();
+        fs.list_partial("").unwrap();
+        assert_eq!(fs.other_names("notes/x.md"), ["private/link/x.md"]);
+        std::fs::set_permissions(r.join("private"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_dir(r.join("private")).is_ok() {
+            std::fs::set_permissions(r.join("private"), std::fs::Permissions::from_mode(0o755)).unwrap();
+            return; // running as root
+        }
+        let partial = fs.list_partial("");
+        let (x, link) = (fs.other_names("notes/x.md"), fs.other_names("private/link/x.md"));
+        std::fs::set_permissions(r.join("private"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(partial.unwrap().1, ["private"]);
+        assert_eq!((x, link), (vec!["private/link/x.md".to_string()], vec!["notes/x.md".to_string()]));
+        fs.list_partial("").unwrap();
+        assert_eq!(fs.other_names("notes/x.md"), ["private/link/x.md"]);
+    }
+
+    /// A folder link stays when the folder it leads to is emptied: it is the
+    /// user's link, not an empty folder of the vault (FINDING-224).
+    #[cfg(unix)]
+    #[test]
+    fn an_emptied_folder_link_is_not_removed() {
+        use std::os::unix::fs::symlink;
+        let (d, fs) = setup();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(outside.path().join("empty")).unwrap();
+        symlink(outside.path().join("empty"), d.path().join("out")).unwrap();
+        fs.create_dir("real/sub").unwrap();
+        symlink("real/sub", d.path().join("in")).unwrap();
+        assert!(!fs.remove_empty_dir("out").unwrap());
+        assert!(!fs.remove_empty_dir("in").unwrap());
+        for link in ["out", "in"] {
+            assert!(std::fs::symlink_metadata(d.path().join(link)).unwrap().file_type().is_symlink(), "{link}");
+        }
+        assert!(outside.path().join("empty").is_dir());
+        assert!(fs.remove_empty_dir("real/sub").unwrap());
+        assert!(!d.path().join("real/sub").exists());
     }
 
     /// An entry that cannot be looked up in a folder that can (a link into
