@@ -9,6 +9,7 @@
 //!   cargo test -p cairn-core --test adv_fs_ops
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::sync::Arc;
@@ -40,6 +41,7 @@ fn names(dir: &Path) -> Vec<String> {
     v
 }
 
+#[cfg(unix)]
 fn chmod(p: &Path, mode: u32) {
     fs::set_permissions(p, fs::Permissions::from_mode(mode)).unwrap();
 }
@@ -112,6 +114,7 @@ fn rename_refuses_existing_targets_self_moves_and_bad_paths() {
 // FINDING-013: saving keeps symlinked / hard-linked notes linked
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn fs06_saving_symlinked_note_keeps_symlink() {
     let outside = tempfile::tempdir().unwrap();
@@ -126,6 +129,7 @@ fn fs06_saving_symlinked_note_keeps_symlink() {
     assert_eq!(fs::read_to_string(outside.path().join("target.md")).unwrap(), "edited via cairn", "symlink target was not updated");
 }
 
+#[cfg(unix)] // Stable std has no link count on Windows, so StdFs cannot keep hard links there.
 #[test]
 fn fs06_saving_hard_linked_note_keeps_link() {
     let (d, v) = setup(&[("hard.md", "hard")]);
@@ -136,6 +140,7 @@ fn fs06_saving_hard_linked_note_keeps_link() {
     assert_eq!(read(&d, "other-name.md"), "hard edited");
 }
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn symlinked_folder_delete_only_removes_the_link() {
     let outside = tempfile::tempdir().unwrap();
@@ -189,6 +194,7 @@ fn unique_path_handles_names_at_the_limit_without_panicking() {
 // FINDING-051: temp files get a random name and are created with O_EXCL
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn fs08_planted_temp_symlink_does_not_redirect_write() {
     let outside = tempfile::tempdir().unwrap();
@@ -222,6 +228,7 @@ fn fs09_read_only_note_is_not_overwritten() {
     assert_eq!(now, "read only");
 }
 
+#[cfg(unix)] // Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn save_keeps_the_file_mode() {
     let (d, v) = setup(&[("private.md", "p"), ("exec.md", "e")]);
@@ -234,6 +241,7 @@ fn save_keeps_the_file_mode() {
     }
 }
 
+#[cfg(unix)] // Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn fs23_private_note_temp_file_is_not_world_readable() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -264,6 +272,7 @@ fn fs23_private_note_temp_file_is_not_world_readable() {
     assert!(modes.iter().all(|m| m & 0o077 == 0), "temp file modes seen: {:?}", modes.iter().map(|m| format!("{m:o}")).collect::<Vec<_>>());
 }
 
+#[cfg(unix)] // Windows ignores the read-only flag on a folder.
 #[test]
 fn read_only_folder_fails_cleanly_without_leftovers() {
     let (d, v) = setup(&[("rodir/n.md", "in ro dir"), ("ok.md", "ok")]);

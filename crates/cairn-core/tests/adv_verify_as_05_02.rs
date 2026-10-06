@@ -16,6 +16,9 @@
 //! Run with:
 //!   cargo test -p cairn-core --test adv_verify_as_05_02 -- --ignored --nocapture --test-threads=1
 
+// Unix symlinks, mode bits and the freedesktop trash.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};

@@ -6,6 +6,9 @@
 //!
 //!   cargo test -p cairn-core --test adv_verify_fs_03 -- --include-ignored --nocapture
 
+// Folders are made unreadable with Unix mode bits. Windows has only a read-only flag.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;

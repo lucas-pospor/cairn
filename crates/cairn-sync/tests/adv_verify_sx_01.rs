@@ -167,6 +167,7 @@ fn in_sync_device_keeps_pushing_after_bad_record() {
 /// Not malice: one local write failure (a read-only folder on this device)
 /// does not stop the other files, pulls or pushes. (With the defect, the
 /// missing per-record isolation stopped them all until the folder was fixed.)
+#[cfg(unix)] // Windows ignores the read-only flag on a folder.
 #[test]
 fn one_local_write_failure_does_not_block_other_files() {
     use std::os::unix::fs::PermissionsExt;

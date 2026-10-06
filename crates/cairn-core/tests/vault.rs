@@ -349,6 +349,7 @@ fn config_files_follow_symlinks_only_inside_the_vault() {
 }
 
 /// Every file and folder below `dir`, with the files' content.
+#[cfg(unix)]
 fn snapshot(dir: &std::path::Path) -> Vec<(String, Option<String>)> {
     let mut out = Vec::new();
     for e in fs::read_dir(dir).unwrap() {

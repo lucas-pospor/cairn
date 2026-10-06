@@ -14,11 +14,16 @@
 #[path = "adv_sync_robust_common.rs"]
 mod common;
 
+// The unreadable note is made with Unix mode bits. Windows has only a
+// read-only flag, so that test and its helpers are Unix only.
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 use common::*;
 
+#[cfg(unix)]
 fn pair(files: &[(&str, &str)]) -> (Server, Device, Device) {
     let srv = server();
     let mut a = Device::new(&srv, "laptop", files);
@@ -29,11 +34,13 @@ fn pair(files: &[(&str, &str)]) -> (Server, Device, Device) {
     (srv, a, b)
 }
 
+#[cfg(unix)]
 fn last_seq(d: &Device) -> u64 {
     let v: serde_json::Value = serde_json::from_slice(&fs::read(d.state_file()).unwrap()).unwrap();
     v["last_seq"].as_u64().unwrap_or(0)
 }
 
+#[cfg(unix)]
 #[test]
 fn unreadable_note_does_not_stop_pull_and_push() {
     let (_srv, mut a, mut b) = pair(&[("n.md", "v1\n")]);

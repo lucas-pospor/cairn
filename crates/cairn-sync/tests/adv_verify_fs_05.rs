@@ -14,6 +14,9 @@
 //!
 //!   cargo test -p cairn-sync --test adv_verify_fs_05 -- --nocapture
 
+// Symlinks need Developer Mode or admin rights on Windows.
+#![cfg(unix)]
+
 #[path = "adv_sync_robust_common.rs"]
 mod common;
 

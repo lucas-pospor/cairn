@@ -7,6 +7,9 @@
 //!
 //!   cargo test -p cairn-sync --test adv_verify_fs_03 -- --nocapture
 
+// Folders are made unreadable with Unix mode bits. Windows has only a read-only flag.
+#![cfg(unix)]
+
 #[path = "adv_sync_semantics_common.rs"]
 mod common;
 #[path = "adv_sync_robust_common.rs"]

@@ -1708,6 +1708,7 @@ fn connecting_again_waits_for_a_sync_another_engine_runs() {
 
 // ------------------------------------------------------------------ one bad file
 
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn unreadable_file_does_not_block_other_changes() {
     use std::os::unix::fs::PermissionsExt;
@@ -1953,6 +1954,7 @@ fn names_with_a_backslash_are_listed_as_not_synced() {
 
 /// A synced file that cannot be read is not mistaken for a deletion, and a
 /// remote edit of it waits until it can be read; nothing is lost.
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn unreadable_synced_file_is_not_pushed_as_deleted() {
     use std::os::unix::fs::PermissionsExt;
@@ -2095,6 +2097,7 @@ fn remote_changes_in_an_unreadable_folder_wait_and_the_rest_syncs() {
 /// empty vault folder), and the sync goes on for the rest, also after a
 /// restart. The scan's empty-vault check leaves out a vault with folders
 /// it cannot read (Vault::unreadable_folders, FINDING-049).
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows ignores the read-only flag on a folder.
 #[test]
 fn a_vault_whose_notes_are_all_in_an_unreadable_folder_still_syncs() {
     use std::os::unix::fs::PermissionsExt;

@@ -6,6 +6,9 @@
 //!
 //! Run: cargo test -p cairn-core --test adv_verify_fs_06
 
+// Symlinks need Developer Mode or admin rights on Windows.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::sync::Arc;

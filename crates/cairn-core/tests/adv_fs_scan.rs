@@ -12,6 +12,7 @@
 //!   cargo test -p cairn-core --test adv_fs_scan
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -39,6 +40,7 @@ fn open(p: &Path) -> Vault {
     try_open(p).unwrap()
 }
 
+#[cfg(unix)]
 fn chmod(p: &Path, mode: u32) {
     fs::set_permissions(p, fs::Permissions::from_mode(mode)).unwrap();
 }
@@ -64,6 +66,7 @@ fn is_renamed(c: &Change) -> bool {
 // FINDING-049: one unreadable subfolder does not fail the whole scan
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn fs03_unreadable_subfolder_does_not_fail_open() {
     // A vault at the root of an ext4 USB stick has a root-owned 0700 lost+found.
@@ -77,6 +80,7 @@ fn fs03_unreadable_subfolder_does_not_fail_open() {
     assert!(r.unwrap().index().note("ok.md").is_some());
 }
 
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn fs03_unreadable_subfolder_does_not_fail_rescan() {
     let (d, v) = setup(&[("ok.md", "fine"), ("private/x.md", "x")]);
@@ -89,6 +93,7 @@ fn fs03_unreadable_subfolder_does_not_fail_rescan() {
     assert!(hinted.is_ok(), "rescan_paths: {:?}", hinted.err());
 }
 
+#[cfg(unix)] // Made unreadable with Unix mode bits. Windows has only a read-only flag.
 #[test]
 fn unreadable_file_does_not_break_open_or_rescan() {
     let (d, v0) = setup(&[("ok.md", "fine"), ("secret.md", "s")]);
@@ -195,6 +200,7 @@ fn scan_survives_files_appearing_and_vanishing() {
 // FINDING-012: symlink loops
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn fs05_single_self_loop_adds_no_duplicates() {
     let d = tempfile::tempdir().unwrap();
@@ -206,6 +212,7 @@ fn fs05_single_self_loop_adds_no_duplicates() {
     assert_eq!((notes, hits), (1, 1), "one note became {notes} notes and {hits} search hits");
 }
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn a_symlink_loop_seen_by_the_watcher_adds_no_duplicates() {
     let (d, v) = setup(&[("n.md", "unique words"), ("a/m.md", "more words")]);
@@ -229,6 +236,7 @@ fn a_symlink_loop_seen_by_the_watcher_adds_no_duplicates() {
     assert_eq!(paths, vec!["a", "a/new.md", "n.md", "top.md"]);
 }
 
+#[cfg(unix)] // Symlinks need Developer Mode or admin rights on Windows.
 #[test]
 fn fs05_two_symlink_loops_do_not_hang_open() {
     if let Ok(dir) = std::env::var("ADV_FS_LOOP_CHILD") {

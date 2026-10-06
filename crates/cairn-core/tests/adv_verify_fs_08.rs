@@ -15,6 +15,9 @@
 //!
 //! Run: cargo test -p cairn-core --test adv_verify_fs_08 -- --nocapture
 
+// Symlinks need Developer Mode or admin rights on Windows, and the tests check Unix mode bits.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
