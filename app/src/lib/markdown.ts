@@ -62,7 +62,7 @@ function wikilinkPlugin(md: MD) {
       const ext = extension(resolved ?? target);
       if (resolved && IMAGE_EXTS.has(ext)) {
         const alt = alias && !/^\d+(x\d+)?$/.test(alias) ? alias : target;
-        return `<img class="embed-image" src="${escapeAttr(vaultUrl(resolved))}" alt="${escapeAttr(alt)}"${sizeAttrs(alias)}>`;
+        return `<img class="embed-image" src="${escapeAttr(vaultUrl(resolved))}" data-path="${escapeAttr(resolved)}" alt="${escapeAttr(alt)}"${sizeAttrs(alias)}>`;
       }
       if (resolved && AUDIO_EXTS.has(ext)) return `<audio class="embed-media" controls src="${escapeAttr(vaultUrl(resolved))}"></audio>`;
       if (resolved && VIDEO_EXTS.has(ext)) return `<video class="embed-media" controls src="${escapeAttr(vaultUrl(resolved))}"></video>`;
@@ -90,8 +90,11 @@ function wikilinkPlugin(md: MD) {
       const viaName = env?.links?.resolve(rel, env.sourcePath ?? "") ?? null;
       // The relative path only if that exact file exists (the vault://
       // handler reads exact paths), else what the core would resolve.
-      const path = direct && env?.links?.has(direct) ? direct : (viaName ?? direct);
+      const known = direct && env?.links?.has(direct) ? direct : viaName;
+      const path = known ?? direct;
       if (path) tok.attrSet("src", vaultUrl(path));
+      // A click in the reading view opens the image in an image tab.
+      if (known && IMAGE_EXTS.has(extension(known))) tok.attrSet("data-path", known);
     }
     return defaultImage(tokens, idx, opts, envAny, self);
   };
@@ -192,7 +195,7 @@ export function headingsOf(src: string): { level: number; text: string; line: nu
 }
 
 const PURIFY_OPTS = {
-  ADD_ATTR: ["data-href", "data-tag", "data-target", "data-subpath", "target"],
+  ADD_ATTR: ["data-href", "data-tag", "data-target", "data-subpath", "data-path", "target"],
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|vault):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   FORBID_TAGS: ["style", "script", "iframe", "form"],
 };

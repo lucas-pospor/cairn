@@ -42,9 +42,10 @@
     else if (e.key === "Home") to = 0;
     else if (e.key === "End") to = n - 1;
     else if (e.key === "Enter" || e.key === " ") {
-      // On the open tab, go back to its editor (as in the file tree).
+      // On the open tab, go back to its editor or image (as in the file tree).
       if (app.activeId !== tab.id) app.activate(tab);
       else if (tab.kind === "note" && tab.mode !== "preview") app.view?.focus();
+      else if (tab.kind === "image") app.imageFocus++;
     } else if (e.key === "Delete") void close(tab);
     else return;
     e.preventDefault();
@@ -56,7 +57,7 @@
   <div
     class="tabs"
     role="tablist"
-    aria-label="Open notes"
+    aria-label="Open files"
     bind:this={tabsEl}
     onfocusout={(e) => {
       if (!tabsEl.contains(e.relatedTarget as Node | null)) focused = null;

@@ -33,6 +33,7 @@ import { fillEmbeds } from "../embeds";
 import { trimLink, type LinkIndex } from "../links";
 import { FRONTMATTER_RE, renderMarkdownSync } from "../markdown";
 import { AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS, extension, parent, resolveRelative } from "../paths";
+import { embeddedImageAt } from "../opening";
 import type { LinkKind } from "../types";
 
 export interface LivePreviewHooks {
@@ -41,6 +42,8 @@ export interface LivePreviewHooks {
   notePath(): string;
   openLink(target: string, subpath: string | null, newTab: boolean, kind?: LinkKind): void;
   openUrl(url: string): void;
+  /** Open an image of the vault in an image tab. */
+  openImage(path: string): void;
 }
 
 export const livePreviewCompartment = new Compartment();
@@ -75,19 +78,31 @@ function inCode(node: SyntaxNode | null): boolean {
   return false;
 }
 
-function resolveImage(src: string, hooks: LivePreviewHooks): string {
+/** The URL of an image source, and its vault path when it is a file of the vault. */
+function resolveImage(src: string, hooks: LivePreviewHooks): { url: string; path: string | null } {
   // As in the core, the part after '#' is not part of the path.
   let rel = src.split("#")[0];
-  if (!rel || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;
+  if (!rel || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return { url: src, path: null };
   try {
     rel = decodeURIComponent(rel);
   } catch {}
   const idx = hooks.linkIndex();
   const note = hooks.notePath();
   const direct = resolveRelative(parent(note), rel);
-  if (direct && idx?.has(direct)) return vaultUrl(direct);
-  const viaName = idx?.resolve(rel, note);
-  return vaultUrl(viaName ?? direct ?? rel);
+  if (direct && idx?.has(direct)) return { url: vaultUrl(direct), path: direct };
+  const viaName = idx?.resolve(rel, note) ?? null;
+  return { url: vaultUrl(viaName ?? direct ?? rel), path: viaName };
+}
+
+/**
+ * The vault path of the image a mousedown asks to open: a Ctrl/Cmd+click or
+ * a middle click on an image of the vault that is not inside a link. A plain
+ * click puts the cursor on the image's line instead, to edit it.
+ */
+function imageToOpen(e: Event): string | null {
+  if (!(e instanceof MouseEvent)) return null;
+  if (e.button !== 1 && !(e.button === 0 && (isMac ? e.metaKey : e.ctrlKey))) return null;
+  return embeddedImageAt(e.target);
 }
 
 /**
@@ -98,7 +113,7 @@ function resolveImage(src: string, hooks: LivePreviewHooks): string {
  */
 function revealOnMousedown(dom: HTMLElement, view: EditorView, skip = 0) {
   dom.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("a, audio, video")) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest("a, audio, video") || imageToOpen(e)) return;
     e.preventDefault();
     const doc = view.state.doc;
     const first = doc.lineAt(view.posAtDOM(dom)).number;
@@ -162,11 +177,13 @@ class ImageWidget extends WidgetType {
     readonly alt: string,
     readonly width: string | null,
     readonly block: boolean,
+    /** Vault path of the file, if it is one: Ctrl/Cmd+click opens it in an image tab. */
+    readonly path: string | null = null,
   ) {
     super();
   }
   eq(o: ImageWidget) {
-    return o.src === this.src && o.alt === this.alt && o.width === this.width && o.block === this.block;
+    return o.src === this.src && o.alt === this.alt && o.width === this.width && o.block === this.block && o.path === this.path;
   }
   toDOM() {
     const wrap = document.createElement(this.block ? "div" : "span");
@@ -181,6 +198,7 @@ class ImageWidget extends WidgetType {
       const img = document.createElement("img");
       img.src = this.src;
       img.alt = this.alt;
+      if (this.path) img.dataset.path = this.path;
       if (this.width) img.width = Number(this.width);
       img.onerror = () => {
         wrap.classList.add("is-broken");
@@ -261,9 +279,9 @@ class EmbedWidget extends WidgetType {
     return 120;
   }
   ignoreEvent(e: Event) {
-    // Let clicks on links inside the embed reach our handler; the listener
-    // added in toDOM handles the rest.
-    return !(e.target instanceof HTMLElement && e.target.closest("a"));
+    // Let clicks on links inside the embed, and on images to open, reach our
+    // handler; the listener added in toDOM handles the rest.
+    return !((e.target instanceof HTMLElement && e.target.closest("a")) || imageToOpen(e));
   }
 }
 
@@ -287,9 +305,9 @@ class HtmlBlockWidget extends WidgetType {
     return d;
   }
   ignoreEvent(e: Event) {
-    // Let events on links (in tables) reach the clicks() handler; the
-    // listener above handles the rest.
-    return !(e.target instanceof HTMLElement && e.target.closest("a"));
+    // Let events on links (in tables) and on images to open reach the
+    // clicks() handler; the listener above handles the rest.
+    return !((e.target instanceof HTMLElement && e.target.closest("a")) || imageToOpen(e));
   }
 }
 
@@ -400,7 +418,7 @@ function buildInline(view: EditorView, hooks: LivePreviewHooks): DecorationSet {
             const line = state.doc.lineAt(n.from);
             if (state.sliceDoc(line.from, line.to).trim() === text.trim()) return false; // block field
             const src = resolveImage(state.sliceDoc(url.from, url.to).replace(/^<|>$/g, ""), hooks);
-            decos.push(Decoration.replace({ widget: new ImageWidget(src, alt, null, false) }).range(n.from, n.to));
+            decos.push(Decoration.replace({ widget: new ImageWidget(src.url, alt, null, false, src.path) }).range(n.from, n.to));
             return false;
           }
           case "Link": {
@@ -472,7 +490,7 @@ function buildInline(view: EditorView, hooks: LivePreviewHooks): DecorationSet {
         const resolved = hooks.linkIndex()?.resolve(target, hooks.notePath());
         if (resolved && IMAGE_EXTS.has(extension(resolved))) {
           const width = alias && /^\d+(x\d+)?$/.test(alias) ? alias.split("x")[0] : null;
-          decos.push(Decoration.replace({ widget: new ImageWidget(vaultUrl(resolved), target, width, false) }).range(start, end));
+          decos.push(Decoration.replace({ widget: new ImageWidget(vaultUrl(resolved), target, width, false, resolved) }).range(start, end));
           continue;
         }
       }
@@ -602,7 +620,7 @@ function blocksIn(
       let widget: WidgetType;
       if (resolved && (IMAGE_EXTS.has(ext) || AUDIO_EXTS.has(ext) || VIDEO_EXTS.has(ext))) {
         const width = alias && /^\d+(x\d+)?$/.test(alias) ? alias.split("x")[0] : null;
-        widget = new ImageWidget(vaultUrl(resolved), target, width, true);
+        widget = new ImageWidget(vaultUrl(resolved), target, width, true, IMAGE_EXTS.has(ext) ? resolved : null);
       } else {
         widget = new EmbedWidget(target, sub, hooks.notePath(), hooks, state.field(embedVersion, false) ?? 0);
       }
@@ -613,12 +631,8 @@ function blocksIn(
     if (img) {
       const [alt, w] = img[1].split("|");
       const width = w && /^\d+$/.test(w) ? w : null;
-      decos.push(
-        Decoration.replace({ widget: new ImageWidget(resolveImage(img[2], hooks), alt, width, true), block: true }).range(
-          line.from,
-          line.to,
-        ),
-      );
+      const src = resolveImage(img[2], hooks);
+      decos.push(Decoration.replace({ widget: new ImageWidget(src.url, alt, width, true, src.path), block: true }).range(line.from, line.to));
     }
   }
 }
@@ -1027,6 +1041,12 @@ function clicks(hooks: LivePreviewHooks): Extension {
   return EditorView.domEventHandlers({
     mousedown(e, view) {
       const el = e.target as HTMLElement;
+      const image = imageToOpen(e);
+      if (image) {
+        e.preventDefault();
+        hooks.openImage(image);
+        return true;
+      }
       if (e.button !== 0) return false;
       const box = el.closest(".cm-lp-task") as HTMLInputElement | null;
       if (box) {

@@ -53,6 +53,8 @@ export interface EditorHooks {
   files(): string[];
   openLink(target: string, subpath: string | null, newTab: boolean, kind?: LinkKind): void;
   openUrl(url: string): void;
+  /** Open an image embedded in the note (its vault path) in an image tab. */
+  openImage(path: string): void;
   docChanged(view: EditorView): void;
   /** The selection changed, and it or the one before was not empty (the status bar counts it). */
   selectionChanged(): void;
@@ -363,6 +365,7 @@ export function livePreviewExtension(hooks: EditorHooks): Extension {
     notePath: hooks.notePath,
     openLink: hooks.openLink,
     openUrl: hooks.openUrl,
+    openImage: hooks.openImage,
   });
 }
 

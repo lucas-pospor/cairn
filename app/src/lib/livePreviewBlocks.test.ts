@@ -22,6 +22,7 @@ const hooks = {
   notePath: () => "Note.md",
   openLink: () => {},
   openUrl: () => {},
+  openImage: () => {},
 };
 
 // The editor parses for a set time (20 ms) per update and leaves the rest to

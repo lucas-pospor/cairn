@@ -108,22 +108,35 @@ async function toWelcome() {
 
 // ---------------------------------------------------------------------------
 
-test("FINDING-119: clicking an attachment in the tree hands it to the system's default app (no 'is not supported yet' message)", async () => {
+test("FINDING-119: clicking an attachment in the tree hands it to the system's default app (no 'is not supported yet' message); an image opens in a tab of its own, and its menu still offers the default app", async () => {
   await app.reset();
   fs.rmSync(launched, { force: true });
+  fs.writeFileSync(app.p("doc.pdf"), "%PDF-1.4\n%%EOF\n");
+  await app.s.waitFor(`return !!document.querySelector('[data-testid=tree-row][data-path="doc.pdf"]')`, { timeout: 8000, message: "doc.pdf listed" });
+  const launches = () => (fs.existsSync(launched) ? fs.readFileSync(launched, "utf8").trim().split("\n").filter(Boolean) : []);
+  await app.exec(`document.querySelector('[data-testid=tree-row][data-path="doc.pdf"]').click(); return 1`);
+  const opened = await eventually(() => launches()[0], { timeout: 3000, message: "doc.pdf handed to xdg-open" }).catch(() => "");
   await app.exec(`document.querySelector('[data-testid=tree-row][data-path="pic.png"]').click(); return 1`);
-  const opened = await eventually(() => fs.existsSync(launched) && fs.readFileSync(launched, "utf8").trim(), { timeout: 3000, message: "pic.png handed to xdg-open" }).catch(() => "");
-  const msg = await app.exec(`return [...document.querySelectorAll('.toast')].map(t => t.textContent.trim()).filter(t => t.includes('pic.png')).join(' | ')`);
+  const image = await eventually(
+    () => app.exec(`const i = document.querySelector('[data-testid=image-view] img'); return i?.complete && i.naturalWidth === 32 && document.querySelector('[data-testid=tab][aria-selected=true]')?.dataset.path`),
+    { timeout: 5000, message: "pic.png shown in a tab" },
+  ).catch(() => null);
+  const msg = await app.exec(`return [...document.querySelectorAll('.toast')].map(t => t.textContent.trim()).filter(t => /pic\.png|doc\.pdf/.test(t)).join(' | ')`);
   const menu = await app.exec(`
     const r = document.querySelector('[data-testid=tree-row][data-path="pic.png"]'); const b = r.getBoundingClientRect();
     r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: b.x + 20, clientY: b.y + 5 }));
     return [...document.querySelectorAll('[role=menuitem]')].map(m => m.textContent.trim());`);
-  await app.keys(K.esc);
+  await app.exec(`[...document.querySelectorAll('[role=menuitem]')].find(m => m.textContent.trim() === 'Open in default app')?.click(); return 1`);
+  const fromMenu = await eventually(() => launches()[1], { timeout: 3000, message: "pic.png handed to xdg-open from its menu" }).catch(() => "");
   log("toast", msg);
-  log("opened externally", opened);
+  log("opened externally", launches());
   log("context menu for pic.png", menu);
   assert.doesNotMatch(msg, /not supported yet/, "README (v2): 'Attachments in the tree open in the system's default app.' app.openAttachment exists and is used for links");
-  assert.ok(opened && fs.realpathSync(opened) === fs.realpathSync(app.p("pic.png")), "clicking the attachment did not hand it to the system's default app");
+  assert.ok(opened && fs.realpathSync(opened) === fs.realpathSync(app.p("doc.pdf")), "clicking the attachment did not hand it to the system's default app");
+  assert.equal(image, "pic.png", "clicking the image did not show it in a tab");
+  assert.deepEqual(menu.slice(0, 2), ["Open in new tab", "Open in default app"]);
+  assert.ok(fromMenu && fs.realpathSync(fromMenu) === fs.realpathSync(app.p("pic.png")), "Open in default app did not hand the image to the system's default app");
+  fs.rmSync(app.p("doc.pdf"));
 });
 
 test("FINDING-120: a failed save shows a plain message, not the raw OS error ('Permission denied (os error 13)')", async () => {

@@ -6,6 +6,7 @@
   import { livePreviewCompartment } from "../editor/livePreview";
   import Preview from "./Preview.svelte";
   import GraphView from "./GraphView.svelte";
+  import ImageView from "./ImageView.svelte";
   import MobileToolbar from "./MobileToolbar.svelte";
 
   let host: HTMLDivElement;
@@ -83,10 +84,14 @@
     </div>
   {/if}
 
-  <div class="body mode-{app.active?.kind === 'graph' ? 'graph' : (app.active?.mode ?? 'none')}">
+  <div class="body mode-{app.active?.kind === 'note' ? app.active.mode : (app.active?.kind ?? 'none')}">
     <div class="editor" bind:this={host} data-testid="editor"></div>
     {#if app.active?.kind === "graph"}
       <div class="preview-wrap"><GraphView /></div>
+    {:else if app.active?.kind === "image"}
+      {#key app.active.id}
+        <div class="preview-wrap"><ImageView tab={app.active} /></div>
+      {/key}
     {:else if app.active && !app.active.loading && (app.active.mode === "preview" || app.active.mode === "split")}
       <div class="preview-wrap">
         <Preview tab={app.active} />
@@ -158,6 +163,7 @@
   }
   .mode-preview .editor,
   .mode-graph .editor,
+  .mode-image .editor,
   .mode-none .editor {
     display: none;
   }

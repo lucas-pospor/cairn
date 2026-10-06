@@ -4,14 +4,15 @@ import { EditorState } from "@codemirror/state";
 import { isolateHistory } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
-import { SvelteSet } from "svelte/reactivity";
-import { backend } from "./backend";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import { backend, vaultUrl } from "./backend";
 import { LinkIndex } from "./links";
 import { FRONTMATTER_RE, headingsOf } from "./markdown";
 import { buildTree } from "./tree";
 import { noteExtensions, livePreviewExtension, diskChange, refreshLinks, linkAtCursor, type EditorHooks } from "./editor/setup";
 import { refreshEmbeds } from "./editor/livePreview";
-import { displayName, isInside, isMarkdown, isSameOrInside, join, parent, rebase, fileName, resolveRelative } from "./paths";
+import { displayName, isImage, isInside, isMarkdown, isSameOrInside, join, parent, rebase, fileName, resolveRelative } from "./paths";
+import { openTarget } from "./opening";
 import { errorMessage, isCoreError, type Change, type FileStat, type LinkKind, type SyncStatus, type VaultInfo } from "./types";
 import { settings } from "./settings.svelte";
 import { commands, displayCombo, isMac as macPlatform } from "./commands";
@@ -29,7 +30,7 @@ const AUTOSAVE_MS = 600;
 const MAX_TOASTS = 5;
 let nextTabId = 1;
 
-export type TabKind = "note" | "graph";
+export type TabKind = "note" | "graph" | "image";
 
 export class Tab {
   readonly id = nextTabId++;
@@ -54,13 +55,15 @@ export class Tab {
   scrollTop = 0;
   /** Line to reveal once the note is shown. */
   revealLine: number | null = null;
+  /** Image tabs: shown at its own size rather than fitted to the tab. */
+  actualSize = $state(false);
 
   constructor(path: string, kind: TabKind = "note") {
     this.path = path;
     this.kind = kind;
     this.mode = settings.value.defaultMode;
     if (this.mode !== "preview") this.editMode = this.mode;
-    if (kind === "graph") this.loading = false;
+    if (kind !== "note") this.loading = false;
   }
 
   get title() {
@@ -114,6 +117,17 @@ class App {
   docSeq = $state(0);
   /** Bumped when the editor's selection changes and there is one (for the word count). */
   selSeq = $state(0);
+  /** Bumped to ask the image view for the keyboard focus. */
+  imageFocus = $state(0);
+  /** For each image file changed since the vault opened, the number of that change (see imageSrc). */
+  private imageChanges = new SvelteMap<string, number>();
+  private imageChangeCount = 0;
+  /**
+   * Counts vault openings and folder moves: the same path in another vault
+   * is another file, and so is a path a folder was moved onto (the core
+   * reports only the folder).
+   */
+  private imageEpoch = $state(0);
   recent = $state<string[]>([]);
   private syncState = $state<SyncStatus | null>(null);
   /**
@@ -135,15 +149,16 @@ class App {
   readonly plugins = new PluginHost({
     notePaths: () => this.filePaths.filter((p) => isMarkdown(p)),
     activePath: () => (this.active?.kind === "note" ? this.active.path : null),
+    // Only the note on screen: the editor keeps the last note while an image or the graph is shown.
     getSelection: () => {
       const v = this.view;
-      if (!v || !this.viewTab) return null;
+      if (!v || !this.viewTab || this.viewTab !== this.active) return null;
       const r = v.state.selection.main;
       return v.state.sliceDoc(r.from, r.to);
     },
     replaceSelection: (text) => {
       const v = this.view;
-      if (!v || !this.viewTab || this.viewTab.mode === "preview") return false;
+      if (!v || !this.viewTab || this.viewTab !== this.active || this.viewTab.mode === "preview") return false;
       v.dispatch(v.state.replaceSelection(text));
       return true;
     },
@@ -213,6 +228,7 @@ class App {
       files: () => this.filePaths,
       openLink: (target, subpath, newTab, kind) => this.openLink(target, subpath, newTab, kind),
       openUrl: (url) => this.openUrl(url),
+      openImage: (path) => this.openEmbeddedImage(path),
       docChanged: () => this.onEdit(),
       selectionChanged: () => void this.selSeq++,
       notePath: () => this.viewTab?.path ?? "",
@@ -294,6 +310,8 @@ class App {
       this.syncSetup = null;
       this.entries = info.entries;
       this.expanded.clear();
+      this.imageChanges.clear();
+      this.imageEpoch++;
       await settings.load();
       commands.setOverrides(settings.value.hotkeys);
       this.sync = await backend.syncStatus().catch(() => null);
@@ -387,9 +405,11 @@ class App {
   saveSession() {
     const key = this.sessionKey();
     if (!key) return;
+    // Image tabs are not kept: Cairn 1.0.0 and 1.1.0 would open them as notes.
+    const kept = this.tabs.filter((t) => t.kind !== "image");
     const data = {
-      tabs: this.tabs.map((t) => ({ path: t.path, mode: t.mode, kind: t.kind })),
-      active: this.active?.path ?? null,
+      tabs: kept.map((t) => ({ path: t.path, mode: t.mode, kind: t.kind })),
+      active: this.active && kept.includes(this.active) ? this.active.path : null,
       expanded: [...this.expanded],
     };
     try {
@@ -417,7 +437,9 @@ class App {
           this.tabs.push(new Tab("", "graph"));
           continue;
         }
-        if (!exists.has(t.path)) continue;
+        // A kind this version does not know, and images (a note tab whose
+        // file was renamed to one), are left out.
+        if ((t.kind && t.kind !== "note") || !exists.has(t.path) || isImage(t.path)) continue;
         const tab = new Tab(t.path);
         tab.mode = t.mode ?? settings.value.defaultMode;
         if (tab.mode === "live" || tab.mode === "source") tab.editMode = tab.mode;
@@ -436,9 +458,16 @@ class App {
   private handleChanges(changes: Change[]) {
     for (const c of changes) {
       if (c.type === "renamed") {
-        if (c.entry.kind === "file") this.fileIsBack(c.entry.path);
-        for (const t of this.tabs) {
-          if (isSameOrInside(t.path, c.from)) t.path = rebase(t.path, c.from, c.entry.path);
+        if (c.entry.kind === "file") {
+          this.fileIsBack(c.entry.path);
+          // A file moved over an open image.
+          this.imageChanged(c.entry.path);
+        } else this.imageEpoch++;
+        for (const t of [...this.tabs]) {
+          if (!isSameOrInside(t.path, c.from)) continue;
+          t.path = rebase(t.path, c.from, c.entry.path);
+          // Renamed to a name that is not an image's (it is never dirty).
+          if (t.kind === "image" && !isImage(t.path)) this.closeTab(t, { skipSave: true });
         }
         for (const d of [...this.expanded]) {
           if (isSameOrInside(d, c.from)) {
@@ -453,17 +482,22 @@ class App {
           else this.closeTab(t, { skipSave: true });
         }
       } else if (c.type === "created") {
-        if (c.entry.kind === "file") this.fileIsBack(c.entry.path);
+        if (c.entry.kind === "file") {
+          this.fileIsBack(c.entry.path);
+          this.imageChanged(c.entry.path);
+        } else this.imageEpoch++;
       } else if (c.type === "modified") {
-        const t = this.tabs.find((x) => x.path === c.entry.path);
+        const t = this.tabs.find((x) => x.kind === "note" && x.path === c.entry.path);
         if (t && !t.dirty && !t.saving && !t.loading) void this.reloadIfChanged(t);
+        this.imageChanged(c.entry.path);
       }
     }
     // Content edits do not change the file list; only structural changes
-    // need a refetch (which rebuilds the tree and link index). The flag
+    // need a refetch (which rebuilds the tree and link index). An image's
+    // new size is shown in its tab, so a changed image counts too. The flag
     // outlives the timer it was set for, so a content-only batch that
     // follows within 60 ms does not drop the refetch.
-    if (changes.some((c) => c.type !== "modified")) this.refreshStructural = true;
+    if (changes.some((c) => c.type !== "modified" || isImage(c.entry.path))) this.refreshStructural = true;
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
       if (this.refreshStructural) {
@@ -482,6 +516,20 @@ class App {
    */
   private fileIsBack(path: string) {
     for (const t of this.tabs) if (t.conflict === "deleted" && t.path === path && !t.saving) t.conflict = "changed";
+  }
+
+  /** The file at `path` changed on disk: an image tab showing it, now or later, loads it again (see imageSrc). */
+  private imageChanged(path: string) {
+    if (isImage(path)) this.imageChanges.set(path, ++this.imageChangeCount);
+  }
+
+  /**
+   * The URL an image tab loads `path` from. It changes with each change to
+   * the file: the web view keeps images it has shown in memory by URL, and
+   * would show the old picture again.
+   */
+  imageSrc(path: string): string {
+    return `${vaultUrl(path)}?v=${this.imageEpoch}.${this.imageChanges.get(path) ?? 0}`;
   }
 
   private async refreshEntries() {
@@ -571,9 +619,18 @@ class App {
     }
   }
 
-  /** Open a note. Replaces the active tab unless `newTab` (or no tab is open). */
+  /**
+   * Open a file of the vault: a note or an image in a tab (it replaces the
+   * active tab of the same kind unless `newTab`), anything else in the
+   * system's default app (see openTarget).
+   */
   async openNote(path: string, opts: { newTab?: boolean; line?: number; heading?: string | null } = {}) {
-    if (!isMarkdown(path)) {
+    const target = openTarget(path, isMobile);
+    if (target === "image") {
+      this.openImage(path, opts.newTab);
+      return;
+    }
+    if (target !== "note") {
       await this.openAttachment(path);
       return;
     }
@@ -875,8 +932,7 @@ class App {
     }
     const resolved = await backend.resolveLink(target, source, kind);
     if (resolved) {
-      if (isMarkdown(resolved)) await this.openNote(resolved, { newTab, heading: subpath });
-      else await this.openAttachment(resolved);
+      await this.openNote(resolved, { newTab, heading: subpath });
       return;
     }
     // Broken link: create the note, like Obsidian does. ./ and ../ are
@@ -902,6 +958,39 @@ class App {
   }
 
   // ---------- attachments ----------
+
+  /**
+   * Show an image in an image tab: the one already showing it, else the
+   * active tab if it is an image tab (unless `newTab`), else a new tab.
+   */
+  openImage(path: string, newTab = false) {
+    let tab = this.tabs.find((t) => t.kind === "image" && t.path === path);
+    if (!tab) {
+      const current = this.active;
+      if (current?.kind === "image" && !newTab) {
+        current.path = path;
+        current.actualSize = false;
+        tab = current;
+      } else {
+        tab = new Tab(path, "image");
+        this.tabs.push(tab);
+      }
+    }
+    this.activate(tab);
+    // Small screen: close the drawer the image was chosen from.
+    if (this.narrow) this.leftOpen = this.rightOpen = false;
+    this.imageFocus++;
+  }
+
+  /**
+   * Open an image embedded in a note: clicked in the reading view, or
+   * Ctrl/Cmd+clicked or middle-clicked in Live Preview. Raw HTML in a note
+   * can set the path too, so only an image of this vault opens.
+   */
+  openEmbeddedImage(path: string, newTab = false) {
+    if (!isImage(path) || !this.entries.some((e) => e.kind === "file" && e.path === path)) return;
+    this.openImage(path, newTab);
+  }
 
   /** Open a non-note file with the system's default app. */
   async openAttachment(path: string) {
@@ -975,7 +1064,7 @@ class App {
       return false;
     }
     if (link.kind === "url") void this.openUrl(link.url);
-    else void this.openLink(link.target, link.subpath);
+    else void this.openLink(link.target, link.subpath, false, link.kind);
     return true;
   }
 
@@ -1221,8 +1310,11 @@ class App {
     // Called from both Enter and blur; only the first call counts.
     if (this.renaming !== from) return;
     this.renaming = null;
-    // Back to the editor; on a small screen the drawer stays open over it and the tree keeps focus.
-    if (!this.narrow) queueMicrotask(() => this.view?.focus());
+    // Back to the editor or the image; on a small screen the drawer stays open over it and the tree keeps focus.
+    if (!this.narrow) {
+      if (this.active?.kind === "image") this.imageFocus++;
+      else queueMicrotask(() => this.view?.focus());
+    }
     const entry = this.entries.find((e) => e.path === from);
     if (!entry) return;
     let name = newName.trim();

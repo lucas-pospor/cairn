@@ -3,6 +3,7 @@
   import { tick } from "svelte";
   import { renderMarkdown } from "../markdown";
   import { fillEmbeds } from "../embeds";
+  import { embeddedImageAt } from "../opening";
 
   let { tab }: { tab: Tab } = $props();
   let html = $state("");
@@ -32,6 +33,12 @@
   });
 
   function onClick(e: MouseEvent) {
+    // An image of the vault (not inside a link) opens in an image tab.
+    const image = embeddedImageAt(e.target);
+    if (image) {
+      app.openEmbeddedImage(image, app.isMac ? e.metaKey : e.ctrlKey);
+      return;
+    }
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
     e.preventDefault();
@@ -58,7 +65,18 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="preview" onclick={onClick} data-testid="preview">
+<div
+  class="preview"
+  onclick={onClick}
+  onauxclick={(e) => {
+    const image = e.button === 1 ? embeddedImageAt(e.target) : null;
+    if (image) {
+      e.preventDefault();
+      app.openEmbeddedImage(image, true);
+    }
+  }}
+  data-testid="preview"
+>
   <article class="md-render" bind:this={article}>{@html html}</article>
 </div>
 
@@ -73,5 +91,11 @@
     max-width: var(--line-width);
     margin: 0 auto;
     padding: 28px 32px 30vh;
+  }
+  .preview :global(img[data-path]) {
+    cursor: zoom-in;
+  }
+  .preview :global(a img[data-path]) {
+    cursor: pointer;
   }
 </style>

@@ -3,7 +3,7 @@
   import { closeOnBack } from "../back";
   import fuzzysort from "fuzzysort";
   import { app } from "../app.svelte";
-  import { displayName, isMarkdown, parent } from "../paths";
+  import { displayName, isImage, isMarkdown, parent } from "../paths";
   import { modal } from "../modal";
   import { switcherStep } from "../overlayKeys";
 
@@ -12,15 +12,17 @@
   let input: HTMLInputElement;
   let list: HTMLDivElement | undefined = $state();
 
-  // Prepared once per open; fuzzysort caches the preparation.
-  const notes = app.entries
-    .filter((e) => e.kind === "file" && isMarkdown(e.path))
+  // Notes and images (they open in a tab). Prepared once per open; fuzzysort caches the preparation.
+  const files = app.entries
+    .filter((e) => e.kind === "file" && (isMarkdown(e.path) || isImage(e.path)))
     .map((e) => ({ path: e.path, name: displayName(e.path), mtime: e.mtime }));
-  const recentFirst = [...notes].sort((a, b) => b.mtime - a.mtime);
+  // Before anything is typed: the recent notes only, so that a batch of new
+  // images (a camera folder, a sync) does not push them out.
+  const recentFirst = files.filter((f) => isMarkdown(f.path)).sort((a, b) => b.mtime - a.mtime);
 
   let results = $derived(
     query.trim()
-      ? fuzzysort.go(query.trim(), notes, { keys: ["name", "path"], limit: 60 }).map((r) => r.obj)
+      ? fuzzysort.go(query.trim(), files, { keys: ["name", "path"], limit: 60 }).map((r) => r.obj)
       : recentFirst.slice(0, 60),
   );
   let exact = $derived(results.some((r) => r.name.toLowerCase() === query.trim().toLowerCase()));
@@ -106,7 +108,7 @@
       onkeydown={onKey}
       data-testid="switcher-input"
     />
-    <div class="list" bind:this={list} id="{uid}-list" role="listbox" aria-label="Notes">
+    <div class="list" bind:this={list} id="{uid}-list" role="listbox" aria-label="Notes and images">
       {#each results as r, i (r.path)}
         <button
           class="item"

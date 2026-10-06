@@ -1,5 +1,24 @@
 # Release notes
 
+## Unreleased
+
+### Images open in a tab
+
+Images (PNG, JPEG, GIF, WebP, AVIF, SVG, BMP and ICO) now open in a tab inside Cairn instead of the system's image viewer, on the desktop and on Android. They open from the file tree, the quick switcher (once you type; before that it still lists recent notes only), a link, search, and a click on an image embedded in a note in the reading view. In Live Preview, where a plain click puts the cursor on the embed to edit it, Ctrl+click or a middle click opens the image.
+
+- The tab fits the image to its size. Actual size, or a click on the image, shows it pixel for pixel, and the arrow keys scroll it.
+- An SVG is shown only as an image, so scripts in it never run.
+- The tab loads the image again when it changes on disk, follows it when it is renamed or moved, and closes when it is deleted.
+- Search lists images whose name or folder matches the words, under the notes. A query with a tag or a quoted phrase lists none.
+- The right sidebar lists the notes that link to the image.
+- On the desktop, Open in default app in the tab, and in the file tree's menu, still hands an image to the system's viewer, and other attachments open there as before. On Android, other attachments still cannot be opened in other apps.
+- Image tabs are not reopened when Cairn starts again. The saved session keeps the format of 1.1.0, so 1.0.0 and 1.1.0 still restore the other tabs from it.
+
+### Fixes
+
+- Alt+Enter on a Markdown link (`[text](path)`) finds the file relative to the note, as a click does.
+- A plugin's `editor.getSelection` and `editor.replaceSelection` work only while a note is shown. Before, with the graph open, they read and changed the note last shown behind it.
+
 ## 1.1.0 (2026-10-06)
 
 ### Core plugins

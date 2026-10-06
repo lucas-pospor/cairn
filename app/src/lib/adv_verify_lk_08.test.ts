@@ -24,6 +24,7 @@ const hooks = {
   notePath: () => "Note.md",
   openLink: () => {},
   openUrl: () => {},
+  openImage: () => {},
 };
 
 /** Live Preview: does the properties box replace the top of the note, and up to which offset? */

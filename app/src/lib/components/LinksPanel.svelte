@@ -11,8 +11,12 @@
   let outgoing = $state<OutgoingLink[]>([]);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  // A note, or an image: the notes that link to it or embed it.
+  let linked = $derived(app.active?.kind === "note" || app.active?.kind === "image" ? app.active : null);
+
   $effect(() => {
-    const path = app.active?.kind === "note" ? app.active.path : null;
+    const path = linked?.path ?? null;
+    const note = linked?.kind === "note";
     void app.changeSeq;
     clearTimeout(timer);
     if (!path) {
@@ -23,7 +27,9 @@
     }
     timer = setTimeout(async () => {
       try {
-        const [b, o, i] = await Promise.all([backend.backlinks(path), backend.outgoingLinks(path), backend.noteInfo(path)]);
+        const [b, o, i]: [Backlinks[], OutgoingLink[], NoteInfo | null] = note
+          ? await Promise.all([backend.backlinks(path), backend.outgoingLinks(path), backend.noteInfo(path)])
+          : [await backend.backlinks(path), [], null];
         if (app.active?.path === path) {
           backlinks = b;
           outgoing = o;
@@ -65,7 +71,9 @@
 {:else if tab === "properties"}
   <div class="panel" data-testid="properties">
     <h2 class="head">Properties</h2>
-    {#if info?.frontmatter && Object.keys(info.frontmatter).length}
+    {#if app.active?.kind !== "note"}
+      <p class="muted pad">Open a note to see its properties.</p>
+    {:else if info?.frontmatter && Object.keys(info.frontmatter).length}
       {#each Object.entries(info.frontmatter) as [k, v]}
         <div class="prop">
           <span class="prop-key">{k}</span>
@@ -78,7 +86,9 @@
       <p class="muted pad">No frontmatter. Add a <code>---</code> block at the top of the note to set properties.</p>
     {/if}
     <h2 class="head out">Tags</h2>
-    {#if info?.tags.length}
+    {#if app.active?.kind !== "note"}
+      <p class="muted pad">Open a note to see its tags.</p>
+    {:else if info?.tags.length}
       <div class="tags">
         {#each info.tags as t}
           <button class="tag" onclick={() => ((app.searchQuery = tagQuery(t)), (app.leftPanel = "search"), (app.leftOpen = true))}>#{t}</button>
@@ -93,12 +103,12 @@
   <h2 class="head">
     <Icon name="link" size={14} />
     <span>Backlinks</span>
-    {#if app.active?.kind === "note"}<span class="count">{total}</span>{/if}
+    {#if linked}<span class="count">{total}</span>{/if}
   </h2>
-  {#if !app.active || app.active.kind !== "note"}
+  {#if !linked}
     <p class="muted pad">Open a note to see what links to it.</p>
   {:else if backlinks.length === 0}
-    <p class="muted pad">No other notes link to {app.active.title}.</p>
+    <p class="muted pad">{linked.kind === "image" ? "No notes link to" : "No other notes link to"} {linked.title}.</p>
   {:else}
     {#each backlinks as group (group.source)}
       <div class="group">

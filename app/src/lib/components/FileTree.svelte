@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from "../app.svelte";
   import { flatten, type TreeNode } from "../tree";
-  import { displayName, fileName, isInside, isMarkdown, parent } from "../paths";
+  import { displayName, fileName, isImage, isInside, isMarkdown, parent } from "../paths";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import Icon from "./Icon.svelte";
   import { backend } from "../backend";
@@ -97,15 +97,13 @@
     activate(node, app.isMac ? e.metaKey : e.ctrlKey);
   }
 
-  /** Click, Enter or Space on a row: open or close a folder, open a note. */
+  /** Click, Enter or Space on a row: open or close a folder, open a file (see openTarget). */
   function activate(node: TreeNode, newTab: boolean) {
     selected = node.path;
     if (node.kind === "dir") {
       toggle(node.path);
-    } else if (isMarkdown(node.path)) {
-      app.openNote(node.path, { newTab });
     } else {
-      app.openAttachment(node.path);
+      app.openNote(node.path, { newTab });
     }
   }
 
@@ -153,9 +151,10 @@
     const items: MenuItem[] = [];
     const dir = node ? (node.kind === "dir" ? node.path : parent(node.path)) : "";
     if (node) selected = node.path;
-    if (node?.kind === "file" && isMarkdown(node.path)) {
+    if (node?.kind === "file" && (isMarkdown(node.path) || isImage(node.path))) {
       items.push({ label: "Open in new tab", action: () => app.openNote(node.path, { newTab: true }) });
-    } else if (node?.kind === "file" && !app.isMobile) {
+    }
+    if (node?.kind === "file" && !isMarkdown(node.path) && !app.isMobile) {
       items.push({ label: "Open in default app", action: () => app.openAttachment(node.path) });
     }
     items.push({ label: "New note", action: () => app.newNote(dir), separatorBefore: items.length > 0 });

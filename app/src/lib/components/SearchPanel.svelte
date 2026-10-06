@@ -1,12 +1,23 @@
 <script lang="ts">
   import { app } from "../app.svelte";
   import { backend } from "../backend";
-  import { displayName, parent } from "../paths";
+  import { displayName, fileName, parent } from "../paths";
+  import { matchImages } from "../imageSearch";
   import type { SearchHit } from "../types";
 
+  const MAX_IMAGES = 100;
   let results = $state<SearchHit[]>([]);
+  /** Images whose path matches (search covers note text only). */
+  let images = $state<string[]>([]);
   let searching = $state(false);
   let elapsed = $state(0);
+  let counts = $derived(
+    [
+      results.length === 200 ? "200+ results" : results.length === 1 ? "1 result" : `${results.length} results`,
+      ...(images.length ? [images.length === MAX_IMAGES ? `${MAX_IMAGES}+ images` : images.length === 1 ? "1 image" : `${images.length} images`] : []),
+      `${elapsed.toFixed(0)} ms`,
+    ].join(" · "),
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   let gen = 0;
   /** The query the shown results belong to. */
@@ -20,6 +31,7 @@
     const my = ++gen;
     if (!q.trim()) {
       results = [];
+      images = [];
       searched = "";
       searching = false;
       return;
@@ -33,6 +45,7 @@
         const r = await backend.search(q, 200);
         if (my === gen) {
           results = r;
+          images = matchImages(app.filePaths, q, MAX_IMAGES);
           searched = q;
           elapsed = performance.now() - t0;
         }
@@ -52,12 +65,13 @@
     data-testid="search-input"
     onkeydown={(e) => {
       if (e.key === "Enter" && results[0]) app.openNote(results[0].path, { line: results[0].snippets[0]?.line });
+      else if (e.key === "Enter" && images[0]) app.openNote(images[0]);
     }}
   />
   <!-- Always present, so screen readers announce the counts as they change. -->
   <div class="meta muted" role="status">
     {#if app.searchQuery.trim()}
-      {#if searching && !results.length}Searching…{:else}{results.length === 200 ? "200+ results" : results.length === 1 ? "1 result" : `${results.length} results`} · {elapsed.toFixed(0)} ms{/if}
+      {#if searching && !results.length && !images.length}Searching…{:else}{counts}{/if}
     {/if}
   </div>
 </div>
@@ -75,7 +89,20 @@
       {/each}
     </div>
   {/each}
-  {#if app.searchQuery.trim() && !searching && !results.length}
+  {#if images.length}
+    <h2 class="group muted" id="search-images">Images</h2>
+    <div role="group" aria-labelledby="search-images">
+      {#each images as p (p)}
+        <div class="hit">
+          <button class="file" onclick={(e) => app.openNote(p, { newTab: app.isMac ? e.metaKey : e.ctrlKey })} data-testid="search-image">
+            <span class="name">{fileName(p)}</span>
+            {#if parent(p)}<span class="dir muted">{parent(p)}</span>{/if}
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+  {#if app.searchQuery.trim() && !searching && !results.length && !images.length}
     <p class="muted none">No matches.</p>
   {/if}
 </div>
@@ -134,5 +161,12 @@
   }
   .none {
     padding: 8px;
+  }
+  .group {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 12px 8px 4px;
   }
 </style>

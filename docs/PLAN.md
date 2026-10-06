@@ -350,7 +350,7 @@ Tests: 83 new Vitest tests (date formats and week numbers, template filling, not
 
 ## 9. Known limits
 
-These hold in version 1.1.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), and release APKs are signed with the project's release key (see the release notes).
+These hold in version 1.1.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), release APKs are signed with the project's release key (see the release notes), and after 1.1.0 Android shows images in a tab inside Cairn (see Android below).
 
 ### Files and links
 
@@ -362,6 +362,8 @@ These hold in version 1.1.0. Each FINDING number names the tests that reproduce 
 - Cairn does not save settings or snippets through a `.cairn` or `.cairn/snippets` folder that is a link out of the vault: it shows an error and writes nothing outside the vault. Reads still follow such links, `.cairn/plugins` included, so plugin code can come from outside the vault, though it still needs the user's approval (FINDING-013).
 - A hard-linked note is written in place after a temp copy, so a write that fails partway can leave its other names half written (FINDING-013).
 - Images in dot-folders do not render (FINDING-022).
+- Image tabs (after 1.1.0) are not reopened when Cairn starts again. Versions 1.0.0 and 1.1.0 open every tab of the saved session that is not the graph as a note, so the session keeps the format they read and they still restore the other tabs from it.
+- Search lists images by their path only, and a query with a tag or a quoted phrase lists none.
 - An external edit that keeps the size and mtime (`rsync -t`, `cp -p`, coarse FAT or SMB timestamps) is not picked up until the file changes again; a save from an open tab still compares the content (FINDING-046).
 - An external save that lands between Cairn's last check and its rename can be overwritten. In testing, none of 500 saves at a 50 ms cadence were overwritten, and about 2% were in a back-to-back stress test. This window is accepted as a known limit (FINDING-047).
 - On desktop, a save cut off by a crash leaves a hidden `.cairn-tmp-*` file next to the note (FINDING-177).
@@ -393,6 +395,7 @@ These hold in version 1.1.0. Each FINDING number names the tests that reproduce 
 - When another device moves some notes into a folder whose name differs only in case, the phone renames the whole folder, on every device (FINDING-034).
 - Shared folders have no atomic replace: a kill during a save can leave the new text followed by the end of the old, never a shorter file, and a kill during a move under a new name can leave the note under an intermediate name (FINDING-026, FINDING-033).
 - After a renderer crash, text typed within the autosave delay is lost (FINDING-176).
+- Cairn cannot open attachments other than images in other apps yet. Images open in a tab inside Cairn (after 1.1.0). An image in a shared folder is read whole through the Storage Access Framework before it shows, so a very large photo there takes a while to open.
 
 ### Plugins
 

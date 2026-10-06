@@ -145,7 +145,8 @@ describe("embeds and images", () => {
 
   it("renders image embeds as vault URLs with sizes", () => {
     const html = renderUnsafe("![[pic.png|200]] ![[Note]] ![[Note#Sec]]", { links: idx, sourcePath: "x.md" });
-    expect(html).toContain('<img class="embed-image" src="vault://localhost/img/pic.png" alt="pic.png" width="200">');
+    // data-path: a click in the reading view opens the image in an image tab.
+    expect(html).toContain('<img class="embed-image" src="vault://localhost/img/pic.png" data-path="img/pic.png" alt="pic.png" width="200">');
     expect(html).toContain('<span class="embed" data-target="Note" data-subpath=""></span>');
     expect(html).toContain('data-subpath="Sec"');
   });
@@ -154,6 +155,9 @@ describe("embeds and images", () => {
     const html = renderUnsafe("![a](local.png) ![b](https://e.com/x.png)", { links: idx, sourcePath: "a/b/n.md" });
     expect(html).toContain('src="vault://localhost/a/b/local.png"');
     expect(html).toContain('src="https://e.com/x.png"');
+    // Only the vault's own image can be opened in an image tab.
+    expect(html).toContain('data-path="a/b/local.png"');
+    expect(html.match(/data-path=/g)).toHaveLength(1);
   });
 
   it("extracts heading sections and blocks", () => {
