@@ -112,6 +112,8 @@ class App {
   changeSeq = $state(0);
   /** Bumped on every edit of the active document (for the preview). */
   docSeq = $state(0);
+  /** Bumped when the editor's selection changes and there is one (for the word count). */
+  selSeq = $state(0);
   recent = $state<string[]>([]);
   private syncState = $state<SyncStatus | null>(null);
   /**
@@ -212,6 +214,7 @@ class App {
       openLink: (target, subpath, newTab, kind) => this.openLink(target, subpath, newTab, kind),
       openUrl: (url) => this.openUrl(url),
       docChanged: () => this.onEdit(),
+      selectionChanged: () => void this.selSeq++,
       notePath: () => this.viewTab?.path ?? "",
       // The active tab, not viewTab: the view takes the new state before viewTab follows.
       noteTitle: () => (this.active?.kind === "note" ? this.active.title : ""),
@@ -529,6 +532,14 @@ class App {
 
   docOf(tab: Tab): string {
     return this.stateOf(tab)?.doc.toString() ?? "";
+  }
+
+  /** The text selected in a tab the editor shows (several ranges on lines of their own), or null when nothing is. */
+  selectionOf(tab: Tab): string | null {
+    if (this.viewTab !== tab || !this.view || tab.mode === "preview") return null;
+    const st = this.view.state;
+    const ranges = st.selection.ranges.filter((r) => !r.empty);
+    return ranges.length ? ranges.map((r) => st.sliceDoc(r.from, r.to)).join("\n") : null;
   }
 
   /** A tab's text as it is saved: with the note's own line breaks. */

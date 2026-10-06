@@ -54,6 +54,8 @@ export interface EditorHooks {
   openLink(target: string, subpath: string | null, newTab: boolean, kind?: LinkKind): void;
   openUrl(url: string): void;
   docChanged(view: EditorView): void;
+  /** The selection changed, and it or the one before was not empty (the status bar counts it). */
+  selectionChanged(): void;
   /** Vault path of the note in the editor. */
   notePath(): string;
   /** Title of the open note: the editor's accessible name. */
@@ -398,6 +400,7 @@ export function noteExtensions(hooks: EditorHooks): Extension[] {
     isMobile ? keepCursorInView() : [],
     EditorView.updateListener.of((u) => {
       if (u.docChanged && !u.transactions.every((tr) => tr.annotation(fromDisk))) hooks.docChanged(u.view);
+      if (u.selectionSet && [u.state, u.startState].some((s) => s.selection.ranges.some((r) => !r.empty))) hooks.selectionChanged();
     }),
   ];
 }

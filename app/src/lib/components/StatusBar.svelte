@@ -2,10 +2,13 @@
   import { app } from "../app.svelte";
   import Icon from "./Icon.svelte";
   import { commands } from "../commands";
+  import { countText } from "../wordCount";
 
   // Inert while a drawer covers it (small screens).
   let { inert = false }: { inert?: boolean } = $props();
-  let words = $state(0);
+  // Of the note, or of the selection while there is one.
+  let counts = $state({ words: 0, characters: 0, selected: false });
+  const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
   const skipped = $derived(app.sync?.skipped ?? []);
   const syncedLabel = $derived.by(() => {
@@ -20,16 +23,18 @@
 
   $effect(() => {
     void app.docSeq;
+    void app.selSeq;
     const tab = app.active;
     void tab?.loading;
+    void tab?.mode;
     clearTimeout(timer);
     timer = setTimeout(() => {
       if (!tab) {
-        words = 0;
+        counts = { words: 0, characters: 0, selected: false };
         return;
       }
-      const text = app.docOf(tab);
-      words = (text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? []).length;
+      const selection = app.selectionOf(tab);
+      counts = { ...countText(selection ?? app.docOf(tab)), selected: selection !== null };
     }, 250);
   });
 
@@ -55,7 +60,7 @@
 <footer class="status" {inert}>
   <button class="vault" title="Switch vault" aria-label="Switch vault (current: {app.vault?.name})" onclick={() => app.closeVault()}>
     <Icon name="vault" size={13} />
-    {app.vault?.name}
+    <span class="vault-name">{app.vault?.name}</span>
   </button>
   <span class="spacer"></span>
   {#if app.sync?.configured}
@@ -71,7 +76,9 @@
   {/if}
   <span class="sr-only" role="status" data-testid="sync-news">{syncNews}</span>
   {#if app.active?.kind === "note"}
-    <span>{words.toLocaleString()} {words === 1 ? "word" : "words"}</span>
+    <span class="count" data-testid="word-count"
+      >{plural(counts.words, "word", "words")} · {plural(counts.characters, "character", "characters")}{counts.selected ? " selected" : ""}</span
+    >
     <span class="save" data-testid="save-state">
       {#if app.active.conflict}
         <span class="warn">Not saved: conflict</span>
@@ -118,6 +125,16 @@
     min-height: 24px;
     padding: 2px 6px;
     border-radius: 5px;
+    /* On a narrow screen a long vault name gives way to the counts. */
+    min-width: 0;
+  }
+  .vault-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .count {
+    white-space: nowrap;
   }
   .vault:hover {
     background: var(--bg-hover);
