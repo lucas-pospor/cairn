@@ -219,11 +219,17 @@ fn fs08_planted_temp_symlink_does_not_redirect_write() {
 #[test]
 fn fs09_read_only_note_is_not_overwritten() {
     let (d, v) = setup(&[("ro.md", "read only")]);
-    chmod(&d.path().join("ro.md"), 0o444);
+    // Read-only on every platform: no write bits on Unix, the read-only
+    // flag on Windows.
+    let ro = d.path().join("ro.md");
+    let writable = fs::metadata(&ro).unwrap().permissions();
+    let mut read_only = writable.clone();
+    read_only.set_readonly(true);
+    fs::set_permissions(&ro, read_only).unwrap();
     let n = v.read_note("ro.md").unwrap();
     let r = v.write_note("ro.md", "overwritten", Some(&n.hash));
     let now = read(&d, "ro.md");
-    chmod(&d.path().join("ro.md"), 0o644);
+    fs::set_permissions(&ro, writable).unwrap();
     assert!(r.is_err(), "write to a read-only file succeeded");
     assert_eq!(now, "read only");
 }
