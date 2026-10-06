@@ -266,6 +266,42 @@ fn has_other_forms(name: &str) -> bool {
     !name.is_ascii() || name.contains(['K', ';', '`'])
 }
 
+/// True if `name` is one plain name in a path on this system, not a drive,
+/// a root or more than one name.
+fn is_one_name(name: &str) -> bool {
+    let mut parts = Path::new(name).components();
+    matches!((parts.next(), parts.next()), (Some(Component::Normal(_)), None))
+}
+
+/// The error for a name that Windows does not allow.
+fn not_on_windows(name: &str) -> CoreError {
+    CoreError::Io(format!("Windows does not allow the name \"{name}\"."))
+}
+
+/// On Windows, an error if an entry that is about to be made for vault path
+/// `path` at `abs`, or a folder on the way that is not there yet, has a name
+/// that Windows refuses or keeps for a device (see `vpath::windows_refuses`).
+/// An entry that has such a name already can still be read, saved, renamed
+/// and deleted, and a folder with such a name takes new entries. Other
+/// systems take these names, so sync on Windows lists such a file from
+/// another device as not synced.
+fn check_new_names(path: &str, abs: &Path) -> Result<()> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+    // `abs` and the folders above it go with the names of `path` from the
+    // last one back.
+    for (name, at) in path.rsplit('/').filter(|c| !c.is_empty()).zip(abs.ancestors()) {
+        if fs::symlink_metadata(at).is_ok() {
+            break;
+        }
+        if vpath::windows_refuses(name) {
+            return Err(not_on_windows(name));
+        }
+    }
+    Ok(())
+}
+
 /// Identity of a folder on disk, to tell a folder that leads back to one it
 /// is in.
 #[cfg(unix)]
@@ -393,12 +429,21 @@ impl StdFs {
     /// twin name. A component missing under its vault name is looked for
     /// under its other forms, without reading the folder. A component
     /// missing in every form (a new file) keeps its vault name.
-    fn abs(&self, p: &str) -> PathBuf {
+    ///
+    /// On Windows, a name that no file there has is refused: a ':' would
+    /// make it a drive, which the path would lead to instead of the vault,
+    /// or a stream of a file.
+    fn abs(&self, p: &str) -> Result<PathBuf> {
         let parts: Vec<&str> = p.split('/').filter(|c| !c.is_empty()).collect();
+        if cfg!(windows)
+            && let Some(c) = parts.iter().find(|c| vpath::windows_never_has(c) || !is_one_name(c))
+        {
+            return Err(not_on_windows(c));
+        }
         let mut out = self.root.clone();
         out.extend(&parts);
         if !parts.iter().any(|c| has_other_forms(c)) || fs::symlink_metadata(&out).is_ok() {
-            return out;
+            return Ok(out);
         }
         let mut out = self.root.clone();
         for (i, c) in parts.iter().enumerate() {
@@ -411,7 +456,7 @@ impl StdFs {
                 break;
             }
         }
-        out
+        Ok(out)
     }
 
     /// The name in folder `dir` (on disk) that vault name `name` stands for,
@@ -481,8 +526,8 @@ impl StdFs {
     /// time, as `list` does. A folder that leads back to one already on the
     /// way is a loop, which `list` skips: the way goes on from the folder
     /// it leads to.
-    fn follow(&self, path: &str) -> Way {
-        let abs = self.abs(path);
+    fn follow(&self, path: &str) -> Result<Way> {
+        let abs = self.abs(path)?;
         let names: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
         let disk: Vec<&OsStr> = abs.strip_prefix(&self.root).map(|r| r.iter().collect()).unwrap_or_default();
         let id = |p: &Path| fs::metadata(p).ok().filter(|md| md.is_dir()).and_then(|md| dir_id(p, &md));
@@ -512,13 +557,13 @@ impl StdFs {
             looped |= ends_at_loop;
         }
         real.extend(&names[rest..]);
-        Way { abs, dirs: dirs.into_iter().filter_map(|d| d.0).collect(), looped, ends_at_loop, real: real.join("/") }
+        Ok(Way { abs, dirs: dirs.into_iter().filter_map(|d| d.0).collect(), looped, ends_at_loop, real: real.join("/") })
     }
 
     /// On-disk path of vault path `path` for an operation, which must not
     /// act through a loop that `list` skips.
     fn op_abs(&self, path: &str) -> Result<PathBuf> {
-        let way = self.follow(path);
+        let way = self.follow(path)?;
         if way.looped {
             return Err(loop_error(path));
         }
@@ -529,7 +574,7 @@ impl StdFs {
     fn walk(&self, dir: &str, unreadable: Option<Vec<String>>) -> Result<(Vec<FileStat>, Vec<String>)> {
         // The folders on the way to `dir` count as entered: a link below it
         // back to one of them is a loop.
-        let way = self.follow(dir);
+        let way = self.follow(dir)?;
         if way.looped {
             return Err(loop_error(dir));
         }
@@ -619,6 +664,13 @@ impl StdFs {
                 }
                 continue;
             };
+            // A name that no Windows file can have, made on another system
+            // (a drive shared with Linux): no vault path reaches it there,
+            // and with a drive letter in front it leads out of the vault.
+            if cfg!(windows) && (vpath::windows_never_has(&name) || !is_one_name(&name)) {
+                log::warn!("skipping {os_name:?} in {dir:?}: Windows does not allow this name");
+                continue;
+            }
             if walk.files.is_some() && ent.file_type().is_ok_and(|t| t.is_symlink()) {
                 links.insert(os_name.clone());
             }
@@ -717,7 +769,7 @@ impl StdFs {
             target = trash_dir.join(format!("{stem} {n}{ext}"));
             n += 1;
         }
-        fs::rename(self.abs(path), target).map_err(|e| CoreError::io(path, e))
+        fs::rename(self.abs(path)?, target).map_err(|e| CoreError::io(path, e))
     }
 
     /// Where a write to `abs` goes. A symlinked note (dotfile managers,
@@ -736,7 +788,9 @@ impl StdFs {
 
     /// `write`, following a symlink at `path` out of the vault only if `out`.
     fn write_following(&self, path: &str, data: &[u8], out: bool) -> Result<FileStat> {
-        let abs = self.write_target(self.op_abs(path)?, out);
+        let abs = self.op_abs(path)?;
+        check_new_names(path, &abs)?;
+        let abs = self.write_target(abs, out);
         // The file this replaces: none where a link is replaced, so nothing
         // of the file it leads to (mode, hard links) carries over.
         let old = fs::symlink_metadata(&abs).ok().filter(|md| !md.file_type().is_symlink());
@@ -947,11 +1001,11 @@ impl VaultFs for StdFs {
     }
 
     fn under_skipped_link(&self, path: &str) -> bool {
-        self.follow(path).looped
+        self.follow(path).is_ok_and(|way| way.looped)
     }
 
     fn real_path(&self, path: &str) -> Option<String> {
-        let way = self.follow(path);
+        let way = self.follow(path).ok()?;
         (way.looped && !way.ends_at_loop).then_some(way.real)
     }
 
@@ -979,7 +1033,7 @@ impl VaultFs for StdFs {
     }
 
     fn via_link(&self, path: &str) -> bool {
-        let abs = self.abs(path);
+        let Ok(abs) = self.abs(path) else { return false };
         let Ok(rel) = abs.strip_prefix(&self.root) else { return false };
         let mut p = self.root.clone();
         rel.iter().any(|c| {
@@ -991,8 +1045,9 @@ impl VaultFs for StdFs {
     fn leads_outside(&self, path: &str) -> bool {
         // The deepest part of the path that exists (a dangling link does),
         // with every link on the way followed: anything missing below it
-        // would be made there.
-        let abs = self.abs(path);
+        // would be made there. A name Windows does not allow leads nowhere
+        // in the vault.
+        let Ok(abs) = self.abs(path) else { return true };
         let mut p = abs.as_path();
         while fs::symlink_metadata(p).is_err() {
             match p.parent() {
@@ -1036,7 +1091,7 @@ impl VaultFs for StdFs {
 
     fn folder_outside(&self, dir: &str) -> Option<String> {
         let names: Vec<&str> = dir.split('/').filter(|c| !c.is_empty()).collect();
-        let abs = self.abs(dir);
+        let abs = self.abs(dir).ok()?;
         let mut p = self.root.clone();
         // From the vault root down, so the folder named is the first one
         // that leads out; whatever is below a missing folder is made in it.
@@ -1071,7 +1126,9 @@ impl VaultFs for StdFs {
     }
 
     fn create_dir(&self, path: &str) -> Result<()> {
-        fs::create_dir_all(self.op_abs(path)?).map_err(|e| CoreError::io(path, e))
+        let abs = self.op_abs(path)?;
+        check_new_names(path, &abs)?;
+        fs::create_dir_all(&abs).map_err(|e| CoreError::io(path, e))
     }
 
     fn rename(&self, from: &str, to: &str) -> Result<()> {
@@ -1080,6 +1137,7 @@ impl VaultFs for StdFs {
         if !a.exists() {
             return Err(CoreError::NotFound(from.to_string()));
         }
+        check_new_names(to, &b)?;
         // On a case-insensitive file system `to` can name `from` itself
         // (a.md -> A.md); that rename is allowed. On a case-sensitive one
         // the same names are two different files, and rename(2) would
@@ -1121,9 +1179,14 @@ impl VaultFs for StdFs {
             TrashMode::System => {
                 #[cfg(feature = "system-trash")]
                 {
-                    match trash::delete(&abs) {
-                        Ok(()) => return Ok(()),
-                        Err(e) => log::warn!("system trash failed for {path}: {e}; using the notebook's .trash folder"),
+                    // The Windows shell drops a trailing dot or space and
+                    // takes a device name for the device, so it would trash
+                    // another file: such names go to the vault's trash.
+                    if !(cfg!(windows) && path.split('/').any(vpath::windows_refuses)) {
+                        match trash::delete(&abs) {
+                            Ok(()) => return Ok(()),
+                            Err(e) => log::warn!("system trash failed for {path}: {e}; using the notebook's .trash folder"),
+                        }
                     }
                 }
                 self.move_to_vault_trash(path)
@@ -1160,7 +1223,7 @@ impl VaultFs for StdFs {
     }
 
     fn os_path(&self, path: &str) -> Option<PathBuf> {
-        Some(self.abs(path))
+        self.abs(path).ok()
     }
 
     fn skipped_backslash_names(&self) -> Vec<String> {
@@ -1893,5 +1956,67 @@ mod tests {
         std::fs::rename(fs.root().join("b.md"), &p).unwrap();
         assert!(![s1, s2].contains(&fs.change_stamp("a.md")));
         assert_eq!(fs.change_stamp("b.md"), None);
+    }
+
+    /// On Windows, a name with a ':' never leads out of the vault ("D:x.md"
+    /// would be x.md in the current folder of drive D:, "a:b" a stream of
+    /// file a), and no name that Windows refuses or keeps for a device is
+    /// made. A file that has such a name already still works. Other systems
+    /// take all of these names.
+    #[test]
+    fn names_windows_does_not_allow() {
+        let (_d, fs) = setup();
+        let here = std::env::current_dir().unwrap();
+        // The drive of the current folder on Windows; any letter elsewhere.
+        let drive = if cfg!(windows) { here.to_string_lossy().chars().next().unwrap_or('C') } else { 'D' };
+        let escape = format!("{drive}:cairn-escape-test.md");
+        let below = format!("sub/{escape}");
+        let never = [escape.as_str(), below.as_str(), "Meeting 10:30.md", "q?.md", "a<b.md"];
+        let refused = ["con.md", "NUL", "aux.txt", "COM1.md", "Draft.", "Draft "];
+        if cfg!(windows) {
+            for p in never {
+                assert!(fs.write(p, b"x").is_err(), "write {p}");
+                assert!(fs.stat(p).is_err(), "stat {p}");
+                assert!(fs.read(p).is_err(), "read {p}");
+                assert!(fs.remove(p).is_err(), "remove {p}");
+                assert!(fs.create_dir(p).is_err(), "create_dir {p}");
+                assert!(fs.list(p).is_err(), "list {p}");
+                assert!(fs.os_path(p).is_none(), "os_path {p}");
+                assert!(fs.leads_outside(p), "leads_outside {p}");
+            }
+            for name in refused {
+                assert!(fs.write(name, b"x").is_err(), "write {name:?}");
+                assert!(fs.create_dir(&format!("{name}/sub")).is_err(), "create_dir {name:?}");
+            }
+            let listed: Vec<String> = fs.list("").unwrap().into_iter().map(|s| s.path).collect();
+            assert!(listed.is_empty(), "{listed:?}");
+            fs.write("fine.md", b"fine").unwrap();
+            assert!(fs.rename("fine.md", "nul.md").is_err());
+            // Made by another program through a \\?\ path.
+            std::fs::write(fs.root().join("nul.md"), "made elsewhere").unwrap();
+            assert_eq!(fs.read("nul.md").unwrap(), b"made elsewhere");
+            fs.write("nul.md", b"saved").unwrap();
+            fs.rename("nul.md", "renamed.md").unwrap();
+            assert_eq!(fs.read("renamed.md").unwrap(), b"saved");
+            // A folder with such a name takes new entries.
+            std::fs::create_dir(fs.root().join("aux")).unwrap();
+            fs.write("aux/b.md", b"b").unwrap();
+            fs.create_dir("aux/sub").unwrap();
+            fs.rename("aux/b.md", "aux/c.md").unwrap();
+            assert!(fs.write("aux/con.md", b"x").is_err());
+            // The system trash would trash "Draft" for "Draft.".
+            std::fs::write(fs.root().join("Draft."), "dot").unwrap();
+            std::fs::write(fs.root().join("Draft"), "plain").unwrap();
+            StdFs::new(fs.root(), TrashMode::System).unwrap().remove("Draft.").unwrap();
+            assert_eq!(std::fs::read_to_string(fs.root().join("Draft")).unwrap(), "plain");
+            assert!(std::fs::symlink_metadata(fs.root().join("Draft.")).is_err());
+        } else {
+            fs.create_dir("sub").unwrap();
+            for p in never.into_iter().chain(refused) {
+                fs.write(p, b"x").unwrap_or_else(|e| panic!("write {p:?}: {e}"));
+                assert_eq!(fs.read(p).unwrap(), b"x", "{p:?}");
+            }
+        }
+        assert!(!here.join("cairn-escape-test.md").exists(), "a file was written outside the vault");
     }
 }

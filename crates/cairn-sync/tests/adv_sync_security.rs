@@ -212,6 +212,46 @@ fn nul_in_pulled_path_does_not_block_sync() {
 }
 
 // ===================================================================
+// Names that Windows does not allow, from another device. On Windows a
+// name with a colon would lead out of the vault ("D:x.md" is x.md in the
+// current folder of drive D:) or name a stream of a file, and a device
+// name or a name that ends in a dot gives a file that Windows programs
+// cannot use. A Windows device lists them as not synced and syncs the
+// rest; other systems take them.
+// ===================================================================
+#[test]
+fn names_windows_does_not_allow_are_listed_there() {
+    let srv = server();
+    let atk = RawClient::create(&srv, "notes");
+    let here = std::env::current_dir().unwrap();
+    // The drive of the current folder on Windows; any letter elsewhere.
+    let drive = if cfg!(windows) { here.to_string_lossy().chars().next().unwrap_or('C') } else { 'D' };
+    let escape = format!("{drive}:cairn-escape-test.md");
+    let names = [escape.clone(), format!("sub/{escape}"), "Meeting 10:30.md".into(), "Why?.md".into(), "con.md".into(), "Draft.".into()];
+    for (i, n) in names.iter().enumerate() {
+        assert!(matches!(atk.put_new(&format!("{i:016x}"), n, b"remote"), PutOutcome::Stored(_)), "{n}");
+    }
+    atk.put_new("bbbbbbbbbbbbbbbb", "Good.md", b"hello");
+    let mut honest = Honest::new(&srv, "notes", "laptop", &[]);
+    for round in 0..2 {
+        let r = honest.engine.sync().unwrap_or_else(|e| panic!("round {round}: {e}"));
+        let mut listed: Vec<&str> = r.skipped.iter().map(|s| s.path.as_str()).collect();
+        listed.sort();
+        if cfg!(windows) {
+            let mut want: Vec<&str> = names.iter().map(String::as_str).collect();
+            want.sort();
+            assert_eq!(listed, want, "round {round}: {:?}", r.skipped);
+            assert!(r.skipped.iter().all(|s| s.reason.starts_with("Windows does not allow the name")), "round {round}: {:?}", r.skipped);
+        } else {
+            assert!(listed.is_empty(), "round {round}: {:?}", r.skipped);
+            assert!(names.iter().all(|n| honest.exists(n)));
+        }
+    }
+    assert!(honest.exists("Good.md"));
+    assert!(!here.join("cairn-escape-test.md").exists(), "a file was written outside the vault");
+}
+
+// ===================================================================
 // Coverage of attacks that the design already handles.
 // ===================================================================
 

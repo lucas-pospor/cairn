@@ -179,6 +179,20 @@ pub fn is_reserved_name(name: &str) -> bool {
     }
 }
 
+/// True if no file or folder on Windows can have `name`, not even one made
+/// through a `\\?\` path: it has `< > : " | ? * \ /` or a control
+/// character.
+pub fn windows_never_has(name: &str) -> bool {
+    name.contains(['<', '>', ':', '"', '|', '?', '*', '\\', '/']) || name.chars().any(|c| c < ' ')
+}
+
+/// True if Windows refuses `name` for a new file or folder: no name on
+/// Windows has it (see [`windows_never_has`]), it ends in a dot or a space,
+/// or it is a device name (see [`is_reserved_name`]).
+pub fn windows_refuses(name: &str) -> bool {
+    windows_never_has(name) || name.ends_with(['.', ' ']) || is_reserved_name(name)
+}
+
 /// `s` with every character [`validate_name`] refuses inside a name
 /// (forbidden and control characters) replaced by `-`, NFC-normalized. For
 /// text Cairn puts into names it makes up, such as the device name in a
@@ -291,6 +305,20 @@ mod tests {
         assert_eq!(sanitize_name_part("Sam's Pixel? [old] #2\t"), "Sam's Pixel- -old- -2-");
         assert_eq!(sanitize_name_part("a/b\\c:d"), "a-b-c-d");
         assert_eq!(sanitize_name_part("cafe\u{301}"), "caf\u{e9}");
+    }
+
+    #[test]
+    fn names_windows_refuses() {
+        for bad in ["a:b.md", "D:", "q?.md", "a<b", "p|q", "st*r", "quo\"te", "tab\there", "end.", "end ", "nul.md", "CON", "aux .txt", "LPT³"] {
+            assert!(windows_refuses(bad), "{bad:?} should be refused");
+        }
+        for ok in ["note.md", " lead.md", "a.b.c", "[x].md", "Über.md", "com10", "#tag"] {
+            assert!(!windows_refuses(ok), "{ok:?} should be allowed");
+        }
+        // Names a file made through a \\?\ path can have.
+        for there in ["end.", "end ", "nul.md", "CON"] {
+            assert!(!windows_never_has(there), "{there:?}");
+        }
     }
 
     #[test]

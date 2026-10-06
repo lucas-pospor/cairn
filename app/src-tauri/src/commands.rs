@@ -498,14 +498,9 @@ fn os_path(state: &State<'_, AppState>, path: &str) -> CmdResult<PathBuf> {
     let v = vault(state)?;
     let rel = cairn_core::path::normalize(path)?;
     // The file system knows the real name (it can differ from the NFC one).
-    if let Some(p) = v.fs().os_path(&rel) {
-        return Ok(p);
-    }
-    let mut p = PathBuf::from(v.fs().describe());
-    for c in rel.split('/').filter(|c| !c.is_empty()) {
-        p.push(c);
-    }
-    Ok(p)
+    // It has none for a path that leads nowhere in the vault, such as a name
+    // with a drive letter on Windows.
+    v.fs().os_path(&rel).ok_or(CoreError::InvalidPath(rel))
 }
 
 /// File types `open_externally` hands to the system's default app:

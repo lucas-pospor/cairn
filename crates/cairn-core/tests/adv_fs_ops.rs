@@ -459,7 +459,13 @@ fn fs21_write_note_checks_new_folders_and_keeps_existing_names() {
     // while files and folders already on disk keep theirs.
     let (d, v) = setup(&[("[old].md", "old"), ("Odd [dir]/a.md", "a")]);
     let r = v.write_note("ok/bad:dir/x.md", "", None);
-    assert!(matches!(r, Err(CoreError::InvalidName(_))), "write_note returned {:?}", r.map(|r| r.changes));
+    // On Windows the file system refuses the colon first.
+    let refused = if cfg!(windows) {
+        matches!(&r, Err(CoreError::Io(m)) if m.starts_with("Windows does not allow"))
+    } else {
+        matches!(r, Err(CoreError::InvalidName(_)))
+    };
+    assert!(refused, "write_note returned {:?}", r.map(|r| r.changes));
     assert_eq!(names(d.path()), ["Odd [dir]", "[old].md"]);
     let w = v.write_note("[old].md", "forced", None).unwrap();
     let w = v.write_note("[old].md", "saved", Some(&w.hash)).unwrap();
