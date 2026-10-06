@@ -350,7 +350,7 @@ Tests: 83 new Vitest tests (date formats and week numbers, template filling, not
 
 ## 9. Known limits
 
-These hold in version 1.0.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), and release APKs are signed with the project's release key (see the release notes).
+These hold in version 1.1.0. Each FINDING number names the tests that reproduce or check that case. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), and release APKs are signed with the project's release key (see the release notes).
 
 ### Files and links
 
@@ -421,7 +421,7 @@ These hold in version 1.0.0. Each FINDING number names the tests that reproduce 
 - Toasts have no history, and an error toast goes 7 s after the pointer and focus leave it (FINDING-218).
 - Screen readers hear sync errors, recoveries and conflict counts, not each sync (FINDING-205).
 - A nested folder moved to another parent right after an event on a file in it can be taken as a delete and a create (FINDING-129).
-- Live Preview renders tables only as far as the editor has parsed (FINDING-043). After two quick edits in a long note, a bug in @lezer/markdown can show part of a code block as a table and stop rendering the tables after it, until the note is reopened (FINDING-225).
+- Live Preview renders tables only as far as the editor has parsed (FINDING-043). When the editor runs out of time parsing a note, the next edit can hit a bug in @lezer/markdown that shows a code block's lines as plain text or a table and the text after the block as code, until the note is reopened. In testing, this took pasting a code block of about 90,000 characters or more a few thousand characters into a note, then one more edit (FINDING-225).
 
 ### Performance
 

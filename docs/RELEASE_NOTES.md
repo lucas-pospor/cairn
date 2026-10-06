@@ -56,5 +56,5 @@ The main ones (section 9 of [PLAN.md](PLAN.md#9-known-limits) has the full list)
 - Plugins have no memory limit. A plugin that keeps allocating memory can make the window go blank.
 - The graph is slow on 50,000 notes. On a debug build it takes 1.6 to 2.4 seconds to open, a hover takes about 0.35 s, and the app uses about 1.6 GB. Closing the graph frees only part of that memory.
 - Error toasts disappear 7 seconds after the pointer and focus leave them, and there is no message history.
-- After two quick edits in a long note, a bug in the @lezer/markdown parser can make Live Preview show part of a code block as a table and stop rendering the tables after it. Both stay that way until you reopen the note. The note's text does not change.
+- After a very large code block (about 90,000 characters or more in testing) is pasted into a note and the note is edited again, a bug in the @lezer/markdown parser can make Live Preview show the code block's lines as plain text or a table and the text after it as code. This stays until you reopen the note. The note's text does not change.
 - On Android, Cairn cannot open attachments in other apps yet, and there are no zoom keys.
