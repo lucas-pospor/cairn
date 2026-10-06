@@ -21,6 +21,6 @@ export CAIRN_SS_FUZZ_STEPS=${4:-160}
 export CAIRN_SS_FUZZ_THREADS=${5:-4}
 case "$mode" in
   seq) exec cargo test -p cairn-sync --test adv_sync_semantics_fuzz randomized_three_device_rich_ops -- --exact --nocapture ;;
-  overlap) exec cargo test -p cairn-sync --test adv_sync_semantics_fuzz randomized_three_device_rich_ops_overlapping_syncs -- --ignored --exact --nocapture ;;
+  overlap) exec cargo test -p cairn-sync --test adv_sync_semantics_fuzz randomized_three_device_rich_ops_overlapping_syncs -- --exact --nocapture ;;
   *) echo "mode must be seq or overlap" >&2; exit 2 ;;
 esac

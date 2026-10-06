@@ -23,7 +23,7 @@
 //!
 //!   cargo test -p cairn-sync --test adv_sync_semantics_fuzz
 //!   CAIRN_SS_FUZZ_SEEDS=300 CAIRN_SS_FUZZ_THREADS=4 cargo test -p cairn-sync --test adv_sync_semantics_fuzz -- --nocapture
-//!   CAIRN_SS_FUZZ_SEEDS=300 cargo test -p cairn-sync --test adv_sync_semantics_fuzz -- --ignored --nocapture
+//!   CAIRN_SS_FUZZ_SEEDS=300 cargo test -p cairn-sync --test adv_sync_semantics_fuzz -- --nocapture
 
 #[path = "adv_sync_semantics_common.rs"]
 mod common;
