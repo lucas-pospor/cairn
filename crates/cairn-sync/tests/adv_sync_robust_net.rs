@@ -728,7 +728,11 @@ fn server_restart_between_syncs_keeps_everything() {
 
 fn unsafe_kill(pid: u32) {
     // SIGKILL by pid (no libc dependency): use the kill command
+    #[cfg(unix)]
     let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+    // taskkill /F ends the process with TerminateProcess, as abruptly.
+    #[cfg(windows)]
+    let _ = Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).status();
 }
 
 // ------------------------------------------------------------------ slow uplink
