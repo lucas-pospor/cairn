@@ -14,6 +14,17 @@ Images (PNG, JPEG, GIF, WebP, AVIF, SVG, BMP and ICO) now open in a tab inside C
 - On the desktop, Open in default app in the tab, and in the file tree's menu, still hands an image to the system's viewer, and other attachments open there as before. On Android, other attachments still cannot be opened in other apps.
 - Image tabs are not reopened when Cairn starts again. The saved session keeps the format of 1.1.0, so 1.0.0 and 1.1.0 still restore the other tabs from it.
 
+### Themes
+
+Cairn now has four themes, each with a name. Limestone (the light theme so far) and Marble, a cool white theme with a blue accent, are light. Slate (the dark theme so far) and Graphite, a neutral gray with no blue tint, are dark. Settings, then Appearance, now has a Light theme and a Dark theme choice under Theme, each with a small swatch, and System uses the chosen pair as the system switches between light and dark. The choice is saved in the vault's `.cairn/settings.json` under two new keys, `lightTheme` and `darkTheme`. Cairn 1.0.0 and 1.1.0 keep these keys when they save other settings and show their own light or dark theme, so the choice comes back when the vault opens in this version again.
+
+### Contrast
+
+- Some colors were below the WCAG AA contrast ratio of 4.5:1: code comments in the light theme, matched words in search results and code comments in the dark theme, and a few others in code blocks, on hovered rows and under matches of the selected word. They are now darker or lighter. The most visible change is in Slate: matched words in search results and other matches of the selected word have a darker highlight, which shows by its color more than its brightness.
+- A custom accent color is now also adjusted to stay readable on hovered rows, in code and under matches of the selected word, so some accents come out a little darker in the light themes.
+- The graph takes the new colors as soon as the theme or the accent changes.
+- With no custom accent, the accent color picker shows the accent of the theme in use instead of always the light theme's.
+
 ### Fixes
 
 - Alt+Enter on a Markdown link (`[text](path)`) finds the file relative to the note, as a click does.
