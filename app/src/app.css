@@ -23,7 +23,7 @@
   --unresolved: #6d655d;
   --danger: #b0213f;
   --danger-text: #ffffff;
-  --hit: #f3dd8d;
+  --hit: #f6e7ad;
   --shadow: 0 10px 30px rgba(30, 35, 33, 0.18), 0 2px 6px rgba(30, 35, 33, 0.08);
   --radius: 7px;
 
@@ -92,7 +92,7 @@
     --unresolved: #a0978f;
     --danger: #f07e92;
     --danger-text: #22090f;
-    --hit: #393119;
+    --hit: #342c17;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
     --tok-keyword: #d19ad1;
     --tok-string: #9cc98f;
@@ -151,7 +151,7 @@
   --unresolved: #a0978f;
   --danger: #f07e92;
   --danger-text: #22090f;
-  --hit: #393119;
+  --hit: #342c17;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
   --tok-keyword: #d19ad1;
   --tok-string: #9cc98f;
@@ -474,10 +474,12 @@ mark.hit {
   border: 1px solid var(--border);
   border-radius: 5px;
 }
-.cm-searchMatch {
+/* With .cm-editor, as specific as CodeMirror's own yellow and orange (its
+   "&light .cm-searchMatch" rules), and later in the page, so these win. */
+.cm-editor .cm-searchMatch {
   background: color-mix(in srgb, var(--hit) 70%, transparent);
 }
-.cm-searchMatch-selected {
+.cm-editor .cm-searchMatch-selected {
   background: var(--hit);
 }
 

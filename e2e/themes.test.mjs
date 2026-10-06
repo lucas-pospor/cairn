@@ -1,7 +1,8 @@
 // Light and dark themes in the real app: Settings > Appearance lists them by
 // name, choosing one applies its colours and saves it in .cairn/settings.json,
 // the choice comes back after a restart, "System" uses the chosen light or dark
-// theme, and a theme this version does not know is kept in the file.
+// theme, a theme this version does not know is kept in the file, and the
+// editor's search highlights matches in the theme's colours.
 // Screenshots of each theme, wide and narrow, go to e2e/.tmp/themes/.
 //
 //   scripts/e2e-headless.sh e2e/themes.test.mjs
@@ -14,7 +15,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { launch, freshEnv, eventually, sleep } from "./adv_editor_lib.mjs";
+import { launch, freshEnv, eventually, sleep, Key } from "./adv_editor_lib.mjs";
 
 const SHOTS = path.join(import.meta.dirname, ".tmp", "themes");
 const SETTINGS = ".cairn/settings.json";
@@ -324,6 +325,50 @@ test("a custom accent stays readable in every theme", async () => {
       }
     }
     assert.deepEqual(bad, []);
+  } finally {
+    await app.stop();
+  }
+});
+
+/** Settings > Appearance: show theme `id` (forcing its light or dark mode), then close Settings. */
+async function useTheme(app, id) {
+  const t = THEMES[id];
+  await openAppearance(app);
+  await setMode(app, t.scheme);
+  await app.exec(`document.querySelector('[data-testid=theme-' + arguments[0] + ']').click(); return 1`, id);
+  await eventually(async () => (await look(app)).bg === t.bg, { message: `${t.name} applied` });
+  await closeSettings(app);
+}
+
+test("the editor's search (Ctrl+F) highlights matches in each theme's own colours", async () => {
+  const e = env({ theme: "light" });
+  const app = await start(e);
+  try {
+    await openNote(app, "Garden.md");
+    const out = {};
+    for (const id of ["limestone", "marble", "slate", "graphite"]) {
+      await useTheme(app, id);
+      await app.exec(`document.querySelector('.cm-content').focus(); return 1`);
+      await app.s.keys({ chord: [Key.ctrl, "f"] });
+      await app.s.waitFor(`return document.activeElement?.name === 'search'`, { message: "search field focused" });
+      await app.exec(`const i = document.activeElement; i.value = 'e'; i.dispatchEvent(new Event('change')); return 1`);
+      await app.s.keys(Key.enter);
+      await app.s.waitFor(`return !!document.querySelector('.cm-searchMatch-selected') && !!document.querySelector('.cm-searchMatch:not(.cm-searchMatch-selected)')`, { message: "search matches shown" });
+      await shot(app, `${id}-editor-search`);
+      out[id] = await app.exec(
+        `const hit = getComputedStyle(document.documentElement).getPropertyValue('--hit').trim();
+         const probe = document.createElement('span'); document.body.append(probe);
+         const paint = (c) => { probe.style.backgroundColor = c; return getComputedStyle(probe).backgroundColor; };
+         const want = { match: paint('color-mix(in srgb, ' + hit + ' 70%, transparent)'), current: paint(hit) };
+         probe.remove();
+         const bg = (css) => getComputedStyle(document.querySelector(css)).backgroundColor;
+         return { match: bg('.cm-searchMatch:not(.cm-searchMatch-selected)'), current: bg('.cm-searchMatch-selected'), want };`,
+      );
+      await app.s.keys(Key.escape);
+      await app.s.waitFor(`return !document.querySelector('.cm-search')`, { message: "search closed" });
+    }
+    // Not CodeMirror's own yellow (#ffff0054) and orange (#ff6a0054).
+    for (const [id, o] of Object.entries(out)) assert.deepEqual({ match: o.match, current: o.current }, o.want, id);
   } finally {
     await app.stop();
   }

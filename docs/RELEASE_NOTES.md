@@ -21,7 +21,8 @@ Cairn now has four themes, each with a name. Limestone (the light theme so far) 
 ### Contrast
 
 - Some colors were below the WCAG AA contrast ratio of 4.5:1: code comments in the light theme, matched words in search results and code comments in the dark theme, and a few others in code blocks, on hovered rows and under matches of the selected word. They are now darker or lighter. The most visible change is in Slate: matched words in search results and other matches of the selected word have a darker highlight, which shows by its color more than its brightness.
-- A custom accent color is now also adjusted to stay readable on hovered rows, in code and under matches of the selected word, so some accents come out a little darker in the light themes.
+- The editor's search (Ctrl+F) now highlights matches in the theme's own highlight color. Before, it always used a fixed yellow and orange, on which some text, such as code comments, was below 4.5:1. For this, the highlight is a little lighter in Limestone and a little darker in Slate.
+- A custom accent color is now also adjusted to stay readable on hovered rows, in code and under matches of the selected word or of a search, so some accents come out a little darker in the light themes.
 - The graph takes the new colors as soon as the theme or the accent changes.
 - With no custom accent, the accent color picker shows the accent of the theme in use instead of always the light theme's.
 

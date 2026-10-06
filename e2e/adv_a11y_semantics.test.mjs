@@ -401,6 +401,17 @@ async function contrastScenes(theme, name) {
   await sleep(400);
   scenes.workspace = await contrastReport();
   await app.shot(`AX-contrast-${label}-workspace.png`);
+  // The editor's search (Ctrl+F): every match highlighted, the current one more strongly.
+  await app.exec(`document.querySelector('.cm-content').focus(); return 1`);
+  await app.chord(K.ctrl, "f");
+  await app.s.waitFor(`return document.activeElement?.name === 'search'`, { message: "search field focused" });
+  await app.exec(`const i = document.activeElement; i.value = 'e'; i.dispatchEvent(new Event('change')); return 1`);
+  await app.keys(K.enter);
+  await app.s.waitFor(`return !!document.querySelector('.cm-searchMatch-selected')`, { message: "current search match" });
+  scenes.editorSearch = await contrastReport();
+  await app.shot(`AX-contrast-${label}-editor-search.png`);
+  await app.keys(K.esc);
+  await app.s.waitFor(`return !document.querySelector('.cm-search')`, { message: "search closed" });
   // Search results: the matched words are highlighted inside muted snippet text.
   await app.exec(`document.querySelector('[data-testid=tab-search]').click(); return 1`);
   await app.s.waitFor(`return !!document.querySelector('[data-testid=search-input]')`);

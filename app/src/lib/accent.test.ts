@@ -6,9 +6,17 @@ const rgb = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i, i +
 
 // The themes from app.css.
 const THEMES: Record<string, AccentTheme> = Object.fromEntries(palettes().map((p) => [p.id, accentTheme(p.tokens)]));
-const under = (hit: Rgb, bg: Rgb) => hit.map((v, i) => v * 0.45 + bg[i] * 0.55) as Rgb;
-/** Where accent text is drawn: page, sidebar, hovered row, code, the tint, and under a selection match. */
-const surfaces = (theme: AccentTheme, soft: Rgb) => [theme.bg, theme.side, theme.hover, theme.code, soft, under(theme.hit, theme.bg), under(theme.hit, soft)];
+const under = (hit: Rgb, bg: Rgb, share: number) => hit.map((v, i) => v * share + bg[i] * (1 - share)) as Rgb;
+/** Where accent text is drawn: page, sidebar, hovered row, code, the tint, and under selection and search matches. */
+const surfaces = (theme: AccentTheme, soft: Rgb) => [
+  theme.bg,
+  theme.side,
+  theme.hover,
+  theme.code,
+  soft,
+  theme.hit,
+  ...[0.45, 0.7].flatMap((p) => [theme.bg, theme.code, soft].map((bg) => under(theme.hit, bg, p))),
+];
 
 describe("deriveAccent (FINDING-219)", () => {
   for (const [name, theme] of Object.entries(THEMES)) {

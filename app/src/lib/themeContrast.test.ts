@@ -93,6 +93,14 @@ for (const tok of ["--tok-keyword", "--tok-string", "--tok-number", "--tok-comme
     "--accent-soft": "selected code",
     "--hit 45% over --bg-code": "a selection match in code",
   };
+/** Add backgrounds to a foreground, keeping what a background was already listed for. */
+function also(fg: string, bgs: Record<string, string>) {
+  for (const [bg, where] of Object.entries(bgs)) TEXT[fg][bg] = TEXT[fg][bg] ? `${TEXT[fg][bg]}; ${where}` : where;
+}
+// The editor's search (Ctrl+F): matches in --hit at 70%, the current one in --hit.
+for (const fg of ["--text", "--text-muted", "--text-faint", "--link", "--unresolved", "--tok-keyword", "--tok-string", "--tok-number", "--tok-comment", "--tok-fn", "--tok-type"])
+  also(fg, { "--hit 70% over --bg": "a search match", "--hit 70% over --bg-code": "a search match in code", "--hit": "the current search match" });
+also("--accent", { "--hit 70% over --accent-soft": "a search match in a tag", "--hit": "the current search match in a tag" });
 
 /** Input borders, focus rings and icons: foreground -> background -> where. */
 const UI: Record<string, Record<string, string>> = {

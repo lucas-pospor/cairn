@@ -3,7 +3,7 @@
 // Taken as-is, many colours are unreadable there, so the accent tokens are
 // derived from it: the colour is shaded (light theme) or lightened (dark theme)
 // only as far as WCAG AA (4.5:1) needs on every background accent text is drawn
-// on, button text is white or a near-black of the same hue, and the tint stays
+// on (highlights included), button text is white or a near-black of the same hue, and the tint stays
 // no further from --bg than the theme's own tint, so text that reads on the
 // theme's tint also reads on it.
 
@@ -52,11 +52,14 @@ export function deriveAccent(accent: Rgb, theme: AccentTheme): { accent: string;
     while (pct > 2 && contrast(mix(c, theme.bg, pct / 100), theme.bg) > softLimit) pct--;
     return mix(c, theme.bg, pct / 100);
   };
-  // Links and tags sit on the page, sidebars, hovered rows, code, the tint, and
-  // under a match of the selected word (--hit at 45%, app.css .cm-selectionMatch).
-  const under = (bg: Rgb) => theme.hit.map((v, i) => v * 0.45 + bg[i] * 0.55) as Rgb;
+  // Links and tags sit on the page, sidebars, hovered rows, code and the tint,
+  // and under highlights in --hit (app.css): 45% for other matches of the
+  // selected word, 70% for search matches, all of it for the current match.
+  const under = (bg: Rgb, share: number) => theme.hit.map((v, i) => v * share + bg[i] * (1 - share)) as Rgb;
   const readable = (c: Rgb, soft: Rgb) =>
-    [theme.bg, theme.side, theme.hover, theme.code, soft, under(theme.bg), under(soft)].every((bg) => contrast(c, bg) >= 4.5);
+    [theme.bg, theme.side, theme.hover, theme.code, soft, theme.hit, ...[0.45, 0.7].flatMap((p) => [theme.bg, theme.code, soft].map((bg) => under(bg, p)))].every(
+      (bg) => contrast(c, bg) >= 4.5,
+    );
   let c = accent;
   let soft = tint(c);
   for (let step = 1; !readable(c, soft) && step <= 50; step++) {
