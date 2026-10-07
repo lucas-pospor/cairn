@@ -14,7 +14,7 @@ export async function startDriver(port = 4444, env = {}) {
   if (process.env.CAIRN_WD_PORT) port = Number(process.env.CAIRN_WD_PORT);
   const args = ["--port", String(port)];
   if (process.env.CAIRN_WD_NATIVE_PORT) args.push("--native-port", process.env.CAIRN_WD_NATIVE_PORT);
-  const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
+  const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...noRealNotebook(), ...env } });
   let log = "";
   proc.stdout.on("data", (d) => (log += d));
   proc.stderr.on("data", (d) => (log += d));
@@ -28,6 +28,27 @@ export async function startDriver(port = 4444, env = {}) {
   }
   proc.kill();
   throw new Error("tauri-driver did not start:\n" + log);
+}
+
+/**
+ * The app's environment default for CAIRN_VAULT. On Windows, msedgedriver
+ * hands the app its notebook argument as a lowercased switch
+ * (`--c:\users\...`), which the app skips as an option, so without
+ * CAIRN_VAULT it opens the most recent notebook of the user's own config.
+ * There an empty CAIRN_VAULT opens the Welcome screen instead, and a test
+ * that does not pass its notebook in CAIRN_VAULT fails without touching a
+ * real one. Elsewhere the argument arrives as given, and some tests rely on
+ * the recent list, so nothing is set.
+ *
+ * This keeps the tests out of the user's notebooks, not out of the user's
+ * Cairn config. The XDG_* variables the tests set do nothing on Windows: the
+ * app still writes the real %APPDATA%\app.cairn.notes (the recent list,
+ * plugin approvals, sync state). After a run the first recent notebook is a
+ * temporary folder that is gone, so the next normal launch opens the Welcome
+ * screen.
+ */
+export function noRealNotebook() {
+  return process.platform === "win32" ? { CAIRN_VAULT: "" } : {};
 }
 
 /**

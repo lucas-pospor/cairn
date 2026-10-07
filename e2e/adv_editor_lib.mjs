@@ -10,7 +10,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn } from "node:child_process";
 import net from "node:net";
-import { Session, Key, releaseOnExit } from "./webdriver.mjs";
+import { Session, Key, noRealNotebook, releaseOnExit } from "./webdriver.mjs";
 
 export { Key, sleep };
 export const ROOT = path.resolve(import.meta.dirname, "..");
@@ -109,7 +109,8 @@ export async function startDriver(port = 4444, env = {}, cwd = undefined) {
   }
   const args = ["--port", String(port), "--native-driver", process.env.WEBKIT_WEBDRIVER ?? "/usr/bin/WebKitWebDriver"];
   if (nativePort) args.push("--native-port", nativePort);
-  const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env }, cwd });
+  // On Windows, CAIRN_VAULT is empty unless the caller sets it (see noRealNotebook).
+  const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...noRealNotebook(), ...env }, cwd });
   let log = "";
   proc.stdout.on("data", (d) => (log += d));
   proc.stderr.on("data", (d) => (log += d));

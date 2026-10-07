@@ -66,6 +66,9 @@ before(async () => {
     XDG_CONFIG_HOME: path.join(tmp, "config"),
     XDG_DATA_HOME: path.join(tmp, "data"),
     XDG_CACHE_HOME: path.join(tmp, "cache"),
+    // The notebook argument does not reach the app on Windows (see
+    // noRealNotebook in webdriver.mjs); this does, and is the same notebook.
+    CAIRN_VAULT: vaultA,
   });
   s = await Session.create(drv.port, APP, [vaultA]);
   await s.waitFor(`return document.querySelectorAll('[data-testid=tree-row]').length >= 2`, { timeout: 15000 });
