@@ -522,12 +522,19 @@ fn fs11_indexing_time_is_not_quadratic_in_links_and_tags() {
     let (_d, v) = setup(&[]);
     let small = log_note(2_000); // ~55 KB
     let big = log_note(16_000); // ~450 KB
-    let t = Instant::now();
-    v.write_note("small.md", &small, None).unwrap();
-    let ts = t.elapsed().as_secs_f64();
-    let t = Instant::now();
-    v.write_note("big.md", &big, None).unwrap();
-    let tb = t.elapsed().as_secs_f64();
+    // The fastest of three writes of each, so that the other tests, which
+    // run at the same time, count less.
+    let time = |name: &str, text: &str| {
+        (0..3)
+            .map(|i| {
+                let t = Instant::now();
+                v.write_note(&format!("{name} {i}.md"), text, None).unwrap();
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let ts = time("small", &small);
+    let tb = time("big", &big);
     let ratio = tb / ts;
     println!("2k lines: {ts:.3} s, 16k lines: {tb:.3} s, ratio {ratio:.1} (linear would be about 8)");
     assert!(ratio < 16.0, "8x the content took {ratio:.1}x the time ({ts:.3} s -> {tb:.3} s)");
