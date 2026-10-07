@@ -4,7 +4,6 @@
   import { displayName, fileName, isImage, isInside, isMarkdown, parent } from "../paths";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import Icon from "./Icon.svelte";
-  import { backend } from "../backend";
   import { restoreFocus } from "../modal";
 
   const ROW_H = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 40 : 28;
@@ -163,7 +162,7 @@
       items.push({ label: "Version history", action: () => app.openHistory(node.path) });
     }
     if (node && !app.isMobile) {
-      items.push({ label: "Reveal in file manager", action: () => backend.revealInFileManager(node.path) });
+      items.push({ label: "Reveal in file manager", action: () => app.revealInFileManager(node.path) });
     }
     if (node) {
       items.push({ label: "Move to…", action: () => app.moveToFolderPrompt(node.path) });

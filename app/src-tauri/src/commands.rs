@@ -546,7 +546,7 @@ pub async fn note_info(state: State<'_, AppState>, path: String) -> CmdResult<Op
 
 /// Absolute OS path of a vault entry (desktop only; vaults there are folders).
 /// On Windows it starts with `\\?\`, which the shell and many programs
-/// refuse: give it to them through `dunce::simplified`.
+/// refuse: give it to them through `shell_path`.
 fn os_path(state: &State<'_, AppState>, path: &str) -> CmdResult<PathBuf> {
     let v = vault(state)?;
     let rel = cairn_core::path::normalize(path)?;
@@ -554,6 +554,63 @@ fn os_path(state: &State<'_, AppState>, path: &str) -> CmdResult<PathBuf> {
     // It has none for a path that leads nowhere in the vault, such as a name
     // with a drive letter on Windows.
     v.fs().os_path(&rel).ok_or(CoreError::InvalidPath(rel))
+}
+
+/// The form of an `os_path` to give the system's opener and file manager.
+/// The Windows shell refuses a `\\?\` path, and `dunce::simplified` strips
+/// that prefix only from a drive path: `\\?\UNC\server\share\x`, a
+/// notebook on a share or a mapped drive, becomes `\\server\share\x` here.
+/// Like dunce, it does so only when the plain path names the same file: no
+/// name after the share ends in a dot or a space, is a device name or has a
+/// character Windows refuses (Windows would change or reject those without
+/// the prefix), and the path is shorter than the shell's 260 characters.
+/// Otherwise the path stays as it is, and the shell's error says why.
+fn shell_path(p: &std::path::Path) -> PathBuf {
+    let p = dunce::simplified(p);
+    if let Some(rest) = p.to_str().and_then(|s| s.strip_prefix(r"\\?\UNC\")) {
+        let plain = format!(r"\\{rest}");
+        let mut names = rest.split('\\');
+        let share = names.next().is_some_and(|server| !server.is_empty())
+            && names.next().is_some_and(|share| !share.is_empty());
+        let safe = names.all(|n| !n.is_empty() && !cairn_core::path::windows_refuses(n));
+        if share && safe && plain.encode_utf16().count() < 260 {
+            return PathBuf::from(plain);
+        }
+    }
+    p.to_path_buf()
+}
+
+/// What the opener was asked to do with a file.
+#[derive(Clone, Copy)]
+enum OpenerTask {
+    Open,
+    Reveal,
+}
+
+/// An error of the system's opener or file manager for the vault entry at
+/// `path`, worded for the user. The plugin's own texts name the full OS path
+/// and, for a path the Windows shell cannot take, a structure the user has
+/// never heard of. The commands stat the file before they call the opener,
+/// so a missing file fails there; a "not found" from the opener means no
+/// launcher program (Linux without xdg-open or gio), a path the shell would
+/// not take, or a stat the plugin made that failed for another reason.
+fn opener_error(path: &str, task: OpenerTask, e: tauri_plugin_opener::Error) -> CoreError {
+    match e {
+        #[cfg(windows)]
+        tauri_plugin_opener::Error::FailedToConvertPathToItemIdList(_) => CoreError::Io(
+            "File Explorer cannot show this path. It may be too long, or have a name that File Explorer cannot handle."
+                .into(),
+        ),
+        tauri_plugin_opener::Error::Io(e) if e.kind() == std::io::ErrorKind::NotFound => CoreError::Io(
+            match task {
+                OpenerTask::Open => "No app was found to open it.",
+                OpenerTask::Reveal => "The file manager could not find it.",
+            }
+            .into(),
+        ),
+        tauri_plugin_opener::Error::Io(e) => CoreError::io(path, e),
+        e => CoreError::Io(e.to_string()),
+    }
 }
 
 /// File types `open_externally` hands to the system's default app:
@@ -646,7 +703,8 @@ pub async fn open_externally(state: State<'_, AppState>, path: String) -> CmdRes
     if let Some(why) = refusal {
         return Err(CoreError::Io(why.into()));
     }
-    tauri_plugin_opener::open_path(dunce::simplified(&p), None::<&str>).map_err(|e| CoreError::Io(e.to_string()))
+    // `open_check` has stat'ed the file, so a missing one failed above.
+    tauri_plugin_opener::open_path(shell_path(&p), None::<&str>).map_err(|e| opener_error(&path, OpenerTask::Open, e))
 }
 
 /// What `open_externally` would do with a file, without opening it. The card
@@ -671,8 +729,16 @@ fn is_executable(_: &std::fs::Metadata) -> bool {
 /// Show a file or folder in the system file manager.
 #[tauri::command]
 pub async fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> CmdResult<()> {
-    let p = os_path(&state, &path)?;
-    tauri_plugin_opener::reveal_item_in_dir(dunce::simplified(&p)).map_err(|e| CoreError::Io(e.to_string()))
+    reveal(&os_path(&state, &path)?, &path)
+}
+
+/// `reveal_in_file_manager` for the vault entry `path` at `p`. Cairn stats
+/// the file itself first: the plugin reports any failed stat on Windows as
+/// "not found", even a share that went offline or a folder the user may not
+/// read.
+fn reveal(p: &std::path::Path, path: &str) -> CmdResult<()> {
+    std::fs::symlink_metadata(p).map_err(|e| CoreError::io(path, e))?;
+    tauri_plugin_opener::reveal_item_in_dir(shell_path(p)).map_err(|e| opener_error(path, OpenerTask::Reveal, e))
 }
 
 // ---------- sync ----------
@@ -881,6 +947,75 @@ mod tests {
         symlink(&pdf, d.join("other.pdf")).unwrap();
         assert_eq!(open_check(&d.join("other.pdf")).unwrap(), OpenCheck::Opens);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn shell_path_gives_shares_without_the_verbatim_prefix() {
+        let shell = |p: &str| shell_path(Path::new(p));
+        assert_eq!(shell(r"\\?\UNC\server\share\notes\a.md"), PathBuf::from(r"\\server\share\notes\a.md"));
+        assert_eq!(shell(r"\\?\UNC\server\share"), PathBuf::from(r"\\server\share"));
+        // Without the prefix Windows would drop the dot or open the device,
+        // so these names keep it, and the shell's error says why.
+        for kept in [r"\\?\UNC\s\sh\a.", r"\\?\UNC\s\sh\a \b.md", r"\\?\UNC\s\sh\aux.md", r"\\?\UNC\s\sh\Con\a.md"] {
+            assert_eq!(shell(kept), PathBuf::from(kept));
+        }
+        // As does a path the shell cannot take for its length.
+        let folders = |n: usize| format!(r"{}\", "x".repeat(50)).repeat(n);
+        let long = format!(r"\\?\UNC\server\share\{}a.md", folders(5));
+        assert_eq!(shell(&long), PathBuf::from(&long));
+        let short = format!(r"\\?\UNC\server\share\{}a.md", folders(4));
+        assert_eq!(shell(&short), PathBuf::from(format!(r"\\server\share\{}a.md", folders(4))));
+        // Paths elsewhere are as they were.
+        assert_eq!(shell("/home/u/notes/a.md"), PathBuf::from("/home/u/notes/a.md"));
+        assert_eq!(shell(r"\\server\share\a.md"), PathBuf::from(r"\\server\share\a.md"));
+    }
+
+    // dunce strips the prefix of a drive path only on Windows.
+    #[cfg(windows)]
+    #[test]
+    fn shell_path_gives_drive_paths_without_the_verbatim_prefix_when_short() {
+        let shell = |p: &str| shell_path(Path::new(p));
+        assert_eq!(shell(r"\\?\C:\Users\u\notes\a.md"), PathBuf::from(r"C:\Users\u\notes\a.md"));
+        let long = format!(r"\\?\C:\Users\{}a.md", format!(r"{}\", "x".repeat(60)).repeat(5));
+        assert_eq!(shell(&long), PathBuf::from(&long));
+    }
+
+    #[test]
+    fn opener_errors_are_plain_sentences() {
+        use std::io::{Error, ErrorKind};
+        use tauri_plugin_opener::Error as E;
+        // The commands stat the file first, so a "not found" from the opener
+        // does not mean the file is gone.
+        let not_found = || E::Io(Error::new(ErrorKind::NotFound, "path doesn't exist"));
+        assert_eq!(
+            opener_error("a.pdf", OpenerTask::Open, not_found()),
+            CoreError::Io("No app was found to open it.".into())
+        );
+        assert_eq!(
+            opener_error("a.md", OpenerTask::Reveal, not_found()),
+            CoreError::Io("The file manager could not find it.".into())
+        );
+        let denied = opener_error("a.md", OpenerTask::Reveal, E::Io(Error::from(ErrorKind::PermissionDenied)));
+        assert_eq!(denied, CoreError::Io("No permission to access \"a.md\".".into()));
+        assert_eq!(
+            opener_error("a.md", OpenerTask::Open, E::UnsupportedPlatform),
+            CoreError::Io("API not supported on the current platform".into())
+        );
+    }
+
+    #[test]
+    fn revealing_a_missing_file_says_so_before_the_file_manager_runs() {
+        let gone = std::env::temp_dir().join(format!("cairn-reveal-missing-{}", std::process::id())).join("a.md");
+        assert_eq!(reveal(&gone, "notes/a.md"), Err(CoreError::NotFound("notes/a.md".into())));
+    }
+
+    // The error exists only in the Windows build of the opener plugin.
+    #[cfg(windows)]
+    #[test]
+    fn a_path_the_shell_refuses_gets_a_plain_sentence() {
+        let e = tauri_plugin_opener::Error::FailedToConvertPathToItemIdList(PathBuf::from(r"\\?\C:\a.md"));
+        let CoreError::Io(text) = opener_error("a.md", OpenerTask::Reveal, e) else { panic!() };
+        assert!(text.starts_with("File Explorer cannot show this path."), "{text}");
     }
 
     #[test]

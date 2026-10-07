@@ -1009,6 +1009,15 @@ class App {
     }
   }
 
+  /** Show a file or folder of the vault in the system's file manager. */
+  async revealInFileManager(path: string) {
+    try {
+      await backend.revealInFileManager(path);
+    } catch (e) {
+      this.toast(`Could not show ${fileName(path)} in the file manager: ${errorMessage(e)}`, "error");
+    }
+  }
+
   /**
    * Store files (pasted or dropped) in the attachment folder and return the
    * Markdown to insert for them.
@@ -1193,8 +1202,8 @@ class App {
       {
         id: "note:reveal",
         name: "Reveal current note in file manager",
-        run: () => void (this.active && backend.revealInFileManager(this.active.path)),
-        available: () => this.active?.kind === "note",
+        run: () => void (this.active && this.revealInFileManager(this.active.path)),
+        available: () => this.active?.kind === "note" && !isMobile,
       },
       {
         id: "tab:close",
