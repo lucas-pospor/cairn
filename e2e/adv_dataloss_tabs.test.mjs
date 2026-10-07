@@ -69,7 +69,8 @@ test("external delete while dirty: banner; Save my version recreates the file wi
     assert.ok(!v.exists("N.md"), "nothing recreated without asking");
     await app.clickButtonText("Save my version");
     await eventually(() => v.exists("N.md") && v.read("N.md") === "base\nMINE", { message: "recreated" });
-    assert.equal(await app.banner(), null);
+    // The banner goes when the write's reply comes back, a moment after the file changed.
+    await eventually(async () => (await app.banner()) === null, { message: "banner gone" });
   } finally {
     await app.close();
   }

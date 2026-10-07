@@ -131,7 +131,8 @@ test("Keep mine (overwrite) writes exactly the editor text", async () => {
     assert.equal(v.read("N.md"), "THEIRS\n");
     await app.clickTestId("conflict-mine");
     await eventually(() => v.read("N.md") === "base\nMINE more", { message: "mine written" });
-    assert.equal(await app.banner(), null);
+    // The banner goes when the write's reply comes back, a moment after the file changed.
+    await eventually(async () => (await app.banner()) === null, { message: "banner gone" });
     await app.waitSaved();
   } finally {
     await app.close();
