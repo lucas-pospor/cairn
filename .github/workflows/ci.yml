@@ -139,7 +139,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # Proves that the Windows installer builds. It is not uploaded.
+  # Builds the Windows installer and keeps it for 7 days as an artifact of the
+  # run, so that a release can attach the installer built from its own commit.
+  # The installer is not signed.
   windows-installer:
     runs-on: windows-2025
     steps:
@@ -171,3 +173,10 @@ jobs:
       - name: Build the NSIS installer
         working-directory: app
         run: npx tauri build --bundles nsis --ci
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
