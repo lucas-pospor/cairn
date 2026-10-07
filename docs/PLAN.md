@@ -201,7 +201,7 @@ Platform-specific code, all of it small:
 | Risk | Mitigation |
 |---|---|
 | Tauri Android maturity, SAF performance on big notebooks | `VaultFs` keeps SAF isolated; app storage is the default; cache the listing; measure early in v3 |
-| Android toolchain setup | The README lists the SDK, NDK and JDK versions, `scripts/android-env.sh` finds them, and the Android tests run on the emulator |
+| Android toolchain setup | The manual's Building from source page lists the SDK, NDK and JDK versions, `scripts/android-env.sh` finds them, and the Android tests run on the emulator |
 | Live Preview editing is subtle (cursor, selection, widgets) | Build on CM6 decorations like Obsidian; keep a source-mode toggle; cover the tricky cases with tests |
 | Case-insensitive file systems (macOS, Windows, Android shared storage) vs case-sensitive Linux | Refuse new case twins; link resolution is case-insensitive; sync gives a pulled case twin a conflict copy name on macOS and Windows, and Android shared storage refuses it and lists it with the files not synced |
 | Watcher floods (git checkout, bulk copies) | Debounce and coalesce, then run one diff scan; an inotify queue overflow triggers one full rescan |
@@ -405,3 +405,20 @@ Tests for 1.3.1: 815 Rust tests (801 in `cairn-core`, `cairn-sync` and `cairn-se
 ## 9. Known limits
 
 The known limits are now in the manual: [docs/manual/known-limits.md](manual/known-limits.md).
+
+### Tests on Windows
+
+CI runs the Rust tests of the three crates and of the app crate, the frontend build, Vitest and clippy on Windows. The window and the end-to-end tests do not run there.
+
+- 129 Rust tests that run on Linux do not run on Windows, 1 of them in the app crate:
+  - 72 need Unix mode bits (unreadable or read-only files and folders, kept file modes, the executable bit), symlinks (Windows needs Developer Mode or admin rights to make one), or inode numbers and link counts. 31 of them were Unix-only before the tests first ran on Windows, and 2 were written Unix-only since; the other 39 were limited to Unix for Windows.
+  - 39 need two names in one folder that differ only in case, which a Windows folder cannot hold unless case sensitivity is turned on for it. 20 of them are built and marked ignored on Windows.
+  - 9 need a name that Windows refuses: a backslash, a colon or a question mark.
+  - 7 need gdb with the debug info of a Linux build, `/proc`, `ulimit` or the Unix limit on path length.
+  - 2 check the change stamp, which `StdFs` does not have on Windows (FINDING-055). They are marked ignored there.
+- Some tests check less on Windows:
+  - The test of odd names made outside Cairn leaves out the characters Windows refuses.
+  - Three tests leave out their steps with names that differ only in case: the random test of the index, the test of renames in the app, and the phone test of a note under another spelling.
+  - While a folder is being deleted, Windows reports it as access denied, so the test of a folder replaced during a scan checks only the notebook's rescan, which skips such a folder for that scan.
+  - The test of device names leaves out its last step, a rename by sync to such a name, which Windows cannot make.
+  - The test that the server answers before the body arrives sends no body on Windows, where a TCP reset discards an answer that has not been read yet.

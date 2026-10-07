@@ -1,8 +1,8 @@
 # Known limits
 
-These hold in version 1.3.1. Most FINDING numbers also name the tests that reproduce or check that case; no test names FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 or FINDING-176. The known gaps at the end of v2 and v3 in section 8 also still hold, except that Live Preview embeds on desktop refresh when the embedded file changes (FINDING-092), a client stops when the server has fewer changes than it has seen (FINDING-058), release APKs are signed with the project's release key (see the release notes), and Windows is no longer wholly untested: CI builds and tests Cairn there, and releases have a Windows installer, but nobody has tried the app by hand on Windows (see Windows, below). macOS is still untested. Since 1.3.0, a matching bracket, special characters, the drop cursor and the graph's hover box take the theme's colors, a focused text field in Settings shows the accent border, and links to missing notes in the outgoing links panel are dashed (section 8).
+These limits hold in version 1.3.1. The FINDING numbers in parentheses name the tests in the repository that reproduce or check each case, except FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 and FINDING-176, which no test names. For FINDING-177, only the Android case is tested, and that case is fixed.
 
-### Files and links
+## Files and links
 
 - A rename made in Cairn refuses a name that differs only in case from another file or folder in the same folder, as creating does. Files made or renamed outside Cairn, and new or renamed files that sync brings from another device, skip this check, so on Linux and in Android app storage a notebook can hold two notes whose names differ only in case. A macOS or Windows device then gives one of them a conflict copy name, and an Android shared folder keeps one and lists the other under "Files not synced" (FINDING-053).
 - By design, names with a backslash do not sync. The app lists them under "Files not synced" with "The name contains a backslash. Rename it to sync it." A synced note renamed outside Cairn to such a name counts as deleted, so the other devices move it to their trash (FINDING-011).
@@ -11,7 +11,7 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - A remote move of a synced symlink to a file into another folder waits, listed, when the link's target is a relative path, because the move can break the link. Cairn does not check whether it would. This holds for any such link, not only one that gives a note a second name (FINDING-224).
 - A rename or move made in Cairn refuses a Windows device name (CON, PRN, AUX, NUL, COM0 to COM9 and LPT0 to LPT9, also with ¹, ² or ³, CONIN$ and CONOUT$, with any extension) on every platform. Renames that sync applies still take such a name, except on Windows, where sync lists the file under "Files not synced". So a note such as con.md that was made outside Cairn or came from another device cannot be moved to another folder in Cairn under that name; rename it first.
 - Files with `#`, `|`, `[` or `]` in their names are left out of the `[[` autocomplete, because no wikilink can name them. Offering them there as Markdown links is deferred. Of two files whose names differ only in case, only the one that wikilinks lead to is offered (FINDING-184).
-- Cairn does not save settings, snippets or a font file through a `.cairn`, `.cairn/snippets` or `.cairn/fonts` folder that is a link out of the notebook, and does not move a font file to the trash through one: it shows an error and writes nothing outside the notebook. Reads still follow such links, `.cairn/plugins` and `.cairn/fonts` included, so plugin code and the font file can come from outside the notebook, though a plugin still needs the user's approval (FINDING-013). Cairn refuses the settings, a snippet or a plugin in `.cairn/` that is larger than 16 MB, and a plugin file that large can keep Settings, then Plugins, from listing any plugin.
+- Cairn does not save settings, snippets or a font file through a `.cairn`, `.cairn/snippets` or `.cairn/fonts` folder that is a link out of the notebook, and does not move a font file to the trash through one: it shows an error and writes nothing outside the notebook. Reads still follow such links, `.cairn/plugins` and `.cairn/fonts` included, so plugin code and the font file can come from outside the notebook, though a plugin still needs the user's approval (FINDING-013). Cairn refuses the settings, a snippet or a plugin in `.cairn/` that is larger than 16 MB, and a plugin file that large can keep Settings, then Plugins, from listing any plugin. If the notebook's settings turn it on, it can also keep other plugins from starting.
 - A hard-linked note is written in place after a temp copy. A crash during that write can leave the note half written under all its names, with the full text in a `.cairn-tmp-*` file next to it. If the write fails, Cairn renames the copy over the note, so the link splits and the other names can be left half written (FINDING-013). On Windows, a save always splits the link (see Windows, below).
 - Images in dot-folders do not show, in a note or in an image tab, and the tree, the quick switcher and search do not list them (FINDING-022).
 - Image tabs are not reopened when Cairn starts again. Versions 1.0.0 and 1.1.0 open every tab of the saved session that is not the graph as a note, so the session keeps the format they read, and they still restore the other tabs from it.
@@ -19,8 +19,9 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - An external edit that keeps the size and mtime (`rsync -t`, `cp -p`, coarse FAT or SMB timestamps) is not picked up until the file changes again; a save from an open tab still compares the content (FINDING-046).
 - An external save that lands between Cairn's last check and its rename can be overwritten. In testing, none of 500 saves at a 50 ms cadence were overwritten, and about 2% were in a back-to-back stress test. This window is accepted as a known limit (FINDING-047).
 - On desktop, a save cut off by a crash leaves a `.cairn-tmp-*` file next to the note. Cairn does not list it, and on Linux it is hidden, but on Windows a leading dot does not hide a file, so File Explorer shows it (FINDING-177).
+- Renaming a note does not rewrite the links that point to it.
 
-### Sync
+## Sync
 
 - The server stores each device's name in plaintext. Encrypting it is later work (FINDING-152).
 - A remote change this device cannot apply (a name its file system refuses, a folder it cannot read or write) stays pending and is listed under "Files not synced", and that file's local changes wait with it. On Windows this holds for a name with `<`, `>`, `:`, `"`, `|`, `?` or `*`, a name that ends in a dot or a space, and a device name such as con.md, which other systems allow; such a file is listed with "Windows does not allow the name". A file on one device and a folder of the same name on another wait until one side renames (FINDING-017, FINDING-057).
@@ -30,7 +31,7 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - After the sync state is rebuilt (lost or damaged, or sync turned off and on), notes deleted elsewhere come back, because sync makes no automatic deletes (FINDING-054).
 - When sync writes a remote change or moves a file to the trash, a file that another program writes in the few milliseconds after Cairn's last check is not protected (FINDING-015).
 - On Windows and in Android shared folders, sync misses an edit made outside Cairn that keeps a note's size and puts back a modification time more than 3 s old (`cp -p`, `rsync -t`, a backup restore). It also misses another file of the same size and modification time moved over a note: the other devices keep the note's old text, and if that file had already synced elsewhere in the notebook, they move it to their trash. The new text is uploaded when the note changes again, and if another device edits the note first, the two versions are merged (FINDING-055).
-- Downloaded files get the time of the download as their modification time, so the quick switcher's recent order on other devices follows the sync. Applying the original time needs a way to set it through `VaultFs`, Android shared folders included (FINDING-150).
+- Downloaded files get the time of the download as their modification time, so the quick switcher's recent order on other devices follows the sync (FINDING-150).
 - An empty note renamed outside Cairn syncs as a delete and a create, and so do identical notes renamed outside Cairn before one sync when two or more of them keep neither their file names nor their folders. Other devices move the old copies to their trash, and nothing is lost (FINDING-136).
 - A note renamed outside Cairn and edited before the next sync syncs as a delete and a new note, because sync does not match notes by similarity. Its version history starts again, other devices move the old note to their trash, and an edit made elsewhere in the meantime comes back under the old name. A rename made in Cairn while sync is set up keeps the history (FINDING-062).
 - Restoring a version needs a connection (FINDING-024). The version history of a note renamed and edited in Cairn shows only after the next sync, about 4 s later (FINDING-165).
@@ -39,10 +40,13 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - Sync finds names that differ only in case with Unicode lowercase, so names that a file system folds another way (such as `ſ` and `s`) are not caught. In a Linux folder with case folding turned on, a case-only rename from another device is pushed back to the old name. Nothing is lost (FINDING-004).
 - Sync setup asks before it creates a notebook the server does not have. Notebook names on the server are case-sensitive, so "Notes" and "notes" are two notebooks (FINDING-083, FINDING-164). The server cannot delete a notebook, so a notebook made by a setup that was then cancelled stays there (FINDING-163).
 - A reverse proxy must not reuse idle connections to the server for more than 10 s; the bundled Caddyfile uses 5 s. A client that keeps opening new half-sent connections can still use up the server's file descriptors. Without a valid token, the server closes each one after at most 10 s. With a valid token, a request body that stops arriving is cut off after 30 s, but one that keeps sending a little at a time is not (FINDING-076).
+- Sync does not copy files or folders whose names start with a dot, such as the `.cairn/` folder (settings, CSS snippets, plugins and the font file), and it does not copy empty folders. Moving a note into such a folder, for example `.archive/`, works like deleting it on your other devices: it goes to their trash.
+- The server cannot read notes or make up their content, but it can hold back changes, send an older version of a note as the newest one, or mark a note as deleted, so that each device that has not changed the note moves it to its trash. It can also change the device name and the time that version history shows. Cairn notices none of this, except a server that has fewer changes than the device has seen (FINDING-058).
+- The notebook key is stored unencrypted in the app's data folder on each device.
 
-### Windows
+## Windows
 
-- Releases have a Windows installer, built in CI from the release's commit. It is not signed, so Windows SmartScreen warns before it runs, and on a PC with Smart App Control turned on, Windows can block the installer and Cairn outright. CI runs the Rust tests of the three crates and of the app crate, the frontend build, Vitest and clippy on Windows. The window and the end-to-end tests do not run there, and nobody has tried the app by hand on Windows.
+- The installer is not signed, so Windows SmartScreen warns before it runs, and on a PC with Smart App Control turned on, Windows can block the installer and Cairn outright.
 - After a note is renamed only in case (note.md to Note.md), in Cairn or in File Explorer, the file tree can list it under both spellings. The old spelling goes when Cairn next reads the whole notebook: at the next sync, or when the notebook is opened again.
 - When sync puts a note into a folder whose name differs only in case from a folder already there (Notes from another device, notes on this computer), the file tree can list that folder twice, once under each spelling.
 - Cairn lists and syncs files that Windows marks as hidden or system files, such as desktop.ini and Thumbs.db, like any other file. Only a dot at the start of a name hides a file.
@@ -51,7 +55,7 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - A note that another program keeps open without allowing it to be replaced cannot be saved until that program closes it. Cairn then says it has no permission to access the note. A change that sync brings for it waits until then and is listed under "Files not synced", and, as in File Explorer, the note cannot be renamed, moved or deleted while it is open.
 - A file whose name no Windows file can have, made on another system on a drive that Windows also reads, is left out of the notebook and not listed under "Files not synced".
 - A file or folder whose name ends in a dot or a space, or is a device name such as CON, can still be in the notebook if another program made it. Deleting it, or anything inside a folder with such a name, moves it to the notebook's `.trash` folder, not to the Recycle Bin, because the Recycle Bin would take another file for it. Cairn's file tree does not show `.trash`, but File Explorer does.
-- Found by reading the code, and not tried on Windows:
+- Found by reading the code:
   - F5 and Ctrl+R can reload Cairn's window, as they reload a page in a web browser.
   - A character typed with AltGr, such as @ or € on many keyboard layouts, can count as Ctrl+Alt with that key. It can then run a command whose hotkey is Ctrl+Alt with that key, and the hotkey recorder can record it that way. No default hotkey uses Ctrl+Alt.
   - A notebook on a network share (`\\server\share`), also one opened through a mapped drive letter such as `Z:`, shows and keeps its folder with a `\\?\UNC\` prefix, and Cairn passes paths in that form when it opens a file in its default app or shows it in File Explorer. A path longer than about 260 characters keeps its `\\?\` prefix in the same way.
@@ -60,24 +64,13 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
   - When many files change outside Cairn at once, the file watcher can miss some of the changes without noticing. After an error, such as a network share that drops, it can stop watching the notebook until the notebook is opened again. Cairn finds the missed changes at the next sync, or when the notebook is opened again.
   - Signing out, shutting down or restarting Windows ends Cairn at once, without the save that closing the window makes. Edits made since the last autosave are lost, and so are edits that Cairn could not save, which it would ask about when the window closes.
   - Where the Recycle Bin cannot take a file or folder (a notebook on a network share or a USB stick, or a file larger than the bin allows), Windows can ask whether to delete it for good when Cairn deletes it, also when sync deletes it in the background. Yes deletes it for good; No moves it to the notebook's `.trash` folder.
-- 129 Rust tests that run on Linux do not run on Windows, 1 of them in the app crate:
-  - 72 need Unix mode bits (unreadable or read-only files and folders, kept file modes, the executable bit), symlinks (Windows needs Developer Mode or admin rights to make one), or inode numbers and link counts. 31 of them were Unix-only before the tests first ran on Windows, and 2 were written Unix-only since; the other 39 were limited to Unix for Windows.
-  - 39 need two names in one folder that differ only in case, which a Windows folder cannot hold unless case sensitivity is turned on for it. 20 of them are built and marked ignored on Windows.
-  - 9 need a name that Windows refuses: a backslash, a colon or a question mark.
-  - 7 need gdb with the debug info of a Linux build, `/proc`, `ulimit` or the Unix limit on path length.
-  - 2 check the change stamp, which `StdFs` does not have on Windows (FINDING-055). They are marked ignored there.
-- Some tests check less on Windows:
-  - The test of odd names made outside Cairn leaves out the characters Windows refuses.
-  - Three tests leave out their steps with names that differ only in case: the random test of the index, the test of renames in the app, and the phone test of a note under another spelling.
-  - While a folder is being deleted, Windows reports it as access denied, so the test of a folder replaced during a scan checks only the notebook's rescan, which skips such a folder for that scan.
-  - The test of device names leaves out its last step, a rename by sync to such a name, which Windows cannot make.
-  - The test that the server answers before the body arrives sends no body on Windows, where a TCP reset discards an answer that has not been read yet.
 
-### macOS
+## macOS and iOS
 
 - Cairn has not been built, tested or run on macOS, CI does not cover it, and releases have no macOS build.
+- There is no iOS app.
 
-### Android
+## Android
 
 - Shared folders refuse a name that differs only in case from an existing one, and names the storage cannot hold. A file synced from another device under such a name, or into a folder whose name differs only in case from one on the phone, is not stored on the phone and is listed under "Files not synced" (FINDING-031, FINDING-172).
 - Of two notes whose names differ only in case, the phone stores one in the shared folder and lists the other. When another device renames a note to a name that differs only in case from another note on the phone, the phone holds the rename back and lists it. Edits made to that note on the phone stay on the phone until one of the two notes is renamed or deleted. If the phone already has a copy of another device's note in a folder whose name differs only in case from that device's folder, the copy syncs as a second note, because taking it for that note would mean renaming the folder on every device. Nothing is lost in any of these cases (FINDING-172).
@@ -86,43 +79,47 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - After a renderer crash, text typed within the autosave delay is lost (FINDING-176).
 - On Android 17, Cairn asks for the Nearby devices permission only for a server whose address is private, in 100.64.0.0/10, link-local or IPv6 unique local, or whose name ends in `.local`. Android also counts as local an IPv6 address on a directly connected route, such as a public IPv6 address on the phone's own network. Sync to such a server without the permission times out after about 30 seconds, and the message then says to allow Nearby devices in Android settings; Cairn does not show the prompt for it. A server on the local network that is down, or that the phone cannot reach where it is (on mobile data, or with the VPN off), fails the test connection too, so without the permission Cairn then asks for it, or a background sync says it is missing, although the server would not answer anyway. Cairn cannot tell for sure that a timeout came from the missing permission (Android reports that only through `android_getnetworkblockedreason` on the socket, which the HTTP client does not expose).
 - Cairn cannot open files in other apps yet, images included. Images open in a tab inside Cairn, and a tap on another attachment shows a message. In Live Preview a tap on an embedded image edits the embed, so the image opens from the reading view. An image in a shared folder is read whole through the Storage Access Framework before it shows, so a very large photo there takes a while to open.
+- Shared folders are slower than the app's own storage for large notebooks.
 
-### Plugins
+## Plugins
 
 - Approvals are per device and per exact file content, so editing a plugin or moving the notebook turns it off until the user turns it on again.
 - Plugins have no memory limit: Cairn sets none, and a web worker cannot be given one. A plugin that keeps allocating can end the web view's process; on Linux the window then goes blank (FINDING-161). This has not been tried on Android or on Windows.
 - Cairn stops a plugin and turns it off when a command runs over 30 s, the plugin misses three pings or it floods the app with messages. The only way to stop a slow command is to turn the plugin off (FINDING-069, FINDING-153, FINDING-156, FINDING-162).
 - A plugin has at most 200 commands and 16 API calls in flight, and at most 5 toasts show at once (FINDING-072, FINDING-157, FINDING-162).
 
-### Core plugins (1.1.0)
+## Core plugins (1.1.0)
 
 - Their switches and options are in `.cairn/settings.json`, which Cairn sync does not copy, so with Cairn sync they are set up on each device.
 - Day and month names in dates are always English, so that devices with different system languages give a daily note the same name.
 - In a daily note's template, `{{date}}` and `{{time}}` use the date and time formats of the Templates plugin, whether it is on or not.
 - There is no option to open today's note when a notebook opens: nothing is created by opening a notebook.
-- Thai, Lao, Khmer and Myanmar word counts come from the web view's dictionary (ICU), which is not the same in WebKitGTK, in WebView2 on Windows and in Android's web view, so they can differ a little between devices.
 
-### Themes (1.2.0)
+## Themes (1.2.0)
 
 - Cairn 1.0.0 and 1.1.0 show Limestone or Slate in a notebook set to Marble or Graphite. They keep the choice, so it comes back in 1.2.0 and later.
 - On Android, the area behind the status and navigation bars follows the system's light or dark mode, not the theme chosen in Cairn. On the desktop (tested on Linux), the window's title bar does the same.
 - In Limestone, Marble, Slate and Graphite, scrollbars, horizontal rules and graph edges are below 3:1 against their background, and the highlighted entry of the command palette and quick switcher, the selected version in version history and pressed panel buttons show only as a tint or a color. Since 1.3.0, the high-contrast themes keep scrollbars, horizontal rules and graph edges at 3:1 or more, and draw rings and bars of at least 3:1 for those states.
 - A CSS snippet can change any color, so it can bring a theme below its contrast.
 
-### High-contrast themes (1.3.0)
+## High-contrast themes (1.3.0)
 
 - Cairn 1.0.0 to 1.2.0 show Limestone or Slate in a notebook set to a high-contrast theme. They keep the choice, so it comes back in 1.3.0 and later.
 - The high-contrast themes do not follow the system's high-contrast setting; they are picked in Settings. WebKitGTK reports that setting only for a GTK theme named HighContrast, and Android's web view does not report it. What a Windows contrast theme does to Cairn's colors has not been tried.
 
-### Font file (1.3.0)
+## Font file (1.3.0)
 
 - A notebook has one font file. The web views draw bold and italic text from it by thickening and slanting the regular letters, also when the file is a variable font.
 - Cairn sync does not copy `.cairn/`, settings included, so another device uses the Text font until the font file is picked there too. Copying the file alone is not enough: the device's own `textFont` setting names it. Cairn 1.2.0 and older use the Text font too.
 - A font file picked under the name of the one in use (ignoring case) is saved over it; one of another name replaces it and the old one goes to the trash.
 - The web views use only the first font of a collection, so ttc files are refused. Android's web view and WebView2 on Windows check fonts more strictly than WebKitGTK, so a file that loads on Linux can fail on a phone or on Windows; Cairn then uses the Text font and says why.
 
-### Editor and app
+## Editor and app
 
+- Live Preview reveals the syntax of the whole line under the cursor, not of one element at a time. Callouts, math and footnotes are not rendered in any view: a callout shows as an ordinary quote, and math and footnotes as plain text. In the reading view, a footnote whose text is only a link or one word is read as a link definition: its line does not show, and its marker, such as `[^1]`, shows as a link. Raw HTML blocks show as text in Live Preview, except in an embedded note, and render in the reading view. Script, style and iframe tags never render, and a form tag is dropped, so a form's fields show but send nothing.
+- The properties panel is read-only; properties are edited as YAML in the note.
+- The graph shows the whole notebook only: there is no local graph, and no filter other than for unresolved links.
+- The status bar's word counts of Thai, Lao, Khmer and Myanmar text come from the web view's dictionary (ICU), which is not the same in WebKitGTK, in WebView2 on Windows and in Android's web view, so they can differ a little between devices.
 - On Linux, a SIGTERM to the app saves open notes first, as closing the window does, and the app exits at most 3 s later. When every process of the app gets a signal at once (systemd does this at logout or shutdown, and so do Ctrl+C and a closed terminal), the web view goes too, and the edits made since the last autosave are lost. SIGKILL or a crash loses them as well. Autosave runs 600 ms after the last keystroke (FINDING-009).
 - Unsaved edits are merged with a change on disk unless the changes touch the same or neighboring lines or either side rewrote more than about 10,000 lines (more than 20,000 lines added and removed); then the tab shows the banner that says the note changed on disk. Lines only added or only removed in one place, and a reordering of many lines, are not counted; a reordering can still make the merge slow, about 1 s for 20,000 reversed lines in a release build (FINDING-074, FINDING-151).
 - If a note with unsaved edits is deleted outside Cairn and another note is then renamed onto its path in Cairn, two tabs show that path. "Save my version" in the first tab then shows the banner that says the note changed on disk, and that tab replaces the renamed note only if the user picks "Keep mine (overwrite)" (FINDING-010).
@@ -135,7 +132,7 @@ These hold in version 1.3.1. Most FINDING numbers also name the tests that repro
 - A nested folder moved to another parent right after an event on a file in it can be taken as a delete and a create (FINDING-129).
 - Live Preview renders tables only as far as the editor has parsed (FINDING-043). When the editor runs out of time parsing a note, the next edit can hit a bug in @lezer/markdown that shows a code block's lines as plain text or a table and the text after the block as code, until the note is reopened. In testing, this took pasting a code block of about 90,000 characters or more a few thousand characters into a note, then one more edit (FINDING-225).
 
-### Performance
+## Performance
 
 - On 50,000 notes the graph is slow. On a debug build, a hover takes about 0.35 s (about 45 ms on 10,000 notes), and the current look stays (FINDING-042). Opening the graph takes 1.6 to 2.4 s on that build, with a longest frame of 0.7 to 1.1 s, and about 0.9 s on a release build, with one frame of about 730 ms (FINDING-127). The debug build uses about 1.6 GB after hovering, and closing the graph brings that down only to 1.3 to 1.4 GB (FINDING-128).
 - Sync uploads one file per request, so the first sync of a large notebook takes time in line with its number of files (about 5.3 s for 5,000 notes in the sync tests). Sending files in batches needs a change to the sync protocol (FINDING-126).

@@ -4,9 +4,9 @@
 
 <h1 align="center">Cairn</h1>
 
-Cairn is a local-first Markdown notes app in the style of Obsidian. A notebook is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. The search index and link graph live in memory, and Cairn rebuilds them from the files.
+Cairn is a local-first Markdown notes app for Linux, Windows and Android. A notebook is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. Sync between your devices is optional and end-to-end encrypted, through a small server you run yourself.
 
-[docs/PLAN.md](docs/PLAN.md) has the design, the stack decisions and the status of each version. [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) describes each release. Section 9 of [docs/PLAN.md](docs/PLAN.md#9-known-limits) lists the known limits.
+The manual, in [docs/manual](docs/manual/README.md), describes how to use Cairn, and its [known limits](docs/manual/known-limits.md) page lists what Cairn does not do yet. [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) describes each release, and [docs/PLAN.md](docs/PLAN.md) has the design, the stack decisions and the status of each version.
 
 ## Screenshots
 
@@ -24,7 +24,7 @@ Cairn is a local-first Markdown notes app in the style of Obsidian. A notebook i
 
 ## Manual
 
-The user documentation is in [docs/manual](docs/manual/README.md):
+The manual's pages, in [docs/manual](docs/manual/README.md):
 
 - [Getting started](docs/manual/getting-started.md)
 - [Notebooks and files](docs/manual/notebooks-and-files.md)
@@ -39,6 +39,10 @@ The user documentation is in [docs/manual](docs/manual/README.md):
 - [Windows](docs/manual/windows.md)
 - [Building from source](docs/manual/building.md)
 - [Known limits](docs/manual/known-limits.md)
+
+## Building
+
+Prebuilt packages are on the [releases page](https://github.com/lucas-pospor/cairn/releases). To build Cairn yourself, see [Building from source](docs/manual/building.md).
 
 ## Tests
 
@@ -122,7 +126,7 @@ The emulator's memory use grows over long runs. `scripts/adv-android-run-all.sh`
 scripts/adv-android-run-all.sh e2e/android/adv_saf.test.mjs
 ```
 
-`e2e/android/local_network.test.mjs` checks the Nearby devices permission (see [Android](#android)). It needs an emulator with Android 17 (API 37) and skips on older ones. With an AVD named `cairn-test-37` made from the `system-images;android-37.0;google_apis;x86_64` image:
+`e2e/android/local_network.test.mjs` checks the Nearby devices permission (see [Sync on the local network](docs/manual/android.md#sync-on-the-local-network)). It needs an emulator with Android 17 (API 37) and skips on older ones. With an AVD named `cairn-test-37` made from the `system-images;android-37.0;google_apis;x86_64` image:
 
 ```bash
 AVD=cairn-test-37 scripts/adv-android-run-all.sh e2e/android/local_network.test.mjs
@@ -156,9 +160,10 @@ app/src/             Svelte UI and CodeMirror extensions
 app/src/lib/corePlugins/  core plugins (Templates, Daily notes, Unique note creator, Random note)
 e2e/                 end-to-end tests against the built app (WebDriver on the desktop, adb on Android)
 scripts/             build, test and benchmark helpers
-docs/PLAN.md         plan, decisions, status, known limits
+docs/manual/         the user manual
+docs/PLAN.md         plan, decisions, status
 docs/RELEASE_NOTES.md  what is in each release
-docs/images/         screenshots used in this README
+docs/images/         screenshots used in the README and the manual
 LICENSE              MIT license
 ```
 
