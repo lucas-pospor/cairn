@@ -160,10 +160,11 @@ app/src/             Svelte UI and CodeMirror extensions
 app/src/lib/corePlugins/  core plugins (Templates, Daily notes, Unique note creator, Random note)
 e2e/                 end-to-end tests against the built app (WebDriver on the desktop, adb on Android)
 scripts/             build, test and benchmark helpers
-docs/manual/         the user manual
+docs/manual/         the user manual, also on the website
+site/                the website: page templates, styles and build script
 docs/PLAN.md         plan, decisions, status
 docs/RELEASE_NOTES.md  what is in each release
-docs/images/         screenshots used in the README and the manual
+docs/images/         screenshots used in the README, the manual and the website
 LICENSE              MIT license
 ```
 
