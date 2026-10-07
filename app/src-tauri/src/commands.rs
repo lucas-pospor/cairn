@@ -858,12 +858,24 @@ pub fn default_device_name() -> String {
     if cfg!(target_os = "android") {
         return "Android".into();
     }
-    std::env::var("HOSTNAME")
-        .ok()
-        .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| std::env::consts::OS.to_string())
+    device_name_from(std::env::consts::OS, |k| std::env::var(k).ok(), || std::fs::read_to_string("/etc/hostname").ok())
+}
+
+/// The device name sync setup suggests on the system `os`: HOSTNAME if set,
+/// then the computer's name (COMPUTERNAME on Windows, which always sets it;
+/// /etc/hostname elsewhere), then the system's name. Blank values are
+/// skipped. `var` reads an environment variable and `hostname_file` reads
+/// /etc/hostname, so tests can give their own.
+fn device_name_from(
+    os: &str,
+    var: impl Fn(&str) -> Option<String>,
+    hostname_file: impl FnOnce() -> Option<String>,
+) -> String {
+    let clean = |s: String| Some(s.trim().to_string()).filter(|s| !s.is_empty());
+    var("HOSTNAME")
+        .and_then(clean)
+        .or_else(|| if os == "windows" { var("COMPUTERNAME") } else { hostname_file() }.and_then(clean))
+        .unwrap_or_else(|| os.to_string())
 }
 
 #[cfg(test)]
@@ -1016,6 +1028,41 @@ mod tests {
         let e = tauri_plugin_opener::Error::FailedToConvertPathToItemIdList(PathBuf::from(r"\\?\C:\a.md"));
         let CoreError::Io(text) = opener_error("a.md", OpenerTask::Reveal, e) else { panic!() };
         assert!(text.starts_with("File Explorer cannot show this path."), "{text}");
+    }
+
+    #[test]
+    fn the_device_name_is_the_computers_name() {
+        let env = |vars: &'static [(&'static str, &'static str)]| {
+            move |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+        };
+        let no_file = || -> Option<String> { panic!("Windows has no /etc/hostname") };
+        // Windows: the computer's name, unless HOSTNAME names the device.
+        assert_eq!(device_name_from("windows", env(&[("COMPUTERNAME", "DESKTOP-7Q2K9LM")]), no_file), "DESKTOP-7Q2K9LM");
+        assert_eq!(
+            device_name_from("windows", env(&[("HOSTNAME", "laptop"), ("COMPUTERNAME", "DESKTOP-7Q2K9LM")]), no_file),
+            "laptop"
+        );
+        assert_eq!(device_name_from("windows", env(&[]), no_file), "windows");
+        // Elsewhere: /etc/hostname, and COMPUTERNAME means nothing.
+        let file = || Some("arch\n".to_string());
+        assert_eq!(device_name_from("linux", env(&[("COMPUTERNAME", "PC")]), file), "arch");
+        assert_eq!(device_name_from("linux", env(&[("HOSTNAME", " box ")]), file), "box");
+        assert_eq!(device_name_from("linux", env(&[]), || None), "linux");
+        // Blank values are skipped.
+        assert_eq!(device_name_from("linux", env(&[("HOSTNAME", "")]), file), "arch");
+        assert_eq!(device_name_from("linux", env(&[("HOSTNAME", "  ")]), || Some("\n".into())), "linux");
+        assert_eq!(
+            device_name_from("windows", env(&[("HOSTNAME", " "), ("COMPUTERNAME", "PC")]), no_file),
+            "PC"
+        );
+        assert_eq!(device_name_from("windows", env(&[("COMPUTERNAME", "")]), no_file), "windows");
+    }
+
+    // Windows always sets COMPUTERNAME, so the system's name is never needed there.
+    #[cfg(windows)]
+    #[test]
+    fn the_device_name_on_windows_is_not_the_systems_name() {
+        assert_ne!(default_device_name(), "windows");
     }
 
     #[test]
