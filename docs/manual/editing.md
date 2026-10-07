@@ -1,0 +1,7 @@
+# Editing
+
+- Tabs with autosave. If a file changes on disk while you have unsaved edits, Cairn merges the change into your edits when the two change different lines that are not next to each other. If they touch the same or neighboring lines, or either side rewrote more than about 10,000 lines (lines only added or only removed in one place do not count), it stops and asks instead of overwriting either version. Edits that Cairn could not save (a conflict, a read-only file, a failed write) stay in their tab, and closing the tab, switching notebooks or closing the window asks first.
+- Live Preview editing: Markdown renders as you type, and the syntax comes back on the line you are editing. Source mode, reading view and a side-by-side split each take one click, and Ctrl+E switches between editing and reading.
+- Backlinks, outgoing links, outline, properties (frontmatter) and tags panels.
+- A word and character count in the status bar, for the note or for the selection. Chinese and Japanese text counts each Han, Hiragana or Katakana character as a word. Thai, Lao, Khmer and Myanmar text is split into words with the web view's dictionary, which differs a little between Linux, Windows and Android.
+- Customizable hotkeys for every command, all listed under Settings, then Hotkeys. A hotkey needs Ctrl, Alt or Cmd unless it is a function key. It goes by the character the key types in your keyboard layout (AZERTY, Dvorak and so on).
