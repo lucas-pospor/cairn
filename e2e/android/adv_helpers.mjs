@@ -221,7 +221,7 @@ export class Device {
   }
 }
 
-function uiDump() {
+export function uiDump() {
   for (let i = 0; i < 3; i++) {
     try {
       adb("shell", "uiautomator", "dump", "/sdcard/ui.xml");

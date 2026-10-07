@@ -25,6 +25,9 @@
 -keep class app.cairn.notes.PathArgs { *; }
 -keep class app.cairn.notes.WriteArgs { *; }
 -keep class app.cairn.notes.MoveArgs { *; }
+# The local network permission plugin, likewise (sync, android.rs allow_server).
+-keep class app.cairn.notes.LocalNetworkPlugin { *; }
+-keep class app.cairn.notes.LocalNetworkArgs { *; }
 # The page calls CairnAndroid.leave() (MainActivity.BackBridge) by name.
 -keepclassmembers class app.cairn.notes.MainActivity$BackBridge {
     @android.webkit.JavascriptInterface <methods>;

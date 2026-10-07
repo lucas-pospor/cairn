@@ -8,6 +8,8 @@ mod protocol;
 mod android;
 #[cfg(any(target_os = "android", test))]
 mod listing;
+#[cfg(any(target_os = "android", test))]
+mod local_network;
 mod sync;
 #[cfg(desktop)]
 mod watcher;
@@ -112,7 +114,7 @@ pub fn run() {
         .plugin(navigation_guard())
         .register_asynchronous_uri_scheme_protocol("vault", protocol::handle);
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(android::init());
+    let builder = builder.plugin(android::init()).plugin(android::init_local_network());
     builder
         .setup(|app| {
             use tauri::Manager;

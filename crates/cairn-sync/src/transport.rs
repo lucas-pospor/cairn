@@ -105,6 +105,9 @@ impl HttpTransport {
     }
 }
 
+/// [`SyncError::Network`] text of a server that did not answer in time.
+pub const TIMED_OUT: &str = "it did not answer in time";
+
 /// A failed request in words the user can act on, not the HTTP client's
 /// ("io: Connection refused (os error 111)", "http: invalid format").
 fn net(e: ureq::Error) -> SyncError {
@@ -113,11 +116,11 @@ fn net(e: ureq::Error) -> SyncError {
     SyncError::Network(match e {
         E::Http(_) | E::BadUri(_) => "the URL must start with https:// or http://".into(),
         E::HostNotFound => "no server with that name was found".into(),
-        E::Timeout(_) => "it did not answer in time".into(),
+        E::Timeout(_) => TIMED_OUT.into(),
         E::Json(_) => "unexpected answer; is this a Cairn server?".into(),
         E::Io(io) => match io.kind() {
             K::ConnectionRefused => "connection refused; is the server running?".into(),
-            K::TimedOut => "it did not answer in time".into(),
+            K::TimedOut => TIMED_OUT.into(),
             K::NetworkUnreachable | K::HostUnreachable | K::NetworkDown => "no network connection".into(),
             _ => cairn_core::error::os_text(&io),
         },

@@ -133,6 +133,8 @@ You have to sign a release APK before you can install it. See <https://tauri.app
 
 On Android, "Create a notebook on this device" keeps the notebook in the app's private storage. "Open a folder from storage" uses the system folder picker (Storage Access Framework), so you can share the folder with other apps. Opening a folder this way needs no storage permission. Sync works as on the desktop, except for the names a shared folder cannot hold (below).
 
+From Android 17, an app can reach a server on the local network, such as a sync server at home, only with the Nearby devices permission. Cairn asks for it when you start a sync yourself (Connect and sync, Sync now, a click on the sync status, or restoring an earlier version) and the server is on the local network: its address is private (10.x.x.x, 172.16.x.x to 172.31.x.x, 192.168.x.x), link-local or an IPv6 unique local address, or its name ends in `.local`. Syncs that run by themselves never ask; while the permission is missing, they stop with a message that says how to allow it. If you refuse, sync stops with a message that says so. To allow it later, open Android settings, then Apps, Cairn, Permissions, Nearby devices. A server on your network with a public address (common with IPv6) is not recognized as local: without the permission, its sync times out, and the message then also says to allow Nearby devices.
+
 The app reopens a shared folder after a restart as long as it still has access to it. If another app renames, moves or deletes the folder, Cairn treats it as missing: sync stops with "Sync error" and uploads nothing, so the other devices keep their notes. Pick the folder again in its new place.
 
 Shared storage ignores case, so Cairn refuses a name that differs only in case from an existing one there. It also refuses names that the storage cannot hold: names with `" * : < > ? \ |`, a trailing dot, or more than 255 bytes. When another device syncs a file under such a name, or into a folder whose name differs only in case from one on the phone, the phone does not store the file, and no device renames it. The phone lists it under "Files not synced" in Settings, then Sync. There is one exception: when another device moves some notes from a folder into one whose name differs only in case, the phone renames its whole folder to match, so the folder's other notes move on every device too. When another device renames a note to such a name, the phone holds the rename back, and edits made to that note on the phone wait until the name is free. The known limits in [docs/PLAN.md](docs/PLAN.md#9-known-limits) describe this and a related case.
@@ -294,6 +296,14 @@ The emulator's memory use grows over long runs. `scripts/adv-android-run-all.sh`
 scripts/adv-android-run-all.sh e2e/android/adv_saf.test.mjs
 ```
 
+`e2e/android/local_network.test.mjs` checks the Nearby devices permission (see [Android](#android)). It needs an emulator with Android 17 (API 37) and skips on older ones. With an AVD named `cairn-test-37` made from the `system-images;android-37.0;google_apis;x86_64` image:
+
+```bash
+AVD=cairn-test-37 scripts/adv-android-run-all.sh e2e/android/local_network.test.mjs
+```
+
+To check it on a phone with Android 17 by hand: run a sync server on a computer in the same Wi-Fi network and note the computer's address (for example `192.168.1.20`). Install the APK, remove Cairn's Nearby devices permission in Android settings if it has it, and open Settings, then Sync. Enter `http://192.168.1.20:8080` (or the server's address and port), fill in the rest and press Connect and sync. Android asks to allow Cairn to find and connect to nearby devices. Press Don't allow: the sync error names the server, says it is on your local network and names the setting, within a few seconds, not after 30. Press Connect and sync again and Allow: the notebook syncs. Then remove the permission in Android settings and open Cairn again: Settings, then Sync shows "Press Sync now to allow it", no prompt shows by itself, and Sync now shows the prompt.
+
 ## Performance testing
 
 Generate a large notebook and time how long the core takes to open and query it:
@@ -315,7 +325,7 @@ crates/cairn-core/   notebook (Vault in the code), file system abstraction, pars
 crates/cairn-sync/   sync protocol, encryption, merge rules, client engine
 crates/cairn-server/ sync server (axum + SQLite), Dockerfile, compose file, Caddyfile
 app/src-tauri/       Tauri shell: commands, file watcher, sync thread, vault:// protocol
-app/src-tauri/gen/android/  Android project; SafPlugin.kt is the Storage Access Framework bridge
+app/src-tauri/gen/android/  Android project; SafPlugin.kt is the Storage Access Framework bridge, LocalNetworkPlugin.kt asks for the local network permission
 app/src/             Svelte UI and CodeMirror extensions
 app/src/lib/corePlugins/  core plugins (Templates, Daily notes, Unique note creator, Random note)
 e2e/                 end-to-end tests against the built app (WebDriver on the desktop, adb on Android)

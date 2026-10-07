@@ -5,6 +5,12 @@
 //! Access Framework. SAF folders have no file paths, only `content://` URIs,
 //! so [`SafFs`] implements `VaultFs` by calling the Kotlin `SafPlugin`
 //! (gen/android/app/src/main/java/app/cairn/notes/SafPlugin.kt).
+//!
+//! Sync asks `LocalNetworkPlugin` (LocalNetworkPlugin.kt next to it) for
+//! the local network permission before it connects to a server on the
+//! local network ([`allow_server`]).
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use cairn_core::path as vpath;
 use cairn_core::{CoreError, EntryKind, FileStat, VaultFs};
@@ -14,12 +20,27 @@ use tauri::{Manager, Runtime, Wry};
 
 pub struct Saf(pub PluginHandle<Wry>);
 
+struct LocalNetwork(PluginHandle<Wry>);
+
 pub fn init() -> TauriPlugin<Wry> {
     Builder::new("cairn-saf")
         .setup(|app, api| {
             STARTED.get_or_init(std::time::SystemTime::now);
             let handle = api.register_android_plugin("app.cairn.notes", "SafPlugin")?;
             app.manage(Saf(handle));
+            Ok(())
+        })
+        .build()
+}
+
+/// The Tauri plugin of `LocalNetworkPlugin`. It must be its own: Tauri keys
+/// the Kotlin plugins by the Tauri plugin's name, so a second class
+/// registered under "cairn-saf" would replace `SafPlugin`.
+pub fn init_local_network() -> TauriPlugin<Wry> {
+    Builder::new("cairn-local-network")
+        .setup(|app, api| {
+            let handle = api.register_android_plugin("app.cairn.notes", "LocalNetworkPlugin")?;
+            app.manage(LocalNetwork(handle));
             Ok(())
         })
         .build()
@@ -277,4 +298,83 @@ pub fn can_open<R: Runtime>(app: &tauri::AppHandle<R>, tree: &str) -> bool {
 pub fn pick_folder<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Picked, String> {
     let saf = app.state::<Saf>();
     saf.0.run_mobile_plugin::<Picked>("pickFolder", TreeArgs { tree: "" }).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+struct AskArgs {
+    ask: bool,
+}
+
+#[derive(Deserialize)]
+struct PermissionState {
+    state: String,
+}
+
+/// The local network permission was granted. Android ends the app when the
+/// user revokes a permission, so this holds for the life of the process,
+/// and syncs after it do not call into Java at all.
+static GRANTED: AtomicBool = AtomicBool::new(false);
+
+/// The local network permission: "granted", "prompt" (Android can ask) or
+/// "denied" (only Android settings can allow it). With `ask`, Android's
+/// prompt is shown first if needed; that waits for the user's answer.
+fn local_network<R: Runtime>(app: &tauri::AppHandle<R>, ask: bool) -> String {
+    if GRANTED.load(Ordering::Relaxed) {
+        return "granted".into();
+    }
+    // A sync in the background can run after the activity is gone, and
+    // then the call panics in wry ("no available activity").
+    let call = || app.state::<LocalNetwork>().0.run_mobile_plugin::<PermissionState>("localNetwork", AskArgs { ask });
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
+        Ok(Ok(p)) => {
+            if p.state == "granted" {
+                GRANTED.store(true, Ordering::Relaxed);
+            }
+            p.state
+        }
+        // Then try to connect anyway: the connection says what is wrong.
+        Ok(Err(e)) => {
+            log::warn!("local network permission unknown: {e}");
+            "granted".into()
+        }
+        Err(_) => "granted".into(),
+    }
+}
+
+/// Whether sync may connect to the server at URL `server`: yes when Cairn
+/// holds the local network permission or the server is not on the local
+/// network (`local_network::server_is_local`). Otherwise, with `ask` (the
+/// user started this), Android's prompt is shown; without it (a sync in the
+/// background) nothing is asked. The error says how to allow it.
+pub fn allow_server<R: Runtime>(app: &tauri::AppHandle<R>, server: &str, ask: bool) -> Result<(), cairn_sync::SyncError> {
+    // Granted is the usual case: then the server's name is not even resolved.
+    let now = local_network(app, false);
+    if now == "granted" || !crate::local_network::server_is_local(server) {
+        return Ok(());
+    }
+    let refused = |can_ask| Err(cairn_sync::SyncError::Network(crate::local_network::denied_text(server, can_ask)));
+    if !ask {
+        // Sync now can ask, unless the user refused for good earlier.
+        return refused(now == "prompt");
+    }
+    match local_network(app, true).as_str() {
+        "granted" => Ok(()),
+        // Refused. Android may ask once more next time, or never again;
+        // Android settings always work.
+        _ => refused(false),
+    }
+}
+
+/// A sync to `server` timed out: if Cairn lacks the local network
+/// permission, add how to allow it. Android may count the server as on the
+/// local network although `server_is_local` does not (a public address on
+/// the phone's own network).
+pub fn explain_timeout<R: Runtime>(app: &tauri::AppHandle<R>, e: cairn_sync::SyncError) -> cairn_sync::SyncError {
+    use cairn_sync::{transport::TIMED_OUT, SyncError};
+    match e {
+        SyncError::Network(m) if m == TIMED_OUT && local_network(app, false) != "granted" => {
+            SyncError::Network(format!("{m}. {}", crate::local_network::TIMEOUT_HINT))
+        }
+        e => e,
+    }
 }

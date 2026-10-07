@@ -189,14 +189,16 @@ impl SyncManager {
                 *p = None;
             }
             if self.inner.lock().engine.is_some() {
-                self.sync_now();
+                self.sync_now(false);
             }
             next = Instant::now() + INTERVAL;
         }
     }
 
-    /// Run one sync now (blocking). Safe to call from any thread.
-    pub fn sync_now(&self) -> SyncStatus {
+    /// Run one sync now (blocking). Safe to call from any thread. `ask`:
+    /// the user started it, so Android may ask for the local network
+    /// permission (see [`Self::local_network`]).
+    pub fn sync_now(&self, ask: bool) -> SyncStatus {
         let _run = self.running.lock();
         // A newer manager has the vault now.
         if *self.stopped.lock() {
@@ -204,11 +206,11 @@ impl SyncManager {
         }
         // A cancel from before was meant for an earlier sync or setup.
         self.cancel.reset();
-        self.run_sync()
+        self.run_sync(ask)
     }
 
     /// One sync, with `running` held.
-    fn run_sync(&self) -> SyncStatus {
+    fn run_sync(&self, ask: bool) -> SyncStatus {
         let mut engine = {
             let mut inner = self.inner.lock();
             let Some(e) = inner.engine.take() else {
@@ -219,7 +221,7 @@ impl SyncManager {
             e
         };
         self.emit_status();
-        let mut result = engine.sync();
+        let mut result = self.local_network(&engine.settings().server, ask).and_then(|()| engine.sync());
         let mut engine = Some(engine);
         if matches!(result, Err(SyncError::NotConfigured)) {
             // Another app instance on this vault turned sync off, or
@@ -229,9 +231,10 @@ impl SyncManager {
                 None
             });
             if let Some(e) = engine.as_mut() {
-                result = e.sync();
+                result = self.local_network(&e.settings().server, ask).and_then(|()| e.sync());
             }
         }
+        let result = result.map_err(|e| self.explain(e));
         {
             let mut inner = self.inner.lock();
             // Turned off while syncing: the status says so already.
@@ -293,11 +296,12 @@ impl SyncManager {
         // Like setup: a setup given up meanwhile sees that before this resets it.
         let _run = self.running.lock();
         self.cancel.reset();
-        let found = Cancellable::http(settings, self.cancel.clone()).get_vault(&settings.vault_id);
+        // The first request of a setup: Android asks for the permission here.
+        let found = self.local_network(&settings.server, true).and_then(|()| Cancellable::http(settings, self.cancel.clone()).get_vault(&settings.vault_id));
         if self.cancel.is_set() {
             return Err(CANCELLED.into());
         }
-        found.map(|v| v.is_some()).map_err(|e| e.to_string())
+        found.map(|v| v.is_some()).map_err(|e| self.explain(e).to_string())
     }
 
     /// Connect to a server (creating or unlocking the vault there) and sync.
@@ -306,21 +310,23 @@ impl SyncManager {
         let run = self.running.lock();
         self.cancel.reset();
         let transport = Cancellable::http(&settings, self.cancel.clone());
-        let engine = SyncEngine::connect_with(self.vault.clone(), &self.dir, settings, passphrase, Box::new(transport), DEFAULT_KDF);
+        let engine = self
+            .local_network(&settings.server, true)
+            .and_then(|()| SyncEngine::connect_with(self.vault.clone(), &self.dir, settings, passphrase, Box::new(transport), DEFAULT_KDF));
         if self.cancel.is_set() {
             if engine.is_ok() {
                 let _ = SyncEngine::disconnect(&self.dir);
             }
             return Err(CANCELLED.into());
         }
-        let engine = engine.map_err(|e| e.to_string())?;
+        let engine = engine.map_err(|e| self.explain(e).to_string())?;
         {
             let mut inner = self.inner.lock();
             inner.status = SyncStatus { state: "idle".into(), ..Default::default() };
             fill_settings(&mut inner.status, engine.settings());
             inner.engine = Some(engine);
         }
-        let status = self.run_sync();
+        let status = self.run_sync(true);
         let cancelled = self.cancel.is_set();
         drop(run);
         if cancelled {
@@ -356,7 +362,7 @@ impl SyncManager {
     /// text is on the server (in the history) before it is replaced; if that
     /// sync fails, nothing is restored.
     pub fn restore(&self, path: &str, seq: u64) -> Result<Vec<cairn_core::Change>, String> {
-        let st = self.sync_now();
+        let st = self.sync_now(true);
         if st.state == "error" {
             let why = st.last_error.unwrap_or_default();
             return Err(format!("Nothing was restored: the current text could not be synced first ({why})."));
@@ -372,6 +378,29 @@ impl SyncManager {
             return vault.rename(from, to);
         }
         cairn_sync::engine::rename(vault, &self.dir, from, to)
+    }
+
+    /// Whether sync may connect to `server`. Android 17 blocks connections
+    /// to the local network without a permission the user grants; a blocked
+    /// one would only time out. With `ask` (the user started this sync or
+    /// setup), Android asks for it. Elsewhere always yes.
+    fn local_network(&self, server: &str, ask: bool) -> Result<(), SyncError> {
+        #[cfg(target_os = "android")]
+        return crate::android::allow_server(&self.app, server, ask);
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = (server, ask);
+            Ok(())
+        }
+    }
+
+    /// A failed sync in words that say how to fix it; on Android a timeout
+    /// may come from the missing local network permission.
+    fn explain(&self, e: SyncError) -> SyncError {
+        #[cfg(target_os = "android")]
+        return crate::android::explain_timeout(&self.app, e);
+        #[cfg(not(target_os = "android"))]
+        e
     }
 
     pub fn with_engine<T>(&self, f: impl FnOnce(&SyncEngine) -> Result<T, SyncError>) -> Result<T, String> {

@@ -6,6 +6,10 @@
 #
 #   scripts/adv-android-run-all.sh                     # every file in e2e/android/
 #   scripts/adv-android-run-all.sh e2e/android/adv_saf.test.mjs
+#   AVD=cairn-test-37 scripts/adv-android-run-all.sh e2e/android/local_network.test.mjs
+#
+# AVD names the emulator (default cairn-test). local_network.test.mjs needs an
+# Android 17 (API 37) one and skips on older ones.
 #
 # Logs go to e2e/.tmp/android-run/<file>.log; a summary is printed at the end.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,7 +25,7 @@ files=("$@")
 summary=()
 for f in "${files[@]}"; do
   name=$(basename "$f" .test.mjs)
-  emulator -avd cairn-test -no-window -no-audio -gpu guest -memory 2048 -no-snapshot >"$OUT/$name.emulator.log" 2>&1 &
+  emulator -avd "${AVD:-cairn-test}" -no-window -no-audio -gpu guest -memory 2048 -no-snapshot >"$OUT/$name.emulator.log" 2>&1 &
   emu=$!
   adb wait-for-device
   until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; do sleep 2; done

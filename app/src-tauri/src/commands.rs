@@ -736,7 +736,7 @@ pub async fn sync_vault_exists(state: State<'_, AppState>, args: SyncVaultArgs) 
 #[tauri::command]
 pub async fn sync_now(state: State<'_, AppState>) -> Result<crate::sync::SyncStatus, String> {
     let m = sync_mgr(&state)?;
-    tauri::async_runtime::spawn_blocking(move || m.sync_now()).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || m.sync_now(true)).await.map_err(|e| e.to_string())
 }
 
 /// Give up the sync setup in progress.

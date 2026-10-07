@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- On Android 17, sync to a server on the local network, such as one at home with an address like 192.168.x.x, failed after about 30 seconds with "cannot reach the server: it did not answer in time". Android 17 lets apps reach the local network only with the Nearby devices permission, which Cairn did not have. Cairn now asks for it when you start a sync yourself (Connect and sync, Sync now, a click on the sync status, or restoring an earlier version) and the server is on the local network. If you refuse, sync stops at once with a message that says how to allow it later in Android settings (Apps, then Cairn, then Permissions, then Nearby devices). Syncs that run by themselves never show the prompt; while the permission is missing, they stop with a message that says how to allow it. Older Android versions do not have this permission, and nothing changes there.
+
 ## 1.3.0 (2026-10-07)
 
 ### Notebooks

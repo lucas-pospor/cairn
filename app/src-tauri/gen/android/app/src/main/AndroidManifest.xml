@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 17 blocks apps that target SDK 37 from servers on the local
+         network without this runtime permission ("Nearby devices" in Android
+         settings). Sync asks for it (LocalNetworkPlugin.kt); a test in
+         src-tauri/src/local_network.rs checks that it stays declared here. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
