@@ -398,18 +398,38 @@ fn chunked_body_over_limit_gets_413_and_valid_chunked_works() {
     s.write_all(format!("POST /v1/vaults/v1/files/f2 HTTP/1.1\r\nHost: x\r\nConnection: close\r\nAuthorization: {a}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n").as_bytes()).unwrap();
     let blob = "A".repeat(16 * 1024);
     let payload = format!(r#"{{"parent_seq":null,"device":"d","deleted":false,"blob":"{blob}"}}"#);
-    for c in payload.as_bytes().chunks(1024) {
-        if s.write_all(format!("{:x}\r\n", c.len()).as_bytes()).is_err() {
-            break;
+    if cfg!(unix) {
+        for c in payload.as_bytes().chunks(1024) {
+            if s.write_all(format!("{:x}\r\n", c.len()).as_bytes()).is_err() {
+                break;
+            }
+            let _ = s.write_all(c);
+            let _ = s.write_all(b"\r\n");
         }
-        let _ = s.write_all(c);
-        let _ = s.write_all(b"\r\n");
+        let _ = s.write_all(b"0\r\n\r\n");
+    } else {
+        // The server answers once it has read more than the limit and
+        // closes without reading the rest. On Windows the reset that this
+        // close sends throws away the answer before it is read, so the body
+        // stops at the first byte over the limit there, sent in one write:
+        // the server reads all of it. A server that does not keep to the
+        // limit waits for the rest and gives no answer.
+        let mut body = Vec::new();
+        for c in payload.as_bytes()[..4096].chunks(1024) {
+            body.extend_from_slice(format!("{:x}\r\n", c.len()).as_bytes());
+            body.extend_from_slice(c);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(b"1\r\n");
+        body.push(payload.as_bytes()[4096]);
+        s.write_all(&body).unwrap();
     }
-    let _ = s.write_all(b"0\r\n\r\n");
     let resp = read_resp(&mut s, Duration::from_secs(5));
     assert_eq!(resp.status, Some(413), "{resp:?}");
-    // Same with Content-Length over the limit.
-    let resp = post_json(srv.addr, "POST", "/v1/vaults/v1/files/f3", &payload);
+    // Same with Content-Length over the limit (on Windows 1 byte over, for
+    // the same reason).
+    let over = if cfg!(unix) { payload.as_str() } else { &payload[..4097] };
+    let resp = post_json(srv.addr, "POST", "/v1/vaults/v1/files/f3", over);
     assert_eq!(resp.status, Some(413), "{resp:?}");
     let (ok, n, _) = integrity(&srv.db_path);
     assert_eq!((ok.as_str(), n), ("ok", 1));
