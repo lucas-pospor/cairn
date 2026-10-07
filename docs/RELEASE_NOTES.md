@@ -1,10 +1,17 @@
 # Release notes
 
-## Unreleased
+## 1.3.1 (2026-10-07)
 
 ### Fixes
 
-- On Android 17, sync to a server on the local network, such as one at home with an address like 192.168.x.x, failed after about 30 seconds with "cannot reach the server: it did not answer in time". Android 17 lets apps reach the local network only with the Nearby devices permission, which Cairn did not have. Cairn now asks for it when you start a sync yourself (Connect and sync, Sync now, a click on the sync status, or restoring an earlier version) and the server is on the local network. If you refuse, sync stops at once with a message that says how to allow it later in Android settings (Apps, then Cairn, then Permissions, then Nearby devices). Syncs that run by themselves never show the prompt; while the permission is missing, they stop with a message that says how to allow it. Older Android versions do not have this permission, and nothing changes there.
+- On Android 17, sync to a server on the local network, such as one at home with an address like 192.168.x.x, failed after about 30 seconds with "cannot reach the server: it did not answer in time". Android 17 lets apps reach the local network only with the Nearby devices permission, which Cairn did not have. Cairn now asks for it when you start a sync yourself (Connect and sync, Sync now or a tap on the sync status) or open a note's version history, and the server is on the local network. If you refuse, sync stops at once with a message that says how to allow it later in Android settings (Apps, then Cairn, then Permissions, then Nearby devices). Syncs that run by themselves never show the prompt; while the permission is missing, they stop with a message that says how to allow it. Older Android versions do not have this permission, and nothing changes there.
+
+### Compatibility
+
+- The sync protocol and the sync server's API are unchanged, so servers and devices on 1.0.0 to 1.3.0 keep working with this version. Nothing changes on disk.
+- Apart from the version number, the desktop apps and the sync server are the same as in 1.3.0.
+- The APK installs over 1.3.0 and older as an update and keeps the app's data, its notebooks and its sync setup. On Android 17 it asks for one new permission, Nearby devices, and only when a sync you start, or a note's version history, goes to a server on the local network.
+- Cairn treats a server as on the local network when its address is private (10.x.x.x, 172.16.x.x to 172.31.x.x, 192.168.x.x), in 100.64.x.x to 100.127.x.x (shared address space, which some VPNs use), link-local or an IPv6 unique local address, or its name ends in `.local`. It does not ask when such a server answers without the permission, as one reached through a VPN does: Android does not block a VPN. A server on your network with a public IPv6 address is not recognized as local, although Android counts it as local: without the permission, its sync still times out, and the message then also says to allow Nearby devices.
 
 ## 1.3.0 (2026-10-07)
 
