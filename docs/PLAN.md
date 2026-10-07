@@ -369,7 +369,7 @@ Tests: for image tabs, 66 new Vitest tests (where each file type opens on the de
 
 Tests for 1.2.0: 793 Rust tests (792 in `cairn-core`, `cairn-sync` and `cairn-server`, also run with `CAIRN_FUZZ_SEEDS=200`, plus 1 unit test in the app crate), 423 Vitest tests, 522 desktop end-to-end tests and 91 Android end-to-end tests pass. The others are 36 Rust tests marked ignored (18 reproductions, 7 tests that pass and show behavior by design, and 11 slow measurements and probes), the reproductions marked todo (12 desktop tests) or expected to fail (1 Vitest test), 12 desktop tests that run only when an environment variable turns them on (performance, memory, a 50 MB note and slow plugin checks), and 3 desktop tests that skip when the title bar's close button cannot be reached through the accessibility bus.
 
-### After 1.2.0: notebooks, Windows, the Theme list, high-contrast themes and a font file (unreleased)
+### After 1.2.0: notebooks, Windows, the Theme list, high-contrast themes and a font file (1.3.0)
 
 - The app says notebook where it said vault in all the text users read: the Welcome screen, dialogs, Settings, toasts, the command palette ("Switch notebook"), and the errors of the core, sync and the app shell. The sync server's log says "created notebook". The top of a notebook is the notebook folder ("Notebook folder" in the folder list of Move to and in the Folder option of Daily notes and Unique note creator). Identifiers, test ids, the command id `app:close-vault`, `CAIRN_VAULT`, the `vault://` scheme, the sync API with its error bodies, the settings keys and the file formats keep their names. Cairn shows the server's "no such vault" and "vault exists" as "no such notebook" and "a notebook with this name already exists".
 - The card of an embedded file that does not show as text says what a click on its name does. On the desktop, Cairn asks a new command, `open_externally_check`, which runs the checks of Open in default app without opening anything: the card says the file opens in another app, or that Cairn does not open its type, a link to such a type or a text file marked as executable. When the check fails, the card names only the type. On Android, the card says that Cairn cannot open the file in another app yet.
@@ -502,12 +502,12 @@ These hold in version 1.3.0. Most FINDING numbers also name the tests that repro
 - In Limestone, Marble, Slate and Graphite, scrollbars, horizontal rules and graph edges are below 3:1 against their background, and the highlighted entry of the command palette and quick switcher, the selected version in version history and pressed panel buttons show only as a tint or a color. Since 1.3.0, the high-contrast themes keep scrollbars, horizontal rules and graph edges at 3:1 or more, and draw rings and bars of at least 3:1 for those states.
 - A CSS snippet can change any color, so it can bring a theme below its contrast.
 
-### High-contrast themes (unreleased)
+### High-contrast themes (1.3.0)
 
 - Cairn 1.0.0 to 1.2.0 show Limestone or Slate in a notebook set to a high-contrast theme. They keep the choice, so it comes back in 1.3.0 and later.
 - The high-contrast themes do not follow the system's high-contrast setting; they are picked in Settings. WebKitGTK reports that setting only for a GTK theme named HighContrast, and Android's web view does not report it. What a Windows contrast theme does to Cairn's colors has not been tried.
 
-### Font file (unreleased)
+### Font file (1.3.0)
 
 - A notebook has one font file. The web views draw bold and italic text from it by thickening and slanting the regular letters, also when the file is a variable font.
 - Cairn sync does not copy `.cairn/`, settings included, so another device uses the Text font until the font file is picked there too. Copying the file alone is not enough: the device's own `textFont` setting names it. Cairn 1.2.0 and older use the Text font too.

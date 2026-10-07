@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 1.3.0 (2026-10-07)
 
 ### Notebooks
 
@@ -20,7 +20,7 @@ Under Settings, then Appearance, then Font file, you can pick a font file for no
 
 ### Windows installer
 
-Cairn now has an installer for Windows 10 and 11 on x86_64, `Cairn_<version>_x64-setup.exe` on the release page. It is built on GitHub's Windows runners from the release's commit, where most of the Rust tests and the frontend unit tests also run. The window and the end-to-end tests do not run there, and nobody has tried the app by hand on Windows yet. Section 9 of PLAN.md lists the tests that do not run on Windows and what is known not to work there.
+Cairn now has an installer for Windows 10 and 11 on x86_64, `Cairn_1.3.0_x64-setup.exe` on the release page. It is built on GitHub's Windows runners from the release's commit, where most of the Rust tests and the frontend unit tests also run. The window and the end-to-end tests do not run there, and nobody has tried the app by hand on Windows yet. Section 9 of PLAN.md lists the tests that do not run on Windows and what is known not to work there.
 
 - The installer is not signed, so Windows SmartScreen warns before it runs (Compatibility, below, says what to do).
 - It installs Cairn for your user account only, without administrator rights, by default in `%LOCALAPPDATA%\Cairn` (you can choose another folder), with a shortcut in the Start menu and, if you leave its box ticked, one on the desktop. Windows lists Cairn with the installed apps in Settings, where you can uninstall it.
