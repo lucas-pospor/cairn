@@ -1,0 +1,93 @@
+name: Website
+
+# Builds the website with site/build.mjs and publishes it on GitHub Pages.
+# It runs when a release is published, from the release's tag, and by hand
+# (Actions, then Website, then Run workflow), from the latest release's tag or
+# from the tag or branch given. The site is built from a release's tag so that
+# the manual describes the version the download page offers; the build fails
+# if that version has no release.
+#
+# Settings, then Pages, must use GitHub Actions as the source, and the
+# github-pages environment (Settings, then Environments) must allow the
+# release tags, v*, besides main: a run started by a release deploys from
+# its tag.
+#
+# Releases up to 1.3.1 have no site folder, so until the next release a run
+# by hand must give main as the ref.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or branch to build the site from (empty for the latest release)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One deployment at a time. A run that starts while another deploys waits for
+# it instead of cancelling it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Pick the tag or branch to build from
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            ref="$RELEASE_TAG"
+          elif [ -n "$INPUT_REF" ]; then
+            ref="$INPUT_REF"
+          else
+            ref=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "Building the site from $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # The build uses markdown-it from the app's dependencies.
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node site/build.mjs --out target/site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

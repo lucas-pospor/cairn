@@ -6,7 +6,7 @@
 
 Cairn is a local-first Markdown notes app for Linux, Windows and Android. A notebook is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. Sync between your devices is optional and end-to-end encrypted, through a small server you run yourself.
 
-The manual, in [docs/manual](docs/manual/README.md), describes how to use Cairn, and its [known limits](docs/manual/known-limits.md) page lists what Cairn does not do yet. [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) describes each release, and [docs/PLAN.md](docs/PLAN.md) has the design, the stack decisions and the status of each version.
+The website, [Cairn Notes](https://lucas-pospor.github.io/cairn/), has the downloads and the manual. The manual is also here, in [docs/manual](docs/manual/README.md): it describes how to use Cairn, and its [known limits](docs/manual/known-limits.md) page lists what Cairn does not do yet. [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) describes each release, and [docs/PLAN.md](docs/PLAN.md) has the design, the stack decisions and the status of each version.
 
 ## Screenshots
 
