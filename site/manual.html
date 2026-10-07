@@ -1,0 +1,21 @@
+<div class="manual">
+  <nav class="manual-nav" aria-label="Manual">
+    <p class="manual-title"><a href="index.html"{{current_index}}>Manual</a> <span>for Cairn {{version}}</span></p>
+    {{toc}}
+  </nav>
+  <main id="main" class="manual-main">
+    <details class="manual-toc">
+      <summary>Manual contents</summary>
+      <nav aria-label="Manual contents">
+        {{toc}}
+      </nav>
+    </details>
+    <article class="prose">
+      {{article}}
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      {{pager}}
+    </nav>
+    <p class="source">This page is made from <a href="{{source_url}}">{{source_path}}</a> in the repository.</p>
+  </main>
+</div>

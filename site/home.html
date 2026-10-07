@@ -1,0 +1,73 @@
+<main id="main" class="page home">
+  <section class="intro" aria-labelledby="intro-title">
+    <h1 id="intro-title">Local-first Markdown notes</h1>
+    <p class="lede">Cairn is a free, open-source notes app for Linux, Windows and Android. A notebook is an ordinary folder of Markdown files that Cairn reads and writes directly, so any other editor, Git or backup tool works with it too. Sync between your devices is optional and end-to-end encrypted, through a small server you run yourself.</p>
+    <p class="actions">
+      <a class="button primary" href="download.html">Download Cairn {{version}}</a>
+      <a class="button" href="manual/index.html">Read the manual</a>
+      <a class="button" href="https://github.com/lucas-pospor/cairn">Source on GitHub</a>
+    </p>
+    <p class="note">Version {{version}}, released {{released}}. <a href="manual/release-notes.html">Release notes</a></p>
+  </section>
+
+  <figure class="shot">
+    <picture>
+      <source srcset="images/editor-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="images/editor.png" {{size:editor.png}} alt="Cairn on Linux: a note in Live Preview, with the file tree on the left and the note's backlinks on the right">
+    </picture>
+  </figure>
+
+  <section aria-labelledby="features-title">
+    <h2 id="features-title">Features</h2>
+    <ul class="features">
+      <li>
+        <h3><a href="manual/notebooks-and-files.html">Plain files</a></h3>
+        <p>A notebook is a folder of <code>.md</code> files. Open it in another editor, put it under Git, or back it up however you like.</p>
+      </li>
+      <li>
+        <h3><a href="manual/editing.html">Live Preview</a></h3>
+        <p>Markdown renders as you type. Source mode, reading view and a side-by-side split each take one click.</p>
+      </li>
+      <li>
+        <h3><a href="manual/links-and-embeds.html">Links and embeds</a></h3>
+        <p>Wikilinks with autocomplete, embedded notes, images, audio and video, and backlinks for every note.</p>
+      </li>
+      <li>
+        <h3><a href="manual/search-and-graph.html">Search and graph</a></h3>
+        <p>A quick switcher, a command palette, full-text search with <code>tag:</code> and <code>path:</code> filters, and a graph view.</p>
+      </li>
+      <li>
+        <h3><a href="manual/sync.html">Sync through your own server</a></h3>
+        <p>End-to-end encrypted. Edits that collide become conflict copies, and version history restores older versions.</p>
+      </li>
+      <li>
+        <h3><a href="manual/themes-and-appearance.html">Six themes</a></h3>
+        <p>Three light and three dark, two of them high-contrast, plus an accent color, fonts and CSS snippets.</p>
+      </li>
+      <li>
+        <h3><a href="manual/core-plugins.html">Templates and daily notes</a></h3>
+        <p>Optional core plugins, and a small plugin API that runs each plugin in its own sandbox.</p>
+      </li>
+      <li>
+        <h3><a href="manual/editing.html#hotkeys">Keyboard</a></h3>
+        <p>Every command can have a hotkey, and the file tree and the graph work from the keyboard.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="platforms" aria-labelledby="platforms-title">
+    <div>
+      <h2 id="platforms-title">Platforms</h2>
+      <ul>
+        <li><a href="download.html#linux">Linux</a>: .deb, .rpm and AppImage, for x86_64.</li>
+        <li><a href="download.html#windows">Windows</a> 10 and 11: an installer, for x86_64.</li>
+        <li><a href="download.html#android">Android</a> 7.0 or later: an APK.</li>
+        <li><a href="download.html#sync-server">Sync server</a>: a Docker image for x86_64, or build it from source.</li>
+      </ul>
+      <p>There is no macOS build and no iOS app.</p>
+    </div>
+    <figure class="phone">
+      <img src="images/android-editor.png" {{size:android-editor.png}} alt="A note on Android, with the formatting toolbar" loading="lazy">
+    </figure>
+  </section>
+</main>

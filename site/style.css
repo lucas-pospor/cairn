@@ -1,0 +1,651 @@
+/* The Cairn Notes website. The colors are the app's own: Limestone for light
+   and Slate for dark (app/src/app.css), following the system's choice. The
+   fonts are the app's system font stacks. */
+
+:root {
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  --bg: #fbfaf7;
+  --bg-side: #f3f1ec;
+  --bg-code: #f0eee8;
+  --border: #e2ded5;
+  --border-strong: #878279;
+  --text: #24292b;
+  --text-muted: #5c6260;
+  --accent: #a84529;
+  --accent-soft: #f9ebe5;
+  --accent-text: #ffffff;
+  --link: #9e4026;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d2022;
+    --bg-side: #181b1d;
+    --bg-code: #262a2d;
+    --border: #2f3438;
+    --border-strong: #6f787e;
+    --text: #dfe3e0;
+    --text-muted: #9aa29e;
+    --accent: #e5774f;
+    --accent-soft: #3d2820;
+    --accent-text: #1e100a;
+    --link: #ee8c66;
+
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 1.0625rem/1.6 var(--font-ui);
+  overflow-wrap: break-word;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.25;
+  font-weight: 650;
+  margin: 2em 0 0.6em;
+}
+
+h1 {
+  font-size: 2.1rem;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 1.45rem;
+}
+
+h3 {
+  font-size: 1.15rem;
+}
+
+h4 {
+  font-size: 1rem;
+}
+
+p,
+ul,
+ol,
+pre,
+table,
+blockquote,
+figure {
+  margin: 0 0 1rem;
+}
+
+ul,
+ol {
+  padding-left: 1.5rem;
+}
+
+li + li {
+  margin-top: 0.3rem;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+:not(pre) > code {
+  background: var(--bg-code);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+th,
+td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--bg-side);
+}
+
+blockquote {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 1rem;
+  color: var(--text-muted);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+/* Skip link: off screen until it has focus. */
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -10rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 6px 6px;
+  z-index: 1;
+}
+
+.skip:focus {
+  top: 0;
+}
+
+/* Header and footer */
+
+.bar {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+}
+
+.site-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text);
+  font-weight: 650;
+  font-size: 1.15rem;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.brand img {
+  display: block;
+}
+
+.site-nav ul,
+.site-footer ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav li + li,
+.site-footer li + li {
+  margin-top: 0;
+}
+
+.site-nav a {
+  display: inline-block;
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.6rem 0 0.45rem;
+  border-bottom: 2px solid transparent;
+}
+
+.site-nav a:hover {
+  border-bottom-color: var(--border-strong);
+}
+
+.site-nav a[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  font-weight: 650;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4rem;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.site-footer .bar {
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+}
+
+.site-footer p {
+  margin: 0;
+  max-width: 40rem;
+}
+
+.site-footer a {
+  color: var(--text-muted);
+  display: inline-block;
+  padding: 0.35rem 0;
+}
+
+/* Home and download pages */
+
+.page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 0;
+}
+
+.page > h1,
+.page > p,
+.page > section {
+  max-width: 46rem;
+}
+
+.lede {
+  font-size: 1.1875rem;
+  color: var(--text);
+}
+
+.note {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button:hover {
+  background: var(--bg-side);
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.button.primary:hover {
+  background: var(--accent);
+  text-decoration: underline;
+}
+
+.home .intro {
+  max-width: 46rem;
+}
+
+.home .intro h1 {
+  font-size: 2.5rem;
+}
+
+.shot {
+  margin: 2.5rem 0 1rem;
+}
+
+.shot img,
+.phone img {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.5rem 2.5rem;
+}
+
+.features li {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.features h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.0625rem;
+}
+
+.features p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.home > section {
+  max-width: none;
+}
+
+.platforms {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 16rem);
+  gap: 2rem 3rem;
+  align-items: start;
+}
+
+.platforms figure {
+  margin: 2rem 0 0;
+}
+
+@media (max-width: 40rem) {
+  .home .intro h1 {
+    font-size: 2rem;
+  }
+
+  .platforms {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platforms figure {
+    max-width: 16rem;
+    margin-top: 0;
+  }
+}
+
+/* The download page's file lists */
+
+.files {
+  list-style: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.files li {
+  margin: 0;
+  padding: 0.8rem 1rem;
+}
+
+.files li + li {
+  border-top: 1px solid var(--border);
+}
+
+.file-name {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.file-meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.file-sum {
+  display: block;
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+}
+
+.file-sum code,
+.fingerprint code {
+  user-select: all;
+  -webkit-user-select: all;
+  color: var(--text);
+}
+
+.download h2 {
+  margin-top: 2.5rem;
+}
+
+/* The manual */
+
+.manual {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 0;
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 3rem;
+}
+
+.manual-nav {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  font-size: 0.9375rem;
+  padding-bottom: 1rem;
+}
+
+.manual-title {
+  margin: 0 0 0.75rem;
+  font-weight: 650;
+}
+
+.manual-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.manual-title span {
+  display: block;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.toc,
+.toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  margin: 0;
+}
+
+.toc a {
+  display: block;
+  padding: 0.3rem 0.6rem;
+  border-left: 2px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.toc a:hover {
+  border-left-color: var(--border-strong);
+  text-decoration: underline;
+}
+
+.toc a[aria-current="page"] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 650;
+}
+
+.toc ul a {
+  padding-left: 1.4rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.manual-toc {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.manual-toc summary {
+  cursor: pointer;
+  padding: 0.7rem 1rem;
+  font-weight: 650;
+  min-height: 44px;
+}
+
+.manual-toc nav {
+  padding: 0 1rem 1rem;
+}
+
+.prose {
+  max-width: 44rem;
+}
+
+.prose h2 {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3rem;
+}
+
+.prose img {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.prose img.portrait {
+  max-width: 16rem;
+}
+
+.prose li > p {
+  margin-bottom: 0.4rem;
+}
+
+.finding {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.pager {
+  max-width: 44rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 3rem;
+}
+
+.pager a {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+  text-decoration: none;
+}
+
+.pager a:hover {
+  border-color: var(--border-strong);
+}
+
+.pager span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.pager .next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.source {
+  max-width: 44rem;
+  margin-top: 2rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.source a {
+  color: var(--text-muted);
+}
+
+@media (max-width: 56rem) {
+  .manual {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding-top: 1.25rem;
+  }
+
+  .manual-nav {
+    display: none;
+  }
+
+  .manual-toc {
+    display: block;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .pager {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pager .next {
+    grid-column: 1;
+  }
+}

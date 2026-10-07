@@ -1,0 +1,53 @@
+<main id="main" class="page download">
+  <h1>Download Cairn {{version}}</h1>
+  <p class="lede">Released {{released}}. <a href="manual/release-notes.html">Release notes</a> · <a href="{{release_url}}">This release on GitHub</a></p>
+
+  <section aria-labelledby="linux">
+    <h2 id="linux">Linux</h2>
+    <p>For x86_64. The .deb and .rpm packages use the system's WebKitGTK 4.1 and GTK 3. The AppImage needs no installation.</p>
+    {{files:linux}}
+    <p>Install the .deb on Debian or Ubuntu, or the .rpm on Fedora:</p>
+    <pre tabindex="0"><code>sudo apt install ./{{asset:deb}}</code></pre>
+    <pre tabindex="0"><code>sudo dnf install ./{{asset:rpm}}</code></pre>
+    <p>Or make the AppImage executable and start it:</p>
+    <pre tabindex="0"><code>chmod +x {{asset:appimage}} &amp;&amp; ./{{asset:appimage}}</code></pre>
+  </section>
+
+  <section aria-labelledby="windows">
+    <h2 id="windows">Windows</h2>
+    <p>For Windows 10 and 11 on x86_64. The installer installs Cairn for your user account, without administrator rights. If the WebView2 Runtime is missing, it downloads it from Microsoft.</p>
+    {{files:windows}}
+    <p>The installer is not signed, so Windows SmartScreen says "Windows protected your PC" when you run it: choose More info, then Run anyway. On a Windows 11 PC where Smart App Control is on, there is no Run anyway, and Windows can block the installer and Cairn outright. <a href="manual/windows.html">Windows</a> in the manual has more.</p>
+  </section>
+
+  <section aria-labelledby="android">
+    <h2 id="android">Android</h2>
+    <p>For Android 7.0 or later, on arm64, armv7, x86 and x86_64. Open the APK on your phone and allow the install when Android asks: from Android 8, you let your browser or file manager install apps; on Android 7, you turn on Unknown sources in Android settings, then Security.</p>
+    {{files:android}}
+    <p>Every version is signed with the same key, so a new APK installs over an older one as an update and keeps your notebooks and your sync setup. The signing certificate's SHA-256 fingerprint is:</p>
+    <p class="fingerprint"><code>{{fingerprint}}</code></p>
+    <p>To check it, run <code>apksigner verify --print-certs {{asset:apk}}</code> (<code>apksigner</code> comes with the Android SDK build tools). It prints the same value in lowercase, without the colons.</p>
+  </section>
+
+  <section aria-labelledby="sync-server">
+    <h2 id="sync-server">Sync server</h2>
+    <p>Only needed for sync. The image is for x86_64 machines with Docker. On another machine, such as a Raspberry Pi, build the image yourself, as <a href="manual/sync.html#run-a-server">Run a server</a> in the manual describes.</p>
+    {{files:server}}
+    <p>Load the image, which is then called <code>{{server_image}}</code>:</p>
+    <pre tabindex="0"><code>docker load -i {{asset:server}}</code></pre>
+  </section>
+
+  <section aria-labelledby="check">
+    <h2 id="check">Check your download</h2>
+    <p><code>SHA256SUMS</code> lists the SHA-256 of every file above.</p>
+    {{files:sums}}
+    <p>On Linux, put it in the folder with your download and run:</p>
+    <pre tabindex="0"><code>sha256sum -c --ignore-missing SHA256SUMS</code></pre>
+    <p>On Windows, open PowerShell in the folder with your download and run <code>Get-FileHash {{asset:exe}}</code>. Compare the hash it prints with the installer's SHA-256 under <a href="#windows">Windows</a>, above. PowerShell prints it in capitals.</p>
+  </section>
+
+  <section aria-labelledby="other">
+    <h2 id="other">Other systems and versions</h2>
+    <p>There is no macOS build, and Cairn has not been built or tested on macOS. There is no iOS app. <a href="manual/building.html">Building from source</a> describes how to build Cairn yourself. Older versions are on the <a href="https://github.com/lucas-pospor/cairn/releases">releases page</a>.</p>
+  </section>
+</main>

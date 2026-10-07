@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta property="og:site_name" content="Cairn Notes">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d2022" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="{{root}}icon.svg" type="image/svg+xml">
+<link rel="icon" href="{{root}}icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="{{root}}icon-256.png">
+<link rel="stylesheet" href="{{root}}style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="{{root}}index.html"><img src="{{root}}icon.svg" alt="" width="32" height="32"><span>Cairn Notes</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <ul>
+        <li><a href="{{root}}download.html"{{current_download}}>Download</a></li>
+        <li><a href="{{root}}manual/index.html"{{current_manual}}>Manual</a></li>
+        <li><a href="https://github.com/lucas-pospor/cairn">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+{{body}}
+<footer class="site-footer">
+  <div class="bar">
+    <p>Cairn {{version}} is free software under the MIT license. This site sets no cookies and loads nothing from other sites.</p>
+    <ul>
+      <li><a href="{{root}}manual/release-notes.html">Release notes</a></li>
+      <li><a href="https://github.com/lucas-pospor/cairn">Source code</a></li>
+      <li><a href="https://github.com/lucas-pospor/cairn/issues">Report a bug</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>
