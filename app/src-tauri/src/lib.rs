@@ -13,6 +13,8 @@ mod local_network;
 mod sync;
 #[cfg(desktop)]
 mod watcher;
+#[cfg(any(windows, test))]
+mod webview2;
 
 use std::sync::Arc;
 
@@ -129,6 +131,19 @@ pub fn run() {
             });
             #[cfg(all(desktop, unix))]
             close_on_sigterm(app.handle().clone());
+            // WebView2 keeps its zoom keys and the editing items of its
+            // right-click menu, and leaves the other browser keys to the page.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let attached = window.with_webview(|w| {
+                    if let Err(e) = webview2::attach(&w.controller()) {
+                        log::warn!("WebView2 keeps its browser keys and menu: {e}");
+                    }
+                });
+                if let Err(e) = attached {
+                    log::warn!("WebView2 keeps its browser keys and menu: {e}");
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
