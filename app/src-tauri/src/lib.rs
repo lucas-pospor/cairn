@@ -186,3 +186,20 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running Cairn");
 }
+
+#[cfg(test)]
+mod tests {
+    /// A guard of the window settings in tauri.conf.json, not a test of what
+    /// they do. Without both keys a 1280x820 window on a 1920x1080 screen at
+    /// 125% opens with its bottom under the Windows taskbar: `preventOverflow`
+    /// shrinks it to the work area and `center` moves it inside, since alone
+    /// it keeps the position Windows picks.
+    #[test]
+    fn the_main_window_opens_centered_and_inside_the_work_area() {
+        use tauri::utils::config::{Config, PreventOverflowConfig};
+        let config: Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main = config.app.windows.iter().find(|w| w.label == "main").unwrap();
+        assert!(main.center);
+        assert!(matches!(main.prevent_overflow, Some(PreventOverflowConfig::Enable(true))));
+    }
+}

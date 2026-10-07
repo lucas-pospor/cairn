@@ -18,6 +18,8 @@
         "height": 820,
         "minWidth": 480,
         "minHeight": 360,
+        "center": true,
+        "preventOverflow": true,
         "dragDropEnabled": false,
         "zoomHotkeysEnabled": true
       }
