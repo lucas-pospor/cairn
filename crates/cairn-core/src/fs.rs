@@ -244,6 +244,10 @@ pub struct StdFs {
     /// so that tests can stand in for the system trash.
     #[cfg(feature = "system-trash")]
     system_trash: fn(&Path) -> SystemTrash,
+    /// Runs in `move_to_vault_trash` just before the move, with the trash
+    /// folder and whether this call made it: tests act as another process.
+    #[cfg(test)]
+    before_trash_move: fn(&Path, bool),
     /// What the last listing of each folder (on-disk path) found that a
     /// lookup by vault name cannot find by itself.
     listed: RwLock<HashMap<PathBuf, Listed>>,
@@ -471,6 +475,8 @@ impl StdFs {
             trash,
             #[cfg(feature = "system-trash")]
             system_trash,
+            #[cfg(test)]
+            before_trash_move: |_, _| {},
             listed: RwLock::new(HashMap::new()),
             names: RwLock::new(HashMap::new()),
         })
@@ -817,18 +823,44 @@ impl StdFs {
         Ok(())
     }
 
-    fn move_to_vault_trash(&self, path: &str) -> Result<()> {
+    /// Move the entry at `abs`, vault path `path`, into the vault's trash,
+    /// under a name that no earlier delete there has.
+    fn move_to_vault_trash(&self, path: &str, abs: &Path) -> Result<()> {
         let trash_dir = self.root.join(".trash");
-        fs::create_dir_all(&trash_dir).map_err(|e| CoreError::io(".trash", e))?;
-        let name = vpath::file_name(path);
-        let mut target = trash_dir.join(name);
-        let mut n = 1;
-        while target.exists() {
-            let (stem, ext) = split_ext(name);
-            target = trash_dir.join(format!("{stem} {n}{ext}"));
-            n += 1;
+        let mut again = true;
+        loop {
+            // A move that fails (a note another program holds open) leaves
+            // no empty .trash behind: only one made here is removed again.
+            let made = match fs::create_dir(&trash_dir) {
+                Ok(()) => true,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && trash_dir.is_dir() => false,
+                Err(e) => return Err(CoreError::io(".trash", e)),
+            };
+            let name = vpath::file_name(path);
+            let mut target = trash_dir.join(name);
+            let mut n = 1;
+            while target.exists() {
+                let (stem, ext) = split_ext(name);
+                target = trash_dir.join(format!("{stem} {n}{ext}"));
+                n += 1;
+            }
+            #[cfg(test)]
+            (self.before_trash_move)(&trash_dir, made);
+            let Err(e) = fs::rename(abs, target) else { return Ok(()) };
+            // remove_dir takes an empty folder only, never an earlier delete.
+            if made {
+                let _ = fs::remove_dir(&trash_dir);
+            }
+            // Another process (a second Cairn on the same notebook) whose
+            // move failed removes the empty .trash it made, also when this
+            // call found it there and was about to move into it. It is then
+            // made again, once.
+            if again && !made && e.kind() == std::io::ErrorKind::NotFound && !trash_dir.exists() && fs::symlink_metadata(abs).is_ok() {
+                again = false;
+                continue;
+            }
+            return Err(CoreError::io(path, e));
         }
-        fs::rename(self.abs(path)?, target).map_err(|e| CoreError::io(path, e))
     }
 
     /// Where a write to `abs` goes. A symlinked note (dotfile managers,
@@ -1248,7 +1280,7 @@ impl VaultFs for StdFs {
                 let r = if abs.is_dir() { fs::remove_dir_all(&abs) } else { fs::remove_file(&abs) };
                 r.map_err(|e| CoreError::io(path, e))
             }
-            TrashMode::Vault => self.move_to_vault_trash(path),
+            TrashMode::Vault => self.move_to_vault_trash(path, &abs),
             TrashMode::System => {
                 #[cfg(feature = "system-trash")]
                 {
@@ -1271,12 +1303,12 @@ impl VaultFs for StdFs {
                         }
                         // The log said what is tried; it says how it went.
                         return self
-                            .move_to_vault_trash(path)
+                            .move_to_vault_trash(path, &abs)
                             .inspect(|()| log::info!("moved {path} to the notebook's .trash folder"))
                             .inspect_err(|e| log::warn!("the notebook's .trash folder cannot take {path} either: {e}"));
                     }
                 }
-                self.move_to_vault_trash(path)
+                self.move_to_vault_trash(path, &abs)
             }
         }
     }
@@ -1718,6 +1750,88 @@ pub(crate) mod tests {
         assert!(fs.remove("").is_err());
     }
 
+    /// A delete that cannot move the entry leaves no empty .trash folder
+    /// behind, and one that was there before stays (WIN-007). A folder
+    /// without write permission keeps its entries on Unix; Windows has no
+    /// such mode bit, see the next test for it.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_delete_leaves_no_trash_folder() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_d, fs) = setup();
+        fs.create_dir("sub").unwrap();
+        fs.write("sub/a.md", b"kept").unwrap();
+        let (sub, trash) = (fs.root().join("sub"), fs.root().join(".trash"));
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::write(sub.join("probe"), "").is_ok() {
+            std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return; // running as root
+        }
+        let first = fs.remove("sub/a.md");
+        let left = trash.exists();
+        // Now with a .trash folder from before.
+        let _ = std::fs::create_dir(&trash);
+        let second = fs.remove("sub/a.md");
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!left, "an empty .trash folder was left behind");
+        assert!(first.is_err() && second.is_err(), "{first:?} {second:?}");
+        assert!(trash.is_dir(), "the .trash folder that was there is gone");
+        assert_eq!(std::fs::read(sub.join("a.md")).unwrap(), b"kept");
+        fs.remove("sub/a.md").unwrap();
+        assert_eq!(std::fs::read(trash.join("a.md")).unwrap(), b"kept");
+    }
+
+    /// A note that another program holds open without FILE_SHARE_DELETE
+    /// cannot be moved: the delete fails and leaves no empty .trash folder
+    /// behind, and works once the note is closed (WIN-007). Only Windows
+    /// refuses to move a file that is open.
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_delete_of_an_open_note_leaves_no_trash_folder() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (_d, fs) = setup();
+        fs.write("a.md", b"held").unwrap();
+        // FILE_SHARE_READ only: others may read it, not move or delete it.
+        let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(fs.root().join("a.md")).unwrap();
+        let failed = fs.remove("a.md");
+        let left = fs.root().join(".trash").exists();
+        drop(held);
+        assert!(failed.is_err(), "{failed:?}");
+        assert!(!left, "an empty .trash folder was left behind");
+        fs.remove("a.md").unwrap();
+        assert_eq!(std::fs::read(fs.root().join(".trash").join("a.md")).unwrap(), b"held");
+    }
+
+    /// Another process's failed delete can remove the empty .trash folder
+    /// it made just before this one moves a note there: the folder is made
+    /// again and the delete works. A note that is gone is not retried.
+    #[test]
+    fn a_trash_folder_removed_by_another_process_is_made_again() {
+        let (_d, mut fs) = setup();
+        let trash = fs.root().join(".trash");
+        fs.write("a.md", b"moved").unwrap();
+        std::fs::create_dir(&trash).unwrap();
+        // The other process, whose move failed, removes the folder it made.
+        fs.before_trash_move = |trash, made| {
+            if !made {
+                std::fs::remove_dir(trash).unwrap();
+            }
+        };
+        fs.remove("a.md").unwrap();
+        assert_eq!(std::fs::read(trash.join("a.md")).unwrap(), b"moved");
+        assert!(fs.stat("a.md").unwrap().is_none());
+        // The note itself goes too: the delete fails, with no .trash left.
+        std::fs::remove_file(trash.join("a.md")).unwrap();
+        fs.write("b.md", b"gone").unwrap();
+        fs.before_trash_move = |trash, made| {
+            assert!(!made, "a second try");
+            std::fs::remove_dir(trash).unwrap();
+            std::fs::remove_file(trash.parent().unwrap().join("b.md")).unwrap();
+        };
+        assert!(fs.remove("b.md").is_err());
+        assert!(!trash.exists());
+    }
+
     #[cfg(feature = "system-trash")]
     thread_local! {
         /// The entries given to a stand-in for the system trash.
@@ -1840,9 +1954,12 @@ pub(crate) mod tests {
         fs.system_trash = |_| SystemTrash::NotRecyclable("a stand-in".into());
         fs.write("logged moved.md", b"moved").unwrap();
         fs.remove("logged moved.md").unwrap();
-        // A note that is gone by the time of the move.
-        assert!(matches!(fs.remove("logged gone.md"), Err(CoreError::NotFound(_))));
+        // Another program takes the note away just before the move.
+        fs.write("logged gone.md", b"gone").unwrap();
+        fs.before_trash_move = |trash, _| std::fs::remove_file(trash.parent().unwrap().join("logged gone.md")).unwrap();
+        assert_eq!(fs.remove("logged gone.md"), Err(CoreError::NotFound("logged gone.md".into())));
         fs.system_trash = |_| SystemTrash::Failed("a stand-in".into());
+        fs.before_trash_move = |_, _| {};
         fs.write("logged failed.md", b"failed").unwrap();
         fs.remove("logged failed.md").unwrap();
         let ours: Vec<String> = lines.lock().iter().filter(|l| l.contains("logged ")).cloned().collect();
@@ -1851,6 +1968,8 @@ pub(crate) mod tests {
             [
                 "INFO the system trash cannot keep logged moved.md: a stand-in; trying the notebook's .trash folder",
                 "INFO moved logged moved.md to the notebook's .trash folder",
+                "INFO the system trash cannot keep logged gone.md: a stand-in; trying the notebook's .trash folder",
+                "WARN the notebook's .trash folder cannot take logged gone.md either: not found: logged gone.md",
                 "WARN system trash failed for logged failed.md: a stand-in; trying the notebook's .trash folder",
                 "INFO moved logged failed.md to the notebook's .trash folder",
             ]
