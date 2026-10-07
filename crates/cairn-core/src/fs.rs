@@ -18,6 +18,9 @@ use unicode_normalization::{is_nfc, UnicodeNormalization};
 
 use crate::error::{CoreError, Result};
 use crate::path as vpath;
+// On Windows Cairn asks the shell itself what goes to the Recycle Bin.
+#[cfg(all(windows, feature = "system-trash"))]
+use crate::recycle_bin::recycle as system_trash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,13 +43,51 @@ pub struct FileStat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum TrashMode {
-    /// OS trash / recycle bin, falling back to the vault trash.
+    /// The system trash (the Recycle Bin on Windows), falling back to the
+    /// vault trash for whatever it cannot keep or fails to take. On Windows
+    /// that is everything on a network share or under a path the shell
+    /// cannot be given, anything larger than the Recycle Bin of its drive
+    /// takes, and anything the shell would delete for good instead of
+    /// recycling it. A delete that the shell still did for good fails, with
+    /// an error that says so.
     #[default]
     System,
     /// `<vault>/.trash/`.
     Vault,
     /// Delete for good.
     Permanent,
+}
+
+/// What the system trash did with an entry that `remove` gave it.
+#[cfg(feature = "system-trash")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SystemTrash {
+    /// The entry is in the system trash.
+    Recycled,
+    /// The system trash cannot keep the entry where it is, and left it
+    /// alone. Why, for the log.
+    // Only the Windows Recycle Bin says so, and tests that stand in for it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    NotRecyclable(String),
+    /// The system trash did not take the entry. Why, for the log. Whatever
+    /// of it did not get there is still in place.
+    Failed(String),
+    /// The system trash deleted the entry for good instead of keeping it:
+    /// it is gone.
+    // Only the Windows shell does that, past the checks that should keep
+    // such an entry from it, and tests that stand in for it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Destroyed,
+}
+
+/// Move the entry at `abs` to the system trash. The trash crate fails
+/// rather than delete what the freedesktop.org or macOS trash cannot keep.
+#[cfg(all(not(windows), feature = "system-trash"))]
+fn system_trash(abs: &Path) -> SystemTrash {
+    match trash::delete(abs) {
+        Ok(()) => SystemTrash::Recycled,
+        Err(e) => SystemTrash::Failed(e.to_string()),
+    }
 }
 
 pub trait VaultFs: Send + Sync {
@@ -199,6 +240,10 @@ pub trait VaultFs: Send + Sync {
 pub struct StdFs {
     root: PathBuf,
     trash: TrashMode,
+    /// Moves an entry to the system trash, for `TrashMode::System`: a field
+    /// so that tests can stand in for the system trash.
+    #[cfg(feature = "system-trash")]
+    system_trash: fn(&Path) -> SystemTrash,
     /// What the last listing of each folder (on-disk path) found that a
     /// lookup by vault name cannot find by itself.
     listed: RwLock<HashMap<PathBuf, Listed>>,
@@ -421,7 +466,14 @@ impl StdFs {
         if !root.is_dir() {
             return Err(CoreError::io(&root.to_string_lossy(), std::io::ErrorKind::NotADirectory.into()));
         }
-        Ok(StdFs { root, trash, listed: RwLock::new(HashMap::new()), names: RwLock::new(HashMap::new()) })
+        Ok(StdFs {
+            root,
+            trash,
+            #[cfg(feature = "system-trash")]
+            system_trash,
+            listed: RwLock::new(HashMap::new()),
+            names: RwLock::new(HashMap::new()),
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -1204,10 +1256,24 @@ impl VaultFs for StdFs {
                     // takes a device name for the device, so it would trash
                     // another file: such names go to the vault's trash.
                     if !(cfg!(windows) && path.split('/').any(vpath::windows_refuses)) {
-                        match trash::delete(&abs) {
-                            Ok(()) => return Ok(()),
-                            Err(e) => log::warn!("system trash failed for {path}: {e}; using the notebook's .trash folder"),
+                        match (self.system_trash)(&abs) {
+                            SystemTrash::Recycled => return Ok(()),
+                            // Nothing is left for the vault's trash, and the
+                            // user is told: the delete fails (WIN-005).
+                            SystemTrash::Destroyed => {
+                                log::error!("the system trash deleted {path} for good instead of keeping it");
+                                return Err(CoreError::Io(format!("\"{path}\" was deleted for good: the Recycle Bin could not take it.")));
+                            }
+                            SystemTrash::NotRecyclable(why) => {
+                                log::info!("the system trash cannot keep {path}: {why}; trying the notebook's .trash folder")
+                            }
+                            SystemTrash::Failed(e) => log::warn!("system trash failed for {path}: {e}; trying the notebook's .trash folder"),
                         }
+                        // The log said what is tried; it says how it went.
+                        return self
+                            .move_to_vault_trash(path)
+                            .inspect(|()| log::info!("moved {path} to the notebook's .trash folder"))
+                            .inspect_err(|e| log::warn!("the notebook's .trash folder cannot take {path} either: {e}"));
                     }
                 }
                 self.move_to_vault_trash(path)
@@ -1275,8 +1341,9 @@ impl VaultFs for StdFs {
     }
 }
 
+// bin_size's tests read the log through `logged`.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn setup() -> (tempfile::TempDir, StdFs) {
@@ -1649,6 +1716,146 @@ mod tests {
         assert_eq!(std::fs::read(fs.root().join(".trash/a.md")).unwrap(), b"1");
         assert_eq!(std::fs::read(fs.root().join(".trash/a 1.md")).unwrap(), b"2");
         assert!(fs.remove("").is_err());
+    }
+
+    #[cfg(feature = "system-trash")]
+    thread_local! {
+        /// The entries given to a stand-in for the system trash.
+        static OFFERED: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    /// What the system trash cannot keep, or does not take, goes to the
+    /// vault's trash with all its bytes: a note and a folder deleted in the
+    /// app, a note deleted by sync and the font file (WIN-005). Stand-ins
+    /// for the system trash keep the real one out of the test.
+    #[cfg(feature = "system-trash")]
+    #[test]
+    fn what_the_system_trash_cannot_keep_goes_to_the_vault_trash() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let files = [("a.md", "note a"), ("f/b.md", "note b"), ("f/sub/c.md", "note c"), ("synced.md", "synced"), (".cairn/fonts/A.ttf", "font")];
+        for (p, data) in files {
+            std::fs::create_dir_all(r.join(p).parent().unwrap()).unwrap();
+            std::fs::write(r.join(p), data).unwrap();
+        }
+        let mut fs = StdFs::new(r, TrashMode::System).unwrap();
+        let root = fs.root().to_path_buf();
+        // Name by name, as `StdFs` builds its paths.
+        let at = |dir: &Path, p: &str| p.split('/').fold(dir.to_path_buf(), |abs, name| abs.join(name));
+        OFFERED.take();
+        fs.system_trash = |abs| {
+            OFFERED.with_borrow_mut(|o| o.push(abs.to_path_buf()));
+            SystemTrash::NotRecyclable("a stand-in".into())
+        };
+        let v = crate::Vault::open(std::sync::Arc::new(fs)).unwrap();
+        v.delete("a.md").unwrap();
+        v.delete("f").unwrap();
+        v.delete_file("synced.md", &crate::index::hash_hex(&crate::index::hash_bytes(b"synced"))).unwrap();
+        assert!(v.trash_config("fonts/A.ttf").unwrap());
+        assert_eq!(OFFERED.take(), ["a.md", "f", "synced.md", ".cairn/fonts/A.ttf"].map(|p| at(&root, p)));
+        let trash = root.join(".trash");
+        for (p, data) in [("a.md", "note a"), ("f/b.md", "note b"), ("f/sub/c.md", "note c"), ("synced.md", "synced"), ("A.ttf", "font")] {
+            assert_eq!(std::fs::read_to_string(at(&trash, p)).unwrap(), data, "{p}");
+        }
+        for (p, _) in files {
+            assert!(std::fs::symlink_metadata(at(&root, p)).is_err(), "{p} is still there");
+        }
+        // A system trash that fails sends the entry there too; one that
+        // takes it is the end of the delete.
+        let mut fs = StdFs::new(&root, TrashMode::System).unwrap();
+        fs.system_trash = |_| SystemTrash::Failed("a stand-in".into());
+        std::fs::write(root.join("b.md"), "failed").unwrap();
+        fs.remove("b.md").unwrap();
+        assert_eq!(std::fs::read_to_string(trash.join("b.md")).unwrap(), "failed");
+        fs.system_trash = |abs| {
+            std::fs::remove_file(abs).unwrap();
+            SystemTrash::Recycled
+        };
+        std::fs::write(root.join("c.md"), "recycled").unwrap();
+        fs.remove("c.md").unwrap();
+        assert!(!root.join("c.md").exists() && !trash.join("c.md").exists());
+    }
+
+    /// A system trash that deleted the entry for good instead of keeping it
+    /// makes the delete fail, with an error that says so and goes to the
+    /// user, also when sync or the font file asked for the delete: nothing
+    /// is left to move to the vault's trash (WIN-005).
+    #[cfg(feature = "system-trash")]
+    #[test]
+    fn a_delete_the_system_trash_did_for_good_fails() {
+        let d = tempfile::tempdir().unwrap();
+        for (p, data) in [("sub/big.bin", "big"), ("synced.md", "synced"), (".cairn/fonts/A.ttf", "font")] {
+            std::fs::create_dir_all(d.path().join(p).parent().unwrap()).unwrap();
+            std::fs::write(d.path().join(p), data).unwrap();
+        }
+        let mut fs = StdFs::new(d.path(), TrashMode::System).unwrap();
+        fs.system_trash = |abs| {
+            std::fs::remove_file(abs).unwrap();
+            SystemTrash::Destroyed
+        };
+        let root = fs.root().to_path_buf();
+        let v = crate::Vault::open(std::sync::Arc::new(fs)).unwrap();
+        let lost = |p: &str| CoreError::Io(format!("\"{p}\" was deleted for good: the Recycle Bin could not take it."));
+        assert_eq!(v.delete("sub/big.bin"), Err(lost("sub/big.bin")));
+        assert_eq!(v.delete_file("synced.md", &crate::index::hash_hex(&crate::index::hash_bytes(b"synced"))), Err(lost("synced.md")));
+        assert_eq!(v.trash_config("fonts/A.ttf"), Err(lost(".cairn/fonts/A.ttf")));
+        assert!(!root.join(".trash").exists());
+        for p in ["sub/big.bin", "synced.md", ".cairn/fonts/A.ttf"] {
+            assert!(!root.join(p).exists(), "{p}");
+        }
+    }
+
+    /// Every log line written in this test process, for tests that check
+    /// what the log says. The first call sets up the logger.
+    #[cfg(feature = "system-trash")]
+    pub(crate) fn logged() -> &'static parking_lot::Mutex<Vec<String>> {
+        static LINES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+        struct Lines;
+        impl log::Log for Lines {
+            fn enabled(&self, _: &log::Metadata) -> bool {
+                true
+            }
+            fn log(&self, r: &log::Record) {
+                LINES.lock().push(format!("{} {}", r.level(), r.args()));
+            }
+            fn flush(&self) {}
+        }
+        static SET: std::sync::Once = std::sync::Once::new();
+        SET.call_once(|| {
+            log::set_logger(&Lines).unwrap();
+            log::set_max_level(log::LevelFilter::Info);
+        });
+        &LINES
+    }
+
+    /// When the system trash cannot keep an entry, the log says that the
+    /// vault's trash is tried and then whether the move there worked: a
+    /// move that fails is not reported as done.
+    #[cfg(feature = "system-trash")]
+    #[test]
+    fn the_log_says_whether_the_vault_trash_took_it() {
+        let lines = logged();
+        let d = tempfile::tempdir().unwrap();
+        let mut fs = StdFs::new(d.path(), TrashMode::System).unwrap();
+        fs.system_trash = |_| SystemTrash::NotRecyclable("a stand-in".into());
+        fs.write("logged moved.md", b"moved").unwrap();
+        fs.remove("logged moved.md").unwrap();
+        // A note that is gone by the time of the move.
+        assert!(matches!(fs.remove("logged gone.md"), Err(CoreError::NotFound(_))));
+        fs.system_trash = |_| SystemTrash::Failed("a stand-in".into());
+        fs.write("logged failed.md", b"failed").unwrap();
+        fs.remove("logged failed.md").unwrap();
+        let ours: Vec<String> = lines.lock().iter().filter(|l| l.contains("logged ")).cloned().collect();
+        assert_eq!(
+            ours,
+            [
+                "INFO the system trash cannot keep logged moved.md: a stand-in; trying the notebook's .trash folder",
+                "INFO moved logged moved.md to the notebook's .trash folder",
+                "WARN system trash failed for logged failed.md: a stand-in; trying the notebook's .trash folder",
+                "INFO moved logged failed.md to the notebook's .trash folder",
+            ]
+        );
+        assert_eq!(std::fs::read(fs.root().join(".trash").join("logged moved.md")).unwrap(), b"moved");
     }
 
     fn paths(list: Vec<FileStat>) -> Vec<String> {

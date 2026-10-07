@@ -7,8 +7,9 @@ description = "Vault, parsing, index and search logic for Cairn. No UI dependenc
 
 [features]
 default = ["system-trash"]
-# Move deleted files to the OS trash (desktop). Off on Android.
-system-trash = ["dep:trash"]
+# Move deleted files to the OS trash (desktop). Off on Android. On Windows
+# Cairn asks the shell itself (src/recycle_bin.rs), elsewhere the trash crate.
+system-trash = ["dep:trash", "dep:windows", "dep:windows-core", "dep:dunce"]
 
 [dependencies]
 serde.workspace = true
@@ -23,7 +24,21 @@ blake3 = "1"
 rayon = "1"
 unicode-normalization = "0.1"
 percent-encoding = "2"
+
+[target.'cfg(not(windows))'.dependencies]
 trash = { version = "5", optional = true }
+
+# The Recycle Bin through the shell's file operation, and the size of the
+# bin of a drive from its volume and the registry. The code that
+# windows-core's #[implement] writes names windows-core itself.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", optional = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell"] }
+windows-core = { version = "0.62", optional = true }
+dunce = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+
+# Finds and empties what the Recycle Bin test put there.
+[target.'cfg(windows)'.dev-dependencies]
+trash = "5"

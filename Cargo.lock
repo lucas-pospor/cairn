@@ -535,6 +535,7 @@ name = "cairn-core"
 version = "1.3.1"
 dependencies = [
  "blake3",
+ "dunce",
  "log",
  "parking_lot",
  "percent-encoding",
@@ -548,6 +549,8 @@ dependencies = [
  "thiserror 2.0.21",
  "trash",
  "unicode-normalization",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]

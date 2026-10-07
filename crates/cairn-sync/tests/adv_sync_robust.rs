@@ -1940,6 +1940,34 @@ fn pending_remote_change_is_retried_and_merged_once_it_can_be_written() {
     }
 }
 
+/// A remote delete that removes the file here and still fails, as a delete
+/// that Windows did for good instead of moving the file to the Recycle Bin
+/// does (WIN-005): the file is listed as not synced, with that error, for
+/// one sync. The next sync finds the file gone and takes the delete as
+/// done, without listing or sending anything, and nothing comes back.
+#[test]
+fn a_remote_delete_that_fails_once_the_file_is_gone_settles_at_the_next_sync() {
+    let (_srv, mut a, mut b) = synced_pair(&[("n.md", "note\n"), ("other.md", "o\n")]);
+    b.rm("n.md");
+    b.sync_ok();
+    *a.hookfs.decide.lock() = Some(Box::new(|op, path, _| if op == FsOp::Remove && path == "n.md" { FsAction::FailAfter } else { FsAction::Pass }));
+    let r = a.sync_ok();
+    let listed: Vec<(&str, &str)> = r.skipped.iter().map(|s| (s.path.as_str(), s.reason.as_str())).collect();
+    assert_eq!(listed, [("n.md", "\"n.md\" was deleted for good: the Recycle Bin could not take it.")]);
+    assert_eq!(a.read("n.md"), None);
+    // The held delete is applied, then there is nothing left to do.
+    for (round, pulled) in [(1, 1), (2, 0), (3, 0)] {
+        let r = a.sync_ok();
+        assert!(r.skipped.is_empty(), "sync {round}: {:?}", r.skipped);
+        assert_eq!((r.pushed, r.pulled), (0, pulled), "sync {round}");
+    }
+    let r = b.sync_ok();
+    assert_eq!((r.pushed, r.pulled), (0, 0));
+    for d in [&a, &b] {
+        assert_eq!(d.files(), [("other.md".to_string(), "o\n".to_string())], "{}", d.name);
+    }
+}
+
 /// A file or folder whose name has a backslash stays out of the vault
 /// (FINDING-011, by design) and is listed as not synced, with the
 /// reason; once renamed it syncs and leaves the list.

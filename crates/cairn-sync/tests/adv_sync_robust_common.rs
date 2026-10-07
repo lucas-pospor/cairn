@@ -225,6 +225,10 @@ pub enum FsAction {
     /// The operation fails with an I/O error (e.g. a name the local file
     /// system does not accept).
     Fail,
+    /// A remove reaches the disk, then fails with an I/O error, as a delete
+    /// that Windows did for good instead of moving the file to the Recycle
+    /// Bin does.
+    FailAfter,
 }
 
 pub type FsDecide = Box<dyn FnMut(FsOp, &str, usize) -> FsAction + Send>;
@@ -337,6 +341,9 @@ impl VaultFs for HookFs {
         let a = self.check(FsOp::Remove, path);
         let r = self.inner.remove(path);
         self.after(a, FsOp::Remove, path);
+        if a == FsAction::FailAfter && r.is_ok() {
+            return Err(cairn_core::CoreError::Io(format!("\"{path}\" was deleted for good: the Recycle Bin could not take it.")));
+        }
         r
     }
     fn remove_empty_dir(&self, path: &str) -> cairn_core::Result<bool> {
