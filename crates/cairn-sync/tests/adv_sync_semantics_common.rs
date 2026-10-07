@@ -9,6 +9,9 @@
 //!   Windows file systems (case-insensitive, case-preserving).
 //! * `FatNamesFs`: a `VaultFs` that refuses names that Windows and Android
 //!   shared storage refuse (`"*:<>?\|`, trailing dot or space).
+//! * `SharedStorageFs`: a `VaultFs` that behaves like Android shared storage
+//!   through SafPlugin.kt (case-insensitive, refuses case twins and folders
+//!   spelled otherwise, renames the folders a move spells otherwise).
 #![allow(dead_code)]
 
 use std::fs;
@@ -467,6 +470,160 @@ impl VaultFs for CaseInsensitiveFs {
     }
     fn describe(&self) -> String {
         format!("case-insensitive {}", self.inner.describe())
+    }
+}
+
+/// Android shared storage as SafPlugin.kt shows it to Cairn: it ignores
+/// case like `CaseInsensitiveFs`, and like the plugin it refuses a name that
+/// differs only in case from another entry in its folder, never writes or
+/// moves a file into a folder whose name differs only in case from the one
+/// asked for, and first renames the folders that a move's two paths both go
+/// through but spell differently, to the new spelling (renameSharedFolders,
+/// FINDING-034).
+pub struct SharedStorageFs {
+    inner: StdFs,
+    root: PathBuf,
+}
+
+impl SharedStorageFs {
+    // Passed to Device::with_fs, which takes the file system as a trait object.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(root: &Path) -> Arc<dyn VaultFs> {
+        Arc::new(SharedStorageFs { inner: StdFs::new(root, TrashMode::Vault).unwrap(), root: root.to_path_buf() })
+    }
+
+    /// The names in folder `dir`, a path on disk.
+    fn names(&self, dir: &str) -> Vec<String> {
+        let Ok(rd) = fs::read_dir(self.root.join(dir)) else { return Vec::new() };
+        rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect()
+    }
+
+    /// The name in folder `dir` (on disk) that `name` finds: itself, or else
+    /// one that differs only in case.
+    fn lookup(&self, dir: &str, name: &str) -> Option<String> {
+        let names = self.names(dir);
+        names.iter().find(|n| *n == name).or_else(|| names.iter().find(|n| n.to_lowercase() == name.to_lowercase())).cloned()
+    }
+
+    /// The path on disk that `p` finds, and whether it is spelled as on disk
+    /// (the plugin's `find`). `None` if it finds nothing.
+    fn find(&self, p: &str) -> Option<(String, bool)> {
+        let (mut real, mut exact) = (String::new(), true);
+        for name in p.split('/').filter(|c| !c.is_empty()) {
+            let found = self.lookup(&real, name)?;
+            exact &= found == name;
+            real = cairn_core::path::join(&real, &found);
+        }
+        Some((real, exact))
+    }
+
+    /// Rename the folders that `from` and `to` both go through but that
+    /// `to` spells in another case to that case. Each one renamed goes into
+    /// `done`, with its old name.
+    fn rename_shared_folders(&self, from: &str, to: &str, done: &mut Vec<(String, String)>) -> cairn_core::Result<()> {
+        let a: Vec<&str> = cairn_core::path::parent(from).split('/').collect();
+        let b: Vec<&str> = cairn_core::path::parent(to).split('/').collect();
+        for i in 0..a.len().min(b.len()) {
+            if a[i].is_empty() || a[i].to_lowercase() != b[i].to_lowercase() {
+                break;
+            }
+            let Some((dir, _)) = self.find(&a[..=i].join("/")) else { break };
+            let name = cairn_core::path::file_name(&dir).to_string();
+            if a[i] != b[i] && name != b[i] {
+                let renamed = cairn_core::path::join(cairn_core::path::parent(&dir), b[i]);
+                self.inner.rename(&dir, &renamed)?;
+                done.push((renamed, name));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl VaultFs for SharedStorageFs {
+    fn list(&self, dir: &str) -> cairn_core::Result<Vec<FileStat>> {
+        let (real, _) = self.find(dir).ok_or_else(|| CoreError::NotFound(dir.to_string()))?;
+        self.inner.list(&real)
+    }
+    fn stat(&self, path: &str) -> cairn_core::Result<Option<FileStat>> {
+        let Some((real, _)) = self.find(path) else { return Ok(None) };
+        Ok(CaseInsensitiveFs::with_path(self.inner.stat(&real)?, path))
+    }
+    fn read(&self, path: &str) -> cairn_core::Result<Vec<u8>> {
+        let (real, _) = self.find(path).ok_or_else(|| CoreError::NotFound(path.to_string()))?;
+        self.inner.read(&real)
+    }
+    fn write(&self, path: &str, data: &[u8]) -> cairn_core::Result<FileStat> {
+        let parent = cairn_core::path::parent(path);
+        let (dir, exact) = self.find(parent).ok_or_else(|| CoreError::NotFound(parent.to_string()))?;
+        let name = cairn_core::path::file_name(path);
+        // A folder whose name differs only in case is another folder (a
+        // device that keeps case can have both): nothing is written into it.
+        // Nor is a name written next to one that differs only in case.
+        if !exact || self.lookup(&dir, name).is_some_and(|n| n != name) {
+            return Err(CoreError::AlreadyExists(path.to_string()));
+        }
+        let st = self.inner.write(&cairn_core::path::join(&dir, name), data)?;
+        Ok(FileStat { path: path.to_string(), ..st })
+    }
+    fn create_dir(&self, path: &str) -> cairn_core::Result<()> {
+        // A folder found ignoring case is there; the missing ones are made in it.
+        let mut real = String::new();
+        for name in path.split('/').filter(|c| !c.is_empty()) {
+            match self.lookup(&real, name) {
+                Some(found) => real = cairn_core::path::join(&real, &found),
+                None => {
+                    real = cairn_core::path::join(&real, name);
+                    self.inner.create_dir(&real)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn rename(&self, from: &str, to: &str) -> cairn_core::Result<()> {
+        let (first, _) = self.find(from).ok_or_else(|| CoreError::NotFound(from.to_string()))?;
+        // `to` may find this same entry (a case-only rename); any other is in the way.
+        if self.find(to).is_some_and(|(taken, _)| taken != first) {
+            return Err(CoreError::AlreadyExists(to.to_string()));
+        }
+        // On failure, the folders renamed for the move get their names back.
+        let mut renamed = Vec::new();
+        let moved = self.rename_shared_folders(from, to, &mut renamed).and_then(|()| {
+            let (first, _) = self.find(from).ok_or_else(|| CoreError::NotFound(from.to_string()))?;
+            let parent = cairn_core::path::parent(to);
+            let (dir, exact) = self.find(parent).ok_or_else(|| CoreError::NotFound(parent.to_string()))?;
+            // A folder found only ignoring case, not one renamed above, is
+            // another folder: nothing moves into it.
+            if !exact {
+                return Err(CoreError::AlreadyExists(to.to_string()));
+            }
+            let target = cairn_core::path::join(&dir, cairn_core::path::file_name(to));
+            if target == first {
+                return Ok(());
+            }
+            self.inner.rename(&first, &target)
+        });
+        if moved.is_err() {
+            for (path, old) in renamed.iter().rev() {
+                let _ = self.inner.rename(path, &cairn_core::path::join(cairn_core::path::parent(path), old));
+            }
+        }
+        moved
+    }
+    fn remove(&self, path: &str) -> cairn_core::Result<()> {
+        let (real, _) = self.find(path).ok_or_else(|| CoreError::NotFound(path.to_string()))?;
+        self.inner.remove(&real)
+    }
+    fn remove_empty_dir(&self, path: &str) -> cairn_core::Result<bool> {
+        match self.find(path) {
+            Some((real, _)) => self.inner.remove_empty_dir(&real),
+            None => Ok(false),
+        }
+    }
+    fn describe(&self) -> String {
+        format!("shared storage {}", self.inner.describe())
+    }
+    fn refuses_case_twins(&self) -> bool {
+        true
     }
 }
 

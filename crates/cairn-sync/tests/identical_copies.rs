@@ -15,6 +15,7 @@ mod common;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 
+use cairn_sync::crypto::{FilePayload, VaultKey};
 use common::*;
 use parking_lot::Mutex;
 
@@ -51,6 +52,23 @@ fn deletes(srv: &Server) -> Vec<String> {
     let db = rusqlite::Connection::open(&srv.db_path).unwrap();
     let mut q = db.prepare("SELECT file_id FROM revisions WHERE deleted = 1 ORDER BY seq").unwrap();
     q.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+}
+
+/// Delete revisions on the server, by file id, each with the path it
+/// carries, decrypted.
+fn delete_paths(srv: &Server) -> Vec<(String, String)> {
+    let db = rusqlite::Connection::open(&srv.db_path).unwrap();
+    let keys: String = db.query_row("SELECT keys FROM vaults WHERE id = 'notes'", [], |r| r.get(0)).unwrap();
+    let key = VaultKey::unwrap(&serde_json::from_str(&keys).unwrap(), PASS).unwrap();
+    let mut q = db.prepare("SELECT file_id, blob FROM revisions WHERE deleted = 1 ORDER BY seq").unwrap();
+    q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .map(|(f, blob)| {
+            let path = FilePayload::decode(&key.decrypt(&f, &blob).unwrap()).unwrap().path;
+            (f, path)
+        })
+        .collect()
 }
 
 fn assert_no_trash(devs: &[&Device], when: &str) {
@@ -366,4 +384,84 @@ fn pending_copy_that_moved_on_waits_for_its_newer_change() {
         assert_eq!(id_at(d, "Same.md"), phones, "on {}", d.name);
     }
     assert_no_trash(&[&b, &c], "after the delete");
+}
+
+/// As `race`, on file systems that ignore case (Windows, macOS), with the
+/// folder of the note spelled differently on each device: `Drafts` on the
+/// laptop, `DRAFTS` on the phone, and `drafts` on the tablet, which had a
+/// note of its own in it before it pulled the phone's copy.
+fn race_spelled(srv: &Server) -> (Device, Device, Device) {
+    let ci = CaseInsensitiveFs::new;
+    let mut a = Device::with_fs(srv, "laptop", &[("Drafts/Same.md", SAME)], ci);
+    let b = Arc::new(Mutex::new(Device::with_fs(srv, "phone", &[("DRAFTS/Same.md", SAME)], ci)));
+    let c = Arc::new(Mutex::new(Device::with_fs(srv, "tablet", &[("drafts/other.md", "other\n")], ci)));
+    let (b2, c2) = (b.clone(), c.clone());
+    *a.hooks.before_put.lock() = Some(Box::new(move || {
+        b2.lock().sync();
+        c2.lock().sync();
+    }));
+    a.sync();
+    let b = Arc::try_unwrap(b).ok().unwrap().into_inner();
+    let c = Arc::try_unwrap(c).ok().unwrap().into_inner();
+    assert_eq!(c.paths(), ["drafts/Same.md", "drafts/other.md"]);
+    (a, b, c)
+}
+
+/// Sync the devices in turn until a whole pass pushes nothing, then once
+/// more: none may pull or push anything then.
+fn settle(devs: &mut [&mut Device]) {
+    for _ in 0..8 {
+        if devs.iter_mut().map(|d| d.sync().pushed).sum::<usize>() == 0 {
+            for d in devs.iter_mut() {
+                let r = d.sync();
+                assert_eq!((r.pulled, r.pushed), (0, 0), "{} is not quiet", d.name);
+            }
+            return;
+        }
+    }
+    panic!("sync never settled: devices kept pushing after 8 passes");
+}
+
+/// The server's spelling of the note at `path` on `d`, if `d` spells its
+/// folder otherwise.
+fn server_spelling(d: &Device, path: &str) -> Option<String> {
+    d.engine.state().files[&id_at(d, path)].server_spelling.clone()
+}
+
+/// The same race with the folder spelled differently on each device: the
+/// copies are one note all the same. Whichever device sees both first
+/// deletes the phone's copy once, under the phone's spelling, which is the
+/// server's; every device keeps its file, untouched and in its own spelling
+/// of the folder, under the laptop's id, with nothing in the trash.
+#[test]
+fn identical_copies_in_folders_spelled_differently_become_one_file() {
+    for first in ["laptop", "phone", "tablet"] {
+        let srv = server();
+        let (mut a, mut b, mut c) = race_spelled(&srv);
+        let (laptops, phones) = (id_at(&a, "Drafts/Same.md"), id_at(&b, "DRAFTS/Same.md"));
+        let before = [mtime(&b.abs("DRAFTS/Same.md")), mtime(&c.abs("drafts/Same.md"))];
+        let r = match first {
+            "laptop" => a.sync(),
+            "phone" => b.sync(),
+            _ => c.sync(),
+        };
+        assert!(r.conflicts.is_empty() && r.skipped.is_empty(), "{first} first: {r:?}");
+        let want = [(phones.clone(), "DRAFTS/Same.md".to_string())];
+        assert_eq!(delete_paths(&srv), want, "{first} first");
+        settle(&mut [&mut a, &mut b, &mut c]);
+        assert_eq!(a.paths(), ["Drafts/Same.md", "Drafts/other.md"], "{first} first");
+        assert_eq!(b.paths(), ["DRAFTS/Same.md", "DRAFTS/other.md"], "{first} first");
+        assert_eq!(c.paths(), ["drafts/Same.md", "drafts/other.md"], "{first} first");
+        for (d, path) in [(&a, "Drafts/Same.md"), (&b, "DRAFTS/Same.md"), (&c, "drafts/Same.md")] {
+            assert_eq!(d.read(path).as_deref(), Some(SAME), "{first} first, on {}", d.name);
+            assert_eq!(id_at(d, path), laptops, "{first} first, on {}", d.name);
+        }
+        assert_eq!(server_spelling(&a, "Drafts/Same.md"), None, "{first} first");
+        assert_eq!(server_spelling(&b, "DRAFTS/Same.md").as_deref(), Some("Drafts/Same.md"), "{first} first");
+        assert_eq!(server_spelling(&c, "drafts/Same.md").as_deref(), Some("Drafts/Same.md"), "{first} first");
+        assert_no_trash(&[&a, &b, &c], &format!("{first} first"));
+        // not written either
+        assert_eq!([mtime(&b.abs("DRAFTS/Same.md")), mtime(&c.abs("drafts/Same.md"))], before, "{first} first");
+        assert_eq!(delete_paths(&srv), want, "{first} first");
+    }
 }

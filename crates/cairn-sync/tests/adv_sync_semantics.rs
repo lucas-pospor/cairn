@@ -15,6 +15,7 @@ use std::fs;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use cairn_sync::engine::{SyncEngine, Tracked};
 use common::*;
 use parking_lot::Mutex;
 
@@ -1399,6 +1400,606 @@ fn remote_file_differing_in_case_does_not_overwrite_local_unsynced_note() {
     let everywhere = format!("{}{}", m.all_text(), a.all_text());
     eprintln!("mac sync: {:?}; mac files {:?}", r.map(|r| r.conflicts).map_err(|e| e.to_string()), m.files());
     assert!(everywhere.contains("only on the mac, never synced"), "the mac's own note is gone: mac {:?}, linux {:?}", m.files(), a.files());
+}
+
+/// Sync `a` then `b` for `rounds` rounds and return what each sync pulled
+/// and pushed: `(a.pulled, a.pushed, b.pulled, b.pushed)` per round.
+fn sync_rounds(a: &mut Device, b: &mut Device, rounds: usize) -> Vec<(usize, usize, usize, usize)> {
+    (0..rounds)
+        .map(|_| {
+            let ra = a.sync();
+            let rb = b.sync();
+            (ra.pulled, ra.pushed, rb.pulled, rb.pushed)
+        })
+        .collect()
+}
+
+/// Two case-insensitive devices (Windows, macOS) hold one folder under
+/// spellings that differ only in case: `Drafts` on one, `DRAFTS` on the
+/// other. Each disk keeps its own spelling of the folder, so the devices
+/// must stop moving its files back and forth after a few syncs, with every
+/// note and its text on both.
+#[test]
+fn folder_spelled_differently_on_two_case_insensitive_devices_settles() {
+    let srv = server();
+    let mut a = Device::with_fs(&srv, "win-a", &[("Drafts/a.md", "from a\n")], CaseInsensitiveFs::new);
+    let mut b = Device::with_fs(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")], CaseInsensitiveFs::new);
+    let counts = sync_rounds(&mut a, &mut b, 5);
+    eprintln!("per round (a pulled, a pushed, b pulled, b pushed): {counts:?}");
+    eprintln!("a: {:?}\nb: {:?}", a.files(), b.files());
+    assert!(counts[2..].iter().all(|c| *c == (0, 0, 0, 0)), "sync never settled: {counts:?}");
+    for d in [&a, &b] {
+        let text: String = d.files().into_iter().map(|f| f.1).collect();
+        assert!(text.contains("from a") && text.contains("from b"), "a note is missing on {}: {:?}", d.name, d.files());
+        assert!(d.conflict_copies().is_empty(), "conflict copies on {}: {:?}", d.name, d.files());
+    }
+    // An edit made after that still reaches the other device.
+    let edited = a.paths().into_iter().find(|p| p.ends_with("a.md")).unwrap();
+    a.write(&edited, "from a, edited\n");
+    sync_rounds(&mut a, &mut b, 1);
+    let text: String = b.files().into_iter().map(|f| f.1).collect();
+    assert!(text.contains("from a, edited"), "the edit did not reach b: {:?}", b.files());
+    let counts = sync_rounds(&mut a, &mut b, 2);
+    assert!(counts.iter().all(|c| *c == (0, 0, 0, 0)), "sync did not settle after the edit: {counts:?}");
+}
+
+/// The same after a case-only folder rename on one case-insensitive device
+/// (`proj` to `Proj` in File Explorer) once both were in sync.
+#[test]
+fn case_only_folder_rename_between_case_insensitive_devices_settles() {
+    let srv = server();
+    let files: Vec<(String, String)> = (0..5).map(|i| (format!("proj/n{i}.md"), format!("note {i}\n"))).collect();
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let mut a = Device::with_fs(&srv, "win-a", &files, CaseInsensitiveFs::new);
+    a.sync();
+    let mut b = Device::with_fs(&srv, "win-b", &[], CaseInsensitiveFs::new);
+    b.sync();
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 0, 0, 0)]);
+    a.mv("proj", "Proj");
+    let counts = sync_rounds(&mut a, &mut b, 5);
+    eprintln!("per round (a pulled, a pushed, b pulled, b pushed): {counts:?}");
+    eprintln!("a: {:?}\nb: {:?}", a.paths(), b.paths());
+    assert!(counts[2..].iter().all(|c| *c == (0, 0, 0, 0)), "sync never settled: {counts:?}");
+    for d in [&a, &b] {
+        assert_eq!(d.files().len(), 5, "notes missing on {}: {:?}", d.name, d.paths());
+        assert!(d.conflict_copies().is_empty(), "conflict copies on {}: {:?}", d.name, d.paths());
+    }
+}
+
+/// A device whose file system ignores case but keeps it (Windows, macOS).
+fn ci(srv: &Server, name: &str, files: &[(&str, &str)]) -> Device {
+    Device::with_fs(srv, name, files, CaseInsensitiveFs::new)
+}
+
+/// Sync `d` once and return what it pulled and pushed. Such a sync must
+/// make no conflict copy and leave no file out.
+fn traffic(d: &mut Device) -> (usize, usize) {
+    let r = d.sync();
+    assert!(r.conflicts.is_empty(), "{}: conflict copies {:?}", d.name, r.conflicts);
+    assert!(r.skipped.is_empty(), "{}: files not synced {:?}", d.name, r.skipped);
+    (r.pulled, r.pushed)
+}
+
+/// Sync the devices in turn, twice: none may pull or push anything.
+fn assert_quiet(devs: &mut [&mut Device]) {
+    for round in 0..2 {
+        for d in devs.iter_mut() {
+            assert_eq!(traffic(d), (0, 0), "{} is not quiet in round {round}", d.name);
+        }
+    }
+}
+
+/// The notes on `d` by file name, with their text, whatever the spelling of
+/// their folder. Nothing may be in a conflict copy or in the trash.
+fn notes(d: &Device) -> Vec<(String, String)> {
+    assert!(d.conflict_copies().is_empty(), "{}: {:?}", d.name, d.paths());
+    assert!(d.trash_text().is_empty(), "{}: trash {:?}", d.name, d.trash_text());
+    let mut v: Vec<(String, String)> = d.files().into_iter().map(|(p, t)| (p.rsplit('/').next().unwrap().to_string(), t)).collect();
+    v.sort();
+    v
+}
+
+/// The server's spelling of the note named `name` that `d` keeps in its sync
+/// state, if `d` spells the note's folder otherwise.
+fn server_spelling(d: &Device, name: &str) -> Option<String> {
+    let found: Vec<&Tracked> = d.engine.state().files.values().filter(|t| !t.deleted && t.path.rsplit('/').next() == Some(name)).collect();
+    assert_eq!(found.len(), 1, "{}: {name} is tracked {} times", d.name, found.len());
+    found[0].server_spelling.clone()
+}
+
+fn strings(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+/// The folders at the top of `d`'s notebook.
+fn top_folders(d: &Device) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(&d.root)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| !n.starts_with('.'))
+        .collect();
+    v.sort();
+    v
+}
+
+/// After two such devices settle, an edit on either reaches the other once,
+/// in its own spelling of the folder, and keeps the server's spelling: no
+/// note moves on the server. A note edited on both, on lines apart, is
+/// merged.
+#[test]
+fn edits_after_folder_spellings_settle_go_up_once_and_merge() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "1\n2\n3\n4\n5\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    // a edits its own note, then the note b made.
+    a.write("Drafts/a.md", "1 a\n2\n3\n4\n5\n");
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 1, 1, 0)]);
+    assert_eq!(b.read("DRAFTS/a.md").as_deref(), Some("1 a\n2\n3\n4\n5\n"));
+    a.write("Drafts/b.md", "from b, edited on a\n");
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 1, 1, 0)]);
+    assert_eq!(b.read("DRAFTS/b.md").as_deref(), Some("from b, edited on a\n"));
+    // Both edit a.md before they sync.
+    a.write("Drafts/a.md", "1 a\n2\n3\n4\n5 a\n");
+    b.write("DRAFTS/a.md", "1 a\n2 b\n3\n4\n5\n");
+    assert_eq!(sync_rounds(&mut a, &mut b, 2), vec![(0, 1, 1, 1), (1, 0, 0, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    let want = pairs(&[("a.md", "1 a\n2 b\n3\n4\n5 a\n"), ("b.md", "from b, edited on a\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&b), want);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/b.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md"]));
+    // Each note is still where its maker put it on the server.
+    assert_eq!(server_spelling(&a, "a.md"), None);
+    assert_eq!(server_spelling(&a, "b.md").as_deref(), Some("DRAFTS/b.md"));
+    assert_eq!(server_spelling(&b, "a.md").as_deref(), Some("Drafts/a.md"));
+    assert_eq!(server_spelling(&b, "b.md"), None);
+}
+
+/// The same note made on both devices, each in its own spelling of the
+/// folder, is one note: adopted, with no second upload and no rename.
+#[test]
+fn same_note_in_folders_spelled_differently_is_adopted_without_a_rename() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/same.md", "same\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/same.md", "same\n")]);
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 1, 1, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Drafts/same.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/same.md"]));
+    assert_eq!(server_spelling(&b, "same.md").as_deref(), Some("Drafts/same.md"));
+}
+
+/// A case-only rename of a file still reaches a device that spells its
+/// folder otherwise, in that device's folder: only folders keep the
+/// device's spelling.
+#[test]
+fn case_only_file_rename_reaches_a_device_that_spells_the_folder_otherwise() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/Beta.md", "beta\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/x.md", "x\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    a.mv("Drafts/Beta.md", "Drafts/beta.md");
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 1, 1, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Drafts/beta.md", "Drafts/x.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/beta.md", "DRAFTS/x.md"]));
+}
+
+/// A folder renamed on one case-insensitive device while a device that
+/// spells it otherwise edits a note in it: the note goes into the renamed
+/// folder with the edit on both devices, and the old folder is not made
+/// again under the other spelling (as it would be if the edit's path were
+/// taken for a move made on the server).
+#[test]
+fn a_folder_rename_racing_an_edit_from_a_device_that_spells_the_folder_otherwise() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    a.mv("Drafts", "Notes");
+    b.write("DRAFTS/b.md", "from b, edited\n");
+    assert_eq!(traffic(&mut b), (0, 1));
+    // a writes b's edit into the renamed folder and pushes the rename of both notes.
+    assert_eq!(traffic(&mut a), (1, 2));
+    assert_eq!(traffic(&mut b), (2, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    for d in [&a, &b] {
+        assert_eq!(d.paths(), strings(&["Notes/a.md", "Notes/b.md"]), "{}", d.name);
+        assert_eq!(top_folders(d), strings(&["Notes"]), "{}", d.name);
+        assert_eq!(notes(d), pairs(&[("a.md", "from a\n"), ("b.md", "from b, edited\n")]), "{}", d.name);
+    }
+}
+
+/// A case-only rename of the folder made in the app goes up once, for the
+/// notes the server spells otherwise too, and the device that spells it
+/// otherwise takes it for the server's spelling.
+#[test]
+fn a_case_only_folder_rename_made_in_the_app_goes_up_once() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    a.app_mv("Drafts", "drafts");
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 2, 2, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["drafts/a.md", "drafts/b.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md"]));
+    assert_eq!(server_spelling(&a, "b.md"), None);
+    assert_eq!(server_spelling(&b, "a.md").as_deref(), Some("drafts/a.md"));
+    assert_eq!(server_spelling(&b, "b.md").as_deref(), Some("drafts/b.md"));
+}
+
+/// Folders two levels deep, spelled differently at both levels (`Work/DRAFTS`
+/// on one device, `WORK/Drafts` on the other): each device keeps its own
+/// spelling of both, an edit made after that goes up under the server's
+/// spelling, and the devices go quiet.
+#[test]
+fn nested_folders_spelled_differently_at_both_levels_settle() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Work/DRAFTS/a.md", "1\n2\n3\n")]);
+    let mut b = ci(&srv, "win-b", &[("WORK/Drafts/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Work/DRAFTS/a.md", "Work/DRAFTS/b.md"]));
+    assert_eq!(b.paths(), strings(&["WORK/Drafts/a.md", "WORK/Drafts/b.md"]));
+    assert_eq!(server_spelling(&a, "a.md"), None);
+    assert_eq!(server_spelling(&a, "b.md").as_deref(), Some("WORK/Drafts/b.md"));
+    assert_eq!(server_spelling(&b, "a.md").as_deref(), Some("Work/DRAFTS/a.md"));
+    assert_eq!(server_spelling(&b, "b.md"), None);
+    // An edit on b of the note a made goes up under a's spelling: a takes it
+    // as an edit, not as a move, and the server's spelling stays as it was.
+    b.write("WORK/Drafts/a.md", "1\n2 b\n3\n");
+    assert_eq!(sync_rounds(&mut b, &mut a, 1), vec![(0, 1, 1, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.read("Work/DRAFTS/a.md").as_deref(), Some("1\n2 b\n3\n"));
+    assert_eq!(a.paths(), strings(&["Work/DRAFTS/a.md", "Work/DRAFTS/b.md"]));
+    assert_eq!(server_spelling(&a, "a.md"), None);
+    assert_eq!(server_spelling(&b, "a.md").as_deref(), Some("Work/DRAFTS/a.md"));
+    let want = pairs(&[("a.md", "1\n2 b\n3\n"), ("b.md", "from b\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&b), want);
+}
+
+/// A note in a folder that is here only in its first level, under another
+/// spelling (`WORK/New/Deep/c.md` from a device that spells `Work` as
+/// `WORK`): the first level takes this device's spelling, and the folders
+/// from the first one that is not here keep the spelling they came with.
+#[test]
+fn a_new_folder_inside_a_folder_spelled_otherwise_keeps_its_own_spelling() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Work/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("WORK/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    b.write("WORK/New/Deep/c.md", "from b, deeper\n");
+    assert_eq!(sync_rounds(&mut b, &mut a, 1), vec![(0, 1, 1, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Work/New/Deep/c.md", "Work/a.md", "Work/b.md"]));
+    assert_eq!(b.paths(), strings(&["WORK/New/Deep/c.md", "WORK/a.md", "WORK/b.md"]));
+    assert_eq!(server_spelling(&a, "c.md").as_deref(), Some("WORK/New/Deep/c.md"));
+    assert_eq!(server_spelling(&b, "c.md"), None);
+    // Another note in the new folders now finds them through the index.
+    b.write("WORK/New/Deep/d.md", "d\n");
+    assert_eq!(sync_rounds(&mut b, &mut a, 1), vec![(0, 1, 1, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Work/New/Deep/c.md", "Work/New/Deep/d.md", "Work/a.md", "Work/b.md"]));
+    assert_eq!(server_spelling(&a, "d.md").as_deref(), Some("WORK/New/Deep/d.md"));
+    let want = pairs(&[("a.md", "from a\n"), ("b.md", "from b\n"), ("c.md", "from b, deeper\n"), ("d.md", "d\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&b), want);
+}
+
+/// A device whose file system tells case apart (Linux) syncs as before: it
+/// keeps a folder for each spelling the server has, each note in the
+/// spelling of the device that made it, and gets a case-only rename of the
+/// folder made on a case-insensitive device once, as a rename.
+#[cfg(target_os = "linux")] // The peer needs a file system that tells case apart.
+#[test]
+fn a_case_sensitive_peer_keeps_both_spellings_and_gets_a_folder_case_rename_once() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    let mut l = Device::new(&srv, "linux", &[]);
+    for _ in 0..2 {
+        a.sync();
+        b.sync();
+        l.sync();
+    }
+    assert_quiet(&mut [&mut a, &mut b, &mut l]);
+    assert_eq!(l.paths(), strings(&["DRAFTS/b.md", "Drafts/a.md"]));
+    a.mv("Drafts", "drafts");
+    assert_eq!(traffic(&mut a), (0, 2), "the rename goes up once, for both notes");
+    assert_eq!(traffic(&mut l), (2, 0));
+    assert_eq!(traffic(&mut b), (2, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut l]);
+    assert_eq!(l.paths(), strings(&["drafts/a.md", "drafts/b.md"]));
+    assert_eq!(a.paths(), strings(&["drafts/a.md", "drafts/b.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md"]));
+    let want = pairs(&[("a.md", "from a\n"), ("b.md", "from b\n")]);
+    for d in [&a, &b, &l] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+}
+
+/// A case-only rename of a folder on a case-insensitive device is not lost
+/// when the pull brings an edit to a note in it from a device that spells
+/// the folder otherwise: the rename still goes up for that note, so the
+/// case-sensitive peer ends with one folder. (Comparing the edit's path
+/// with the folder's spelling here, instead of the server's, would take it
+/// for a move made there and drop the rename of that note.)
+#[cfg(target_os = "linux")] // The peer needs a file system that tells case apart.
+#[test]
+fn a_folder_case_rename_is_not_lost_to_an_edit_from_a_device_that_spells_the_folder_otherwise() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    let mut l = Device::new(&srv, "linux", &[]);
+    for _ in 0..2 {
+        a.sync();
+        b.sync();
+        l.sync();
+    }
+    assert_quiet(&mut [&mut a, &mut b, &mut l]);
+    b.mv("DRAFTS", "drafts");
+    a.write("Drafts/a.md", "from a, edited\n");
+    assert_eq!(traffic(&mut a), (0, 1));
+    // b writes a's edit into its renamed folder and pushes the rename of both notes.
+    assert_eq!(traffic(&mut b), (1, 2));
+    assert_eq!(traffic(&mut a), (2, 0));
+    assert_eq!(traffic(&mut l), (2, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut l]);
+    assert_eq!(l.paths(), strings(&["drafts/a.md", "drafts/b.md"]), "the rename of a.md was dropped");
+    assert_eq!(b.paths(), strings(&["drafts/a.md", "drafts/b.md"]));
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/b.md"]));
+    let want = pairs(&[("a.md", "from a, edited\n"), ("b.md", "from b\n")]);
+    for d in [&a, &b, &l] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+}
+
+/// A folder that another program makes on a device whose file system tells
+/// case apart (Linux), after the scan and before the pull applies a note in
+/// it, is not taken for the indexed folder whose name differs only in case:
+/// the note goes into the new folder, as the server spells it, and nothing
+/// goes up for it. `same_mtime` gives the new folder the old one's mtime,
+/// so that only the change stamp tells the two apart.
+#[cfg(target_os = "linux")] // The device needs a file system that tells case apart.
+fn a_folder_made_during_the_pull_is_not_taken_for_its_case_twin(same_mtime: bool) {
+    let srv = server();
+    let mut l = Device::new(&srv, "linux", &[("Drafts/a.md", "from l\n")]);
+    let mut m = Device::new(&srv, "linux-2", &[]);
+    assert_eq!(traffic(&mut l), (0, 1));
+    assert_eq!(traffic(&mut m), (1, 0));
+    m.write("DRAFTS/b.md", "from m\n");
+    assert_eq!(traffic(&mut m), (0, 1));
+    let root = l.root.clone();
+    *l.hooks.after_changes.lock() = Some(Box::new(move || {
+        fs::create_dir(root.join("DRAFTS")).unwrap();
+        if same_mtime {
+            let t = fs::metadata(root.join("Drafts")).unwrap().modified().unwrap();
+            fs::File::open(root.join("DRAFTS")).unwrap().set_modified(t).unwrap();
+        }
+    }));
+    assert_eq!(traffic(&mut l), (1, 0));
+    assert_quiet(&mut [&mut l, &mut m]);
+    assert_eq!(l.paths(), strings(&["DRAFTS/b.md", "Drafts/a.md"]));
+    assert_eq!(m.paths(), strings(&["DRAFTS/b.md", "Drafts/a.md"]));
+    assert_eq!(server_spelling(&l, "b.md"), None);
+    let want = pairs(&[("a.md", "from l\n"), ("b.md", "from m\n")]);
+    assert_eq!(notes(&l), want);
+    assert_eq!(notes(&m), want);
+}
+
+#[cfg(target_os = "linux")] // The device needs a file system that tells case apart.
+#[test]
+fn a_folder_made_during_the_pull_with_its_own_mtime_is_not_taken_for_its_case_twin() {
+    a_folder_made_during_the_pull_is_not_taken_for_its_case_twin(false);
+}
+
+#[cfg(target_os = "linux")] // The device needs a file system that tells case apart.
+#[test]
+fn a_folder_made_during_the_pull_with_the_same_mtime_is_not_taken_for_its_case_twin() {
+    a_folder_made_during_the_pull_is_not_taken_for_its_case_twin(true);
+}
+
+/// Two case-insensitive devices that spell a folder differently, and a phone
+/// on Android shared storage. An edit from either device keeps the server's
+/// spelling of the folder, so it never changes, and the phone, which renames
+/// its folder whenever it does and then uploads every other note in it
+/// (FINDING-034), uploads nothing for the edits.
+#[test]
+fn edits_from_two_spellings_of_a_folder_cost_a_phone_on_shared_storage_no_uploads() {
+    let srv = server();
+    let files: Vec<(String, String)> = (0..4).map(|i| (format!("Drafts/n{i}.md"), format!("note {i}\n"))).collect();
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let mut a = ci(&srv, "win-a", &files);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = Device::with_fs(&srv, "phone", &[], SharedStorageFs::new);
+    assert_eq!(traffic(&mut a), (0, 4));
+    assert_eq!(traffic(&mut b), (4, 0));
+    assert_eq!(traffic(&mut phone), (4, 0));
+    // b's user renames the folder in File Explorer, only in case. The
+    // rename goes up once; a keeps its spelling, and the phone takes b's.
+    b.mv("Drafts", "DRAFTS");
+    assert_eq!(traffic(&mut b), (0, 4));
+    assert_eq!(traffic(&mut a), (4, 0));
+    assert_eq!(traffic(&mut phone), (4, 0));
+    let mut phone_pushed = 0;
+    for round in 0..3 {
+        // a edits a note, and the phone gets the edit; then b edits that
+        // note and another one, and the phone gets those.
+        assert_eq!(traffic(&mut a), (if round == 0 { 0 } else { 2 }, 0), "round {round}");
+        a.write("Drafts/n0.md", &format!("n0, round {round}, a\n"));
+        assert_eq!(traffic(&mut a), (0, 1), "round {round}");
+        let (pulled, pushed) = traffic(&mut phone);
+        assert_eq!(pulled, 1, "round {round}");
+        phone_pushed += pushed;
+        assert_eq!(traffic(&mut b), (1, 0), "round {round}");
+        b.write("DRAFTS/n0.md", &format!("n0, round {round}, b\n"));
+        b.write(&format!("DRAFTS/n{}.md", round + 1), &format!("round {round}, b\n"));
+        assert_eq!(traffic(&mut b), (0, 2), "round {round}");
+        let (pulled, pushed) = traffic(&mut phone);
+        assert_eq!(pulled, 2, "round {round}");
+        phone_pushed += pushed;
+    }
+    assert_eq!(phone_pushed, 0, "the phone uploaded notes for edits made elsewhere");
+    assert_eq!(traffic(&mut a), (2, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    let want = pairs(&[("n0.md", "n0, round 2, b\n"), ("n1.md", "round 0, b\n"), ("n2.md", "round 1, b\n"), ("n3.md", "round 2, b\n")]);
+    for d in [&a, &b, &phone] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+    assert_eq!(top_folders(&a), strings(&["Drafts"]));
+    assert_eq!(top_folders(&b), strings(&["DRAFTS"]));
+    assert_eq!(top_folders(&phone), strings(&["DRAFTS"]));
+}
+
+/// A new note goes up in the spelling of the device that made it. A phone
+/// on Android shared storage whose folder has the other spelling does not
+/// store it, and lists it as not synced, as it does any file from another
+/// device in a folder whose name differs only in case from its own
+/// (FINDING-031, FINDING-172). It uploads nothing for it.
+#[test]
+fn a_new_note_in_a_folder_that_a_phone_on_shared_storage_spells_otherwise_is_listed_there() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/n.md", "n\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = Device::with_fs(&srv, "phone", &[], SharedStorageFs::new);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    a.write("Drafts/new.md", "new on a\n");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut b), (1, 0));
+    assert_eq!(b.read("DRAFTS/new.md").as_deref(), Some("new on a\n"));
+    for round in 0..2 {
+        let r = phone.sync();
+        assert_eq!(r.pushed, 0, "round {round}");
+        assert!(r.skipped.iter().any(|s| s.path == "Drafts/new.md"), "round {round}: {:?}", r.skipped);
+        assert_eq!(phone.paths(), strings(&["DRAFTS/n.md"]), "round {round}");
+    }
+}
+
+/// Put `d`'s sync state back as an older version left it: a file whose
+/// folder the server spells otherwise is tracked under the server's path,
+/// which the disk here does not have (that version recorded the path it
+/// pulled, and a sync that stopped before its push left it so).
+fn as_an_older_version_left_it(d: &Device) {
+    let path = d.state_dir.join("state.json");
+    let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for t in state["files"].as_object_mut().unwrap().values_mut() {
+        let t = t.as_object_mut().unwrap();
+        if let Some(spelled) = t.remove("server_spelling") {
+            t.insert("path".into(), spelled);
+            t.remove("seen");
+        }
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&state).unwrap()).unwrap();
+}
+
+/// Older versions moved such a folder's notes back and forth on every
+/// sync, and one that stopped between its pull and its push left the other
+/// device's spelling in the sync state. Once both devices have this
+/// version, they settle in two exchanges: each pushes its own spelling of
+/// such a note once more, and the other takes it for the server's.
+#[test]
+fn a_sync_state_with_the_other_spelling_from_an_older_version_settles() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n"), ("Drafts/c.md", "c\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    as_an_older_version_left_it(&a);
+    as_an_older_version_left_it(&b);
+    assert_eq!(sync_rounds(&mut a, &mut b, 2), vec![(0, 1, 1, 2), (2, 0, 0, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    let want = pairs(&[("a.md", "from a\n"), ("b.md", "from b\n"), ("c.md", "c\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&b), want);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/b.md", "Drafts/c.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md", "DRAFTS/c.md"]));
+}
+
+/// The server's spelling is kept in the sync state on disk: an engine
+/// loaded from it again still uploads an edit in that spelling, so the
+/// note does not move on the server.
+#[test]
+fn the_server_spelling_of_a_folder_is_kept_in_the_sync_state() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    let saved = fs::read_to_string(b.state_dir.join("state.json")).unwrap();
+    assert!(saved.contains(r#""server_spelling": "Drafts/a.md""#), "{saved}");
+    b.engine = SyncEngine::load(b.vault.clone(), &b.state_dir).unwrap().unwrap();
+    b.write("DRAFTS/a.md", "from a, edited on b\n");
+    assert_eq!(traffic(&mut b), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.read("Drafts/a.md").as_deref(), Some("from a, edited on b\n"));
+    // a's spelling went up, which a has, so a keeps no other.
+    assert_eq!(server_spelling(&a, "a.md"), None);
+    assert_eq!(server_spelling(&b, "a.md").as_deref(), Some("Drafts/a.md"));
+}
+
+/// A device that spells the folder otherwise and loses its sync state takes
+/// its notes for the server's again, with no rename, and a note it renamed
+/// meanwhile goes up as that rename, in the server's spelling of the folder.
+#[test]
+fn a_lost_sync_state_is_rebuilt_without_renaming_a_folder_spelled_otherwise() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n"), ("Drafts/c.md", "c\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    b.mv("DRAFTS/c.md", "DRAFTS/c2.md");
+    fs::remove_file(b.state_dir.join("state.json")).unwrap();
+    assert_eq!(traffic(&mut b), (2, 1));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/b.md", "Drafts/c2.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md", "DRAFTS/c2.md"]));
+    assert_eq!(server_spelling(&a, "c2.md"), None);
+    assert_eq!(server_spelling(&b, "c2.md").as_deref(), Some("Drafts/c2.md"));
+}
+
+/// The same on a real file system that ignores case, with `StdFs`, which on
+/// NTFS keeps a folder's spelling when a note is moved into it under
+/// another spelling, as `CaseInsensitiveFs` does.
+#[cfg_attr(not(windows), ignore = "needs a file system that ignores case (NTFS); CaseInsensitiveFs covers it elsewhere")]
+#[test]
+fn folder_spelled_differently_on_two_real_case_insensitive_file_systems_settles() {
+    let srv = server();
+    let mut a = Device::new(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+    let mut b = Device::new(&srv, "win-b", &[("DRAFTS/b.md", "from b\n")]);
+    assert_eq!(sync_rounds(&mut a, &mut b, 2), vec![(0, 1, 1, 1), (1, 0, 0, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    let want = pairs(&[("a.md", "from a\n"), ("b.md", "from b\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&b), want);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/b.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md"]));
+    // A case-only rename of the folder goes up once, and b keeps its
+    // spelling. It goes through another name: a Linux folder with case
+    // folding keeps the old spelling on a case-only rename.
+    a.mv("Drafts", "renamed");
+    a.mv("renamed", "drafts");
+    assert_eq!(sync_rounds(&mut a, &mut b, 1), vec![(0, 2, 2, 0)]);
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["drafts/a.md", "drafts/b.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/b.md"]));
 }
 
 /// `Vault::rename` refuses a case-only rename when the target is a

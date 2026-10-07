@@ -6,7 +6,8 @@
 //! * `state.json`: for each file id, the last server revision this device
 //!   has seen (path, seq, content hash), how the file here looked when a
 //!   scan last found that content (to skip hashing it again), the server's
-//!   path while the file is under a name here that is not uploaded yet, and
+//!   path while the file is under a name here that is not uploaded yet, the
+//!   server's spelling of folders that this device spells otherwise, and
 //!   the changes-feed cursor
 //! * `state.journal`: the uploads made since `state.json` was last written,
 //!   one JSON line each, after a line with the hash of that `state.json`.
@@ -85,6 +86,14 @@
 //!   the file here meanwhile, unless the user renamed the file here too. The
 //!   same file here under a name that differs only in case takes the remote
 //!   name there, unless a folder name differs (then the remote file waits).
+//! * a folder here whose name differs only in case from a folder in a
+//!   remote path is that folder, on a file system that takes the two names
+//!   for one (macOS, Windows): another device spells it otherwise. The
+//!   remote file goes into the folder as it is spelled here, nothing is
+//!   renamed on disk or pushed for the difference, and the file's uploads
+//!   keep the server's spelling (see `Tracked::server_spelling`). A case-only
+//!   rename of the folder made here still goes up, once. Android shared
+//!   storage renames its folder to the remote spelling instead (FINDING-034).
 //! * one file under two names here (a folder linked in twice, a symlink to
 //!   a note) syncs under one of them (see `regroup`). A second copy that an
 //!   older version uploaded under the other name is a duplicate: nothing is
@@ -128,9 +137,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cairn_core::index::{hash_bytes, hash_hex, Hash};
+use cairn_core::index::{hash_bytes, hash_hex, Hash, Index};
 use cairn_core::path as vpath;
-use cairn_core::{Change, CoreError, EntryKind, Vault};
+use cairn_core::{Change, CoreError, EntryKind, Vault, VaultFs};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::{random_bytes, FilePayload, VaultKey, DEFAULT_KDF};
@@ -186,6 +195,16 @@ pub struct Tracked {
     /// the delete. Every push uploads the rename until one gets through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_path: Option<String>,
+    /// The server's path at `seq`, when it spells folders otherwise than
+    /// this device's spelling of that path (`server_path`, or else `path`)
+    /// does, only in case, and this file system takes both spellings for
+    /// one folder (macOS, Windows): another device that spells a folder
+    /// differently uploaded it (see `local_spelling`). The file stays in the
+    /// folder as it is spelled here, and its uploads keep the server's
+    /// spelling while it stays in that folder (see `upload_path`), so that
+    /// the difference never goes up as a rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_spelling: Option<String>,
     /// Set with `server_path` when the name here is one the user gave the
     /// file in the app (see [`rename`]), not one the sync chose: a remote
     /// delete then keeps the file, as it keeps one the scan finds renamed.
@@ -220,6 +239,18 @@ pub struct Tracked {
     /// does not delete it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub detached: bool,
+}
+
+impl Tracked {
+    /// The server's path at `seq`, as this device spells it.
+    fn server_here(&self) -> &str {
+        self.server_path.as_deref().unwrap_or(&self.path)
+    }
+
+    /// The server's path at `seq`, as the server has it.
+    fn on_server(&self) -> &str {
+        self.server_spelling.as_deref().unwrap_or(self.server_here())
+    }
 }
 
 fn is_false(b: &bool) -> bool {
@@ -361,6 +392,10 @@ pub struct SyncEngine {
     /// New files reached through a link that wait for the last batch of
     /// the pull (see `apply_batch`).
     linked_waits: HashSet<String>,
+    /// The folders of remote paths that the pull being applied found here
+    /// under a name that differs only in case, with that name (see
+    /// `local_spelling`).
+    spellings: parking_lot::Mutex<HashMap<String, String>>,
 }
 
 fn write_json<T: Serialize>(path: &Path, v: &T) -> Result<(), SyncError> {
@@ -633,6 +668,30 @@ fn is_gone(e: &SyncError) -> bool {
     matches!(e, SyncError::Server(msg) if msg.starts_with("HTTP 404") || msg.ends_with("(HTTP 404)"))
 }
 
+/// For two folders with the same mtime and no change stamp: whether vault
+/// paths `a` and `b` name one folder on disk. Windows gives folders no
+/// change stamp, but a canonical path there carries each name as it is
+/// stored on disk, so two names of one folder that ignores case resolve to
+/// the same path, and two folders in a folder with case sensitivity turned
+/// on (as for WSL) do not. True where the notebook is not a folder on this
+/// computer or a path cannot be resolved, as before.
+#[cfg(windows)]
+fn one_folder_on_disk(fs: &dyn VaultFs, a: &str, b: &str) -> bool {
+    let real = |p: &str| fs.os_path(p).and_then(|p| std::fs::canonicalize(p).ok());
+    match (real(a), real(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => true,
+    }
+}
+
+/// Elsewhere, the mtime alone. A canonical path on Linux keeps the spelling
+/// asked for, so a folder with case folding would never match itself; and
+/// a Unix vault folder has a change stamp anyway.
+#[cfg(not(windows))]
+fn one_folder_on_disk(_fs: &dyn VaultFs, _a: &str, _b: &str) -> bool {
+    true
+}
+
 /// An error as a reason in [`SyncReport::skipped`].
 fn reason(e: &SyncError) -> String {
     match e {
@@ -703,6 +762,7 @@ impl SyncEngine {
             kept: HashMap::new(),
             deleting: HashSet::new(),
             linked_waits: HashSet::new(),
+            spellings: Default::default(),
         })
     }
 
@@ -733,6 +793,7 @@ impl SyncEngine {
             kept: HashMap::new(),
             deleting: HashSet::new(),
             linked_waits: HashSet::new(),
+            spellings: Default::default(),
         })
     }
 
@@ -1533,7 +1594,8 @@ impl SyncEngine {
                     continue;
                 }
                 let Some((held, _)) = self.held(f, *seq).and_then(|h| self.open(&h).ok()) else { continue };
-                if names.contains(&held) {
+                // Where it would go here (see `local_spelling`).
+                if names.contains(&self.local_spelling(&held)) {
                     return Err(SyncError::Local(format!(
                         "another device deleted this file, but a different file waits to sync at {held}, which on this device is another name of {path}, so the delete is not applied here: it would delete {held} too. To sync it, rename or delete {held} on the device that has it"
                     )));
@@ -1556,7 +1618,7 @@ impl SyncEngine {
             Some(k) => format!("copy what you need from it into {k}, then delete this copy on a device where it is a separate file, not another name of {k} through a link"),
             None => "copy what you need from it into the note, then delete this copy on a device where it is a separate file".into(),
         };
-        if rpath != t.server_path.as_deref().unwrap_or(&t.path) {
+        if rpath != t.on_server() {
             format!("another device renamed this file ({} here), {copy}. The rename is not applied here. To sync it, {keep}", t.path)
         } else {
             format!("another device changed this file, {copy}. The change is not applied here. To keep it, {keep}")
@@ -1588,6 +1650,75 @@ impl SyncEngine {
         let fs = self.vault.fs();
         let s = fs.stat(path).ok().flatten().filter(|s| s.kind == EntryKind::File)?;
         variants.into_iter().find(|v| matches!(fs.stat(v), Ok(Some(o)) if (o.size, o.mtime) == (s.size, s.mtime)))
+    }
+
+    /// `path` with each folder on the way spelled as it is here, where this
+    /// device has the folder under a name that differs only in case and the
+    /// file system takes the two names for one folder, as one that ignores
+    /// case does (macOS, Windows, a Linux folder with case folding): another
+    /// device that spells the folder otherwise uploaded `path`. From the
+    /// first folder that is not here in any spelling, the rest of the path
+    /// keeps its spelling, and so does the file name: a case-only rename of
+    /// a file applies as any rename does. Where the file system tells the
+    /// names apart (Linux), this is `path`; so it is on Android shared
+    /// storage, which renames its folder to the other spelling instead
+    /// (FINDING-034).
+    fn local_spelling(&self, path: &str) -> String {
+        let parent = vpath::parent(path);
+        if parent.is_empty() || self.vault.fs().refuses_case_twins() {
+            return path.to_string();
+        }
+        let names: Vec<&str> = parent.split('/').collect();
+        let mut here = String::new();
+        for (i, name) in names.iter().enumerate() {
+            match self.folder_here(&vpath::join(&here, name)) {
+                Some(dir) => here = dir,
+                None => return vpath::join(&vpath::join(&here, &names[i..].join("/")), vpath::file_name(path)),
+            }
+        }
+        vpath::join(&here, vpath::file_name(path))
+    }
+
+    /// The folder here that folder path `dir`, whose parent is spelled as
+    /// here, names: `dir` itself, or else the folder next to it whose name
+    /// differs only in case, if the file system finds a folder under `dir`
+    /// too and shows the same folder under both names: the same mtime and
+    /// change stamp, or on Windows, which has no change stamp for a folder,
+    /// the same mtime and the same name on disk (`one_folder_on_disk`). As
+    /// in `same_file`, a folder that another program made under `dir` since
+    /// the scan, on a file system that tells the names apart, is not taken
+    /// for the other one. `None` if neither is here.
+    /// The index is read before the file system is asked, and a pair that
+    /// is found is kept for the rest of the pull (`spellings`), so the
+    /// folder's neighbours are looked through once, not for every file.
+    fn folder_here(&self, dir: &str) -> Option<String> {
+        fn is_dir(idx: &Index, p: &str) -> bool {
+            idx.entry(p).is_some_and(|e| e.kind == EntryKind::Dir)
+        }
+        {
+            let idx = self.vault.index();
+            if is_dir(&idx, dir) {
+                return Some(dir.to_string());
+            }
+            if let Some(twin) = self.spellings.lock().get(dir).filter(|t| is_dir(&idx, t.as_str())) {
+                return Some(twin.clone());
+            }
+        }
+        let fs = self.vault.fs();
+        let there = fs.stat(dir).ok().flatten().filter(|s| s.kind == EntryKind::Dir)?;
+        let twin = {
+            let idx = self.vault.index();
+            idx.case_twin(dir, None).filter(|&t| is_dir(&idx, t)).map(str::to_string)?
+        };
+        let stamp = fs.change_stamp(dir);
+        let same = fs.stat(&twin).ok().flatten().is_some_and(|s| s.kind == EntryKind::Dir && s.mtime == there.mtime)
+            && fs.change_stamp(&twin) == stamp
+            && (stamp.is_some() || one_folder_on_disk(&**fs, &twin, dir));
+        if !same {
+            return None;
+        }
+        self.spellings.lock().insert(dir.to_string(), twin.clone());
+        Some(twin)
     }
 
     /// Whether writing or moving a remote file to `path` would replace
@@ -1862,14 +1993,15 @@ impl SyncEngine {
 
     /// Two devices that had not seen each other's file each uploaded one at
     /// `path` with the same content, and the pull brings the other one
-    /// (`head`, with `data`): the file here, unchanged and at that path on
-    /// the server too, is the same note. The file uploaded later keeps its
-    /// id (the one that keeps the name in `make_way`), and the earlier one
-    /// is deleted on the server, which keeps its history; no file here
-    /// changes. If the file here is the earlier one, it is tracked under the
-    /// other's id from now on, as on the devices that have it (see
-    /// `keep_retired_copies`). Returns whether the pulled file is dealt with
-    /// this way (no file here is written for it).
+    /// (`head`, with `data`, at `rpath`, which this device spells `path`):
+    /// the file here, unchanged and at that path on the server too, is the
+    /// same note. The file uploaded later keeps its id (the one that keeps
+    /// the name in `make_way`), and the earlier one is deleted on the
+    /// server, which keeps its history; no file here changes. If the file
+    /// here is the earlier one, it is tracked under the other's id from now
+    /// on, as on the devices that have it (see `keep_retired_copies`).
+    /// Returns whether the pulled file is dealt with this way (no file here
+    /// is written for it).
     ///
     /// Not if either file changed on the server since this pull saw it: then
     /// they are two files (see `make_way`). If the pulled file changed, or
@@ -1882,14 +2014,17 @@ impl SyncEngine {
     /// here is tracked under its id, as `keep_retired_copies` does when the
     /// delete comes in the same batch of the pull. That delete may be in a
     /// later batch, which a new round would not reach.
-    fn retire(&mut self, head: &RemoteHead, path: &str, data: &[u8], status: &HashMap<String, Status>) -> Result<bool, SyncError> {
+    fn retire(&mut self, head: &RemoteHead, path: &str, rpath: &str, data: &[u8], status: &HashMap<String, Status>) -> Result<bool, SyncError> {
         let hash = hex_hash(data);
         let Some((here, t)) = self.state.files.iter().find(|(_, t)| !t.deleted && t.alias_of.is_none() && t.path == path) else { return Ok(false) };
         let unchanged = *status.get(here).unwrap_or(&Status::Unchanged) == Status::Unchanged;
         if !unchanged || t.hash != hash || t.server_path.is_some() || self.state.pending.contains_key(here) {
             return Ok(false);
         }
-        let (here, here_seq, seen) = (here.clone(), t.seq, t.seen);
+        // The path of the copy here on the server, and the server's spelling
+        // of the pulled copy's path (see `Tracked::server_spelling`).
+        let (here, here_seq, seen, here_at) = (here.clone(), t.seq, t.seen, t.on_server().to_string());
+        let spelled = (rpath != path).then(|| rpath.to_string());
         let (ours, theirs) = (self.revisions(&here)?, self.revisions(&head.file_id)?);
         if theirs.1.seq != head.seq {
             let retried = self.state.pending.get(&head.file_id) == Some(&head.seq);
@@ -1900,7 +2035,7 @@ impl SyncEngine {
             let t = self.state.files[&here].clone();
             let _ = std::fs::remove_file(self.base_path(&here));
             self.state.files.insert(here, Tracked { seq: ours.1.seq, hash: String::new(), deleted: true, seen: None, ..t.clone() });
-            self.state.files.insert(head.file_id.clone(), Tracked { seq: head.seq, hash, seen, ..t });
+            self.state.files.insert(head.file_id.clone(), Tracked { seq: head.seq, hash, seen, server_spelling: spelled, ..t });
             self.save_base(&head.file_id, path, data);
             return Ok(true);
         }
@@ -1908,8 +2043,9 @@ impl SyncEngine {
             return Ok(false);
         }
         let here_first = ours.0 < theirs.0;
-        let (old, parent) = if here_first { (&here, here_seq) } else { (&head.file_id, head.seq) };
-        let payload = FilePayload { path: path.to_string(), mtime: 0, data: Vec::new() };
+        // The delete goes up under the path the copy has on the server.
+        let (old, parent, at) = if here_first { (&here, here_seq, here_at.as_str()) } else { (&head.file_id, head.seq, rpath) };
+        let payload = FilePayload { path: at.to_string(), mtime: 0, data: Vec::new() };
         let rev = PutRevision {
             parent_seq: Some(parent),
             device: self.settings.device.clone(),
@@ -1922,10 +2058,11 @@ impl SyncEngine {
         };
         log::info!("sync: {path} was uploaded twice with the same content; keeping one");
         let _ = std::fs::remove_file(self.base_path(old));
-        let gone = Tracked { path: path.to_string(), seq, hash: String::new(), deleted: true, seen: None, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
+        let server_spelling = (at != path).then(|| at.to_string());
+        let gone = Tracked { path: path.to_string(), seq, hash: String::new(), deleted: true, seen: None, server_path: None, server_spelling, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
         self.state.files.insert(old.clone(), gone);
         if here_first {
-            let kept = Tracked { path: path.to_string(), seq: head.seq, hash, deleted: false, seen, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
+            let kept = Tracked { path: path.to_string(), seq: head.seq, hash, deleted: false, seen, server_path: None, server_spelling: spelled, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
             self.state.files.insert(head.file_id.clone(), kept);
             self.save_base(&head.file_id, path, data);
         }
@@ -1945,15 +2082,15 @@ impl SyncEngine {
     /// earlier of two uploads of one note (see `retire`): a remote delete of
     /// a file that is unchanged here, at the path it has here, while a file
     /// that is new here comes in the same pull and had that path and content
-    /// when the delete was made. That is the copy that was kept: the file
-    /// here is tracked under its id from now on, at that version, and the
-    /// delete is not applied, so nothing is moved to the trash. If the kept
-    /// copy was edited or renamed since (a client without the retire renames
-    /// it to a conflict copy name), the pull applies that as usual. Only a
-    /// kept copy that is at that path now, or has that content, is looked
-    /// for.
+    /// when the delete was made (paths as this device spells them, see
+    /// `local_spelling`). That is the copy that was kept: the file here is
+    /// tracked under its id from now on, at that version, and the delete is
+    /// not applied, so nothing is moved to the trash. If the kept copy was
+    /// edited or renamed since (a client without the retire renames it to a
+    /// conflict copy name), the pull applies that as usual. Only a kept copy
+    /// that is at that path now, or has that content, is looked for.
     fn keep_retired_copies(&mut self, heads: &[RemoteHead], status: &HashMap<String, Status>) -> Result<(), SyncError> {
-        // path -> the file here and the seq of its delete
+        // path here -> the file here and the seq of its delete
         let mut retired: HashMap<String, (String, u64)> = HashMap::new();
         for h in heads.iter().filter(|h| h.deleted) {
             let Some(t) = self.state.files.get(&h.file_id) else { continue };
@@ -1962,9 +2099,9 @@ impl SyncEngine {
                 continue;
             }
             if let Ok((path, _)) = self.open(h)
-                && path == t.path
+                && (path == t.path || self.local_spelling(&path) == t.path)
             {
-                retired.insert(path, (h.file_id.clone(), h.seq));
+                retired.insert(t.path.clone(), (h.file_id.clone(), h.seq));
             }
         }
         if retired.is_empty() {
@@ -1976,9 +2113,10 @@ impl SyncEngine {
             }
             let Ok((path, data)) = self.open(h) else { continue };
             let hash = hex_hash(&data);
+            let here = self.local_spelling(&path);
             // Where it may have been: at its path, or else where a file with
             // its content was deleted (empty files say nothing).
-            let mut places: Vec<&String> = retired.keys().filter(|at| **at == path).collect();
+            let mut places: Vec<&String> = retired.keys().filter(|at| **at == here).collect();
             if places.is_empty() && !data.is_empty() {
                 places = retired.iter().filter(|(_, (fid, _))| self.state.files[fid].hash == hash).map(|(at, _)| at).collect();
                 places.sort();
@@ -1987,29 +2125,31 @@ impl SyncEngine {
             for at in places {
                 let (fid, seq) = &retired[at];
                 let t = &self.state.files[fid];
-                let kept = if path == *at && hash == t.hash { Some((h.seq, data.clone())) } else { self.version_before(&h.file_id, *seq, at, &t.hash)? };
+                let kept = if here == *at && hash == t.hash { Some((h.seq, data.clone(), path.clone())) } else { self.version_before(&h.file_id, *seq, at, &t.hash)? };
                 if let Some(kept) = kept {
                     found = Some((at.clone(), kept));
                     break;
                 }
             }
-            let Some((at, (kept_seq, kept_data))) = found else { continue };
+            let Some((at, (kept_seq, kept_data, kept_path))) = found else { continue };
             let (fid, seq) = retired.remove(&at).unwrap();
             let t = self.state.files[&fid].clone();
             log::info!("sync: {at} was uploaded twice with the same content; keeping the copy here as the other");
             let _ = std::fs::remove_file(self.base_path(&fid));
             self.state.files.insert(fid, Tracked { seq, hash: String::new(), deleted: true, seen: None, ..t.clone() });
-            self.state.files.insert(h.file_id.clone(), Tracked { seq: kept_seq, ..t });
+            let server_spelling = (kept_path != at).then_some(kept_path);
+            self.state.files.insert(h.file_id.clone(), Tracked { seq: kept_seq, server_spelling, ..t });
             self.save_base(&h.file_id, &at, &kept_data);
         }
         Ok(())
     }
 
     /// The revision of file `fid` that was its head just before seq
-    /// `before`, with its content, if it had the path `path` and content
-    /// with the hash `hash`. `None` too if the server cannot serve it (only a
-    /// lost connection or token is an error).
-    fn version_before(&self, fid: &str, before: u64, path: &str, hash: &str) -> Result<Option<(u64, Vec<u8>)>, SyncError> {
+    /// `before`, with its content and its path on the server, if it had the
+    /// path `path` (as this device spells it) and content with the hash
+    /// `hash`. `None` too if the server cannot serve it (only a lost
+    /// connection or token is an error).
+    fn version_before(&self, fid: &str, before: u64, path: &str, hash: &str) -> Result<Option<(u64, Vec<u8>, String)>, SyncError> {
         let fetched = self.transport.history(&self.settings.vault_id, fid).and_then(|history| {
             let Some(r) = history.into_iter().filter(|r| r.seq < before).max_by_key(|r| r.seq) else { return Ok(None) };
             let r = self.transport.revision(&self.settings.vault_id, r.seq)?;
@@ -2026,8 +2166,9 @@ impl SyncEngine {
         };
         let Some(blob) = unb64(&r.blob) else { return Ok(None) };
         let Ok(payload) = self.key.decrypt(fid, &blob).and_then(|b| FilePayload::decode(&b)) else { return Ok(None) };
-        let same = vpath::normalize(&payload.path).is_ok_and(|p| p == path) && hex_hash(&payload.data) == hash;
-        Ok(same.then_some((r.seq, payload.data)))
+        let Ok(at) = vpath::normalize(&payload.path) else { return Ok(None) };
+        let same = (at == path || self.local_spelling(&at) == path) && hex_hash(&payload.data) == hash;
+        Ok(same.then_some((r.seq, payload.data, at)))
     }
 
     fn rename(&self, from: &str, to: &str, report: &mut SyncReport) -> Result<(), SyncError> {
@@ -2123,6 +2264,23 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// The path that an upload of file `fid`, which is at `path` here, gives
+    /// it on the server: `path`, with the server's spelling of its folders
+    /// while the file is in the folder it was in when last synced (see
+    /// `Tracked::server_spelling`), so that a folder that this device spells
+    /// otherwise is never renamed on the server. A file moved here into
+    /// another folder goes up under `path`, also when the folder's name only
+    /// changed in case: the user renamed it so.
+    fn upload_path(&self, fid: &str, path: &str) -> String {
+        if let Some(t) = self.state.files.get(fid)
+            && let Some(spelled) = &t.server_spelling
+            && vpath::parent(path) == vpath::parent(t.server_here())
+        {
+            return vpath::join(vpath::parent(spelled), vpath::file_name(path));
+        }
+        path.to_string()
+    }
+
     // ---------- the round ----------
 
     /// Sync until the vault and the server agree (or give up after a few
@@ -2195,12 +2353,13 @@ impl SyncEngine {
     /// here and whose content is that of exactly one new file here, at a
     /// path no server file has, with no other such server file having that
     /// content and no other server file at its path (empty files say
-    /// nothing). It is tracked as last synced, under the server's path, so
-    /// the push finds it renamed, and keeps finding it until the rename is
-    /// uploaded, instead of the server file being written next to it. Files
-    /// at the server's path with the server's content are adopted in
-    /// `apply_remote`. Nothing here changes or deletes a file. `files` are
-    /// those of the whole feed (see `server_files`).
+    /// nothing). It is tracked as last synced, under the server's path as
+    /// this device spells it (see `local_spelling`), so the push finds it
+    /// renamed, and keeps finding it until the rename is uploaded, instead
+    /// of the server file being written next to it. Files at the server's
+    /// path with the server's content are adopted in `apply_remote`.
+    /// Nothing here changes or deletes a file. `files` are those of the
+    /// whole feed (see `server_files`).
     fn relink(&mut self, mut files: Vec<ServerFile>, local: &HashMap<String, LocalFile>, created: &HashSet<String>) -> Vec<String> {
         // Only the newest head of a file counts: a file shows up twice if
         // its head moved while the feed was read.
@@ -2213,14 +2372,12 @@ impl SyncEngine {
         for (_, p, _) in &remote {
             *server_paths.entry(p.to_lowercase()).or_default() += 1;
         }
-        let mut missing: HashMap<&str, Vec<(&ServerFile, &str)>> = HashMap::new();
+        let mut missing: HashMap<&str, Vec<(&ServerFile, &str, String)>> = HashMap::new();
         for &(f, path, hash) in &remote {
-            if let Some(hash) = hash
-                && server_paths[&path.to_lowercase()] == 1
-                && !local.contains_key(path)
-                && !self.taken(path, None)
-            {
-                missing.entry(hash).or_default().push((f, path));
+            let Some(hash) = hash.filter(|_| server_paths[&path.to_lowercase()] == 1 && !local.contains_key(path)) else { continue };
+            let here = self.local_spelling(path);
+            if !local.contains_key(&here) && !self.taken(&here, None) {
+                missing.entry(hash).or_default().push((f, path, here));
             }
         }
         let mut new_here: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -2229,15 +2386,16 @@ impl SyncEngine {
         }
         let mut linked = Vec::new();
         for (hash, found) in missing {
-            let ([(f, path)], Some([to])) = (found.as_slice(), new_here.get(hash).map(Vec::as_slice)) else { continue };
+            let ([(f, path, here)], Some([to])) = (found.as_slice(), new_here.get(hash).map(Vec::as_slice)) else { continue };
             log::info!("sync: {path} on the server is {to} here; pushing the rename");
             let t = Tracked {
-                path: path.to_string(),
+                path: here.clone(),
                 seq: f.seq,
                 hash: hash.to_string(),
                 deleted: false,
                 seen: None,
                 server_path: None,
+                server_spelling: (here.as_str() != *path).then(|| path.to_string()),
                 renamed: false,
                 alias_of: None,
                 took_over: None,
@@ -2312,6 +2470,7 @@ impl SyncEngine {
         let (mut heads, mut more) = self.read_batch(&mut cursor)?;
         let mut retry: Vec<(String, u64)> = self.state.pending.iter().map(|(f, s)| (f.clone(), *s)).collect();
         self.linked_waits.clear();
+        self.spellings.lock().clear();
         let mut rebuild = fresh && !created.is_empty();
         let mut failed = HashMap::new();
         // The files that this pull has changed or tried to (and those relink
@@ -2453,7 +2612,7 @@ impl SyncEngine {
                     }
                 }
             };
-            let payload = FilePayload { path: path.clone(), mtime, data };
+            let payload = FilePayload { path: self.upload_path(&fid, &path), mtime, data };
             let rev = PutRevision {
                 parent_seq: parent,
                 device: self.settings.device.clone(),
@@ -2490,7 +2649,9 @@ impl SyncEngine {
                     }
                     // Not `seen`: the next scan hashes the file again, so a
                     // save made since the read above is pushed then.
-                    self.state.files.insert(fid.clone(), Tracked { path, seq, hash, deleted, seen: None, server_path: None, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false });
+                    let server_spelling = (payload.path != path).then(|| payload.path.clone());
+                    let t = Tracked { path, seq, hash, deleted, seen: None, server_path: None, server_spelling, renamed: false, alias_of: None, took_over: None, delete_with_note: false, detached: false };
+                    self.state.files.insert(fid.clone(), t);
                     // The server has taken no other change (of any vault)
                     // since the last one this device has seen: the next
                     // pull starts after this one, rather than download it.
@@ -2726,16 +2887,44 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// The file here at `path`, which a remote change of `fid` wants, if it
-    /// has a change in `ahead`.
+    /// The file here at remote path `path`, which a remote change of `fid`
+    /// wants, if it has a change in `ahead`. As in `apply_remote`, the change
+    /// wants the path as this device spells it, and a file that did not
+    /// move on the server wants no other path.
     fn blocker(&self, fid: &str, path: &str, ahead: &HashSet<String>) -> Option<String> {
-        let own = self.state.files.get(fid).filter(|t| !t.deleted).map(|t| t.path.as_str());
-        if own == Some(path) || !self.taken(path, own) {
+        let own = self.state.files.get(fid).filter(|t| !t.deleted);
+        let here = match own {
+            Some(t) => self.remote_move(t, path, false).1,
+            None => self.local_spelling(path),
+        };
+        let own = own.map(|t| t.path.as_str());
+        if own == Some(here.as_str()) || !self.taken(&here, own) {
             return None;
         }
-        let path = path.to_lowercase();
-        let (f, _) = self.state.files.iter().find(|(f, t)| *f != fid && !t.deleted && ahead.contains(*f) && t.path.to_lowercase() == path)?;
+        let here = here.to_lowercase();
+        let (f, _) = self.state.files.iter().find(|(f, t)| *f != fid && !t.deleted && ahead.contains(*f) && t.path.to_lowercase() == here)?;
         Some(f.clone())
+    }
+
+    /// Whether the file tracked as `t` moved on the server, which has it at
+    /// `rpath` now, and where that path is here. It moved if `rpath` is not
+    /// the server's path as this device last synced it, exactly; then it is
+    /// `rpath` as this device spells it (see `local_spelling`), which is
+    /// where the file is when `rpath` only spells a folder otherwise. If it
+    /// did not move, it is where the file was last synced here. `rpath` is
+    /// compared with the server's spelling, not with the folder's spelling
+    /// here now: a rename of the folder made here, also one of its case
+    /// only, must still go up when the pull brings an edit from a device
+    /// that spells the folder otherwise. For a delete (`deleted`), nothing
+    /// goes to `rpath`, which is returned as it is.
+    fn remote_move(&self, t: &Tracked, rpath: &str, deleted: bool) -> (bool, String) {
+        if rpath == t.on_server() {
+            (false, t.server_here().to_string())
+        } else if deleted {
+            (true, rpath.to_string())
+        } else {
+            (true, self.local_spelling(rpath))
+        }
     }
 
     /// Move aside a file in a ring of `waiting` changes, each of which wants
@@ -2784,15 +2973,17 @@ impl SyncEngine {
     ) -> Result<(), SyncError> {
         let fid = head.file_id.clone();
         let rhash = hex_hash(rdata);
-        // The server's revision, at `path` here: if that is not the server's
-        // path, the rename is pushed.
-        let remote_tracked = |path: &str| Tracked {
+        // The server's revision, at `path` here, where `here` is the server's
+        // path as this device spells it (see `local_spelling`): if `path` is
+        // not that, the rename is pushed.
+        let remote_tracked = |path: &str, here: &str| Tracked {
             path: path.to_string(),
             seq: head.seq,
             hash: if head.deleted { String::new() } else { rhash.clone() },
             deleted: head.deleted,
             seen: None,
-            server_path: (path != rpath && !head.deleted).then(|| rpath.to_string()),
+            server_path: (path != here && !head.deleted).then(|| here.to_string()),
+            server_spelling: (here != rpath).then(|| rpath.to_string()),
             renamed: false,
             alias_of: None,
             took_over: None,
@@ -2810,21 +3001,22 @@ impl SyncEngine {
             // server name or a name of the file here (an older version with
             // the same link uploads one whenever the note changes or is
             // renamed), is recorded, under that name.
+            let (moved, here) = self.remote_move(t, rpath, head.deleted);
             let fs = self.vault.fs();
             let original = t.alias_of.as_ref().and_then(|o| self.state.files.get(o)).filter(|o| !o.deleted).map(|o| o.path.as_str());
-            let name_here = rpath == t.path || fs.same_file(rpath, &t.path) || original.is_some_and(|o| fs.same_file(rpath, o));
-            let at = if name_here { rpath } else { t.path.as_str() };
-            let named = at == rpath || rpath == t.server_path.as_deref().unwrap_or(&t.path);
-            if !head.deleted && named && self.vault.read_file(at).is_ok_and(|d| hex_hash(&d) == rhash) {
-                let server_path = (at != rpath).then(|| rpath.to_string());
-                self.state.files.insert(fid.clone(), Tracked { path: at.to_string(), seq: head.seq, hash: rhash, seen: None, server_path, ..t.clone() });
+            let name_here = here == t.path || fs.same_file(&here, &t.path) || original.is_some_and(|o| fs.same_file(&here, o));
+            let at = if name_here { here.as_str() } else { t.path.as_str() };
+            if !head.deleted && (at == here || !moved) && self.vault.read_file(at).is_ok_and(|d| hex_hash(&d) == rhash) {
+                let server_path = (at != here).then(|| here.clone());
+                let server_spelling = (here != rpath).then(|| rpath.to_string());
+                self.state.files.insert(fid.clone(), Tracked { path: at.to_string(), seq: head.seq, hash: rhash, seen: None, server_path, server_spelling, ..t.clone() });
                 self.save_base(&fid, at, rdata);
                 return Ok(());
             }
             if !head.deleted {
                 return Err(SyncError::Local(self.duplicate_reason(t, rpath)));
             }
-            self.state.files.insert(fid.clone(), remote_tracked(&t.path));
+            self.state.files.insert(fid.clone(), remote_tracked(&t.path, &here));
             let _ = std::fs::remove_file(self.base_path(&fid));
             return Ok(());
         }
@@ -2832,39 +3024,42 @@ impl SyncEngine {
         // A remote file that is new to us (or was deleted when we last saw it).
         let Some(st) = st else {
             if head.deleted {
-                self.state.files.insert(fid.clone(), remote_tracked(rpath));
+                self.state.files.insert(fid.clone(), remote_tracked(rpath, rpath));
                 let _ = std::fs::remove_file(self.base_path(&fid));
                 return Ok(());
             }
+            // Where the server's path is here: everything below looks there.
+            let here = self.local_spelling(rpath);
+            let here = here.as_str();
             // A name that is not synced here, as the file syncs under another
             // one (see `regroup`): a copy that another device has of it, with
             // the same content, is that file's duplicate. Nothing is written
             // here: another file there would replace that file.
-            if let Some(kept) = self.kept.get(rpath).cloned().filter(|_| self.exists(rpath)).or_else(|| self.linked_name_of(rpath)) {
-                if !self.vault.read_file(rpath).is_ok_and(|d| hex_hash(&d) == rhash) {
+            if let Some(kept) = self.kept.get(here).cloned().filter(|_| self.exists(here)).or_else(|| self.linked_name_of(here)) {
+                if !self.vault.read_file(here).is_ok_and(|d| hex_hash(&d) == rhash) {
                     return Err(SyncError::Local(format!(
                         "another device has a different file at this name, but on this device this name is another name of {kept}, through a link, so it is not written here: it would replace {kept}. If it is an older copy of {kept}, copy what you need from it into {kept}, then delete it on a device where it is a separate file; otherwise rename it there"
                     )));
                 }
                 let original = self.state.files.iter().find(|(_, t)| !t.deleted && t.alias_of.is_none() && t.path == kept).map(|(f, _)| f.clone());
-                self.state.files.insert(fid.clone(), Tracked { alias_of: original, ..remote_tracked(rpath) });
-                self.save_base(&fid, rpath, rdata);
+                self.state.files.insert(fid.clone(), Tracked { alias_of: original, ..remote_tracked(here, here) });
+                self.save_base(&fid, here, rdata);
                 return Ok(());
             }
             // Whether the path is free is decided with the vault as it is now,
             // not as scanned: a change earlier in this pull may have moved a
             // file away from it.
-            let free = match local.get(rpath) {
-                _ if !self.taken(rpath, None) => true,
+            let free = match local.get(here) {
+                _ if !self.taken(here, None) => true,
                 Some(lf)
                     if lf.hash == rhash
-                        && created.contains(rpath)
-                        && !self.state.files.values().any(|t| !t.deleted && t.path == rpath) =>
+                        && created.contains(here)
+                        && !self.state.files.values().any(|t| !t.deleted && t.path == here) =>
                 {
                     // Same file created on both sides (and not taken for
                     // another file in this pull): adopt it.
-                    self.state.files.insert(fid.clone(), remote_tracked(rpath));
-                    self.save_base(&fid, rpath, rdata);
+                    self.state.files.insert(fid.clone(), remote_tracked(here, here));
+                    self.save_base(&fid, here, rdata);
                     return Ok(());
                 }
                 _ => {
@@ -2875,28 +3070,30 @@ impl SyncEngine {
                     // a note on every device (FINDING-172). Not a file in a
                     // folder whose name differs in case, as that would rename
                     // the folder and all of its files (FINDING-034): the
-                    // remote file waits below, as a case twin.
-                    if !local.contains_key(rpath)
-                        && let Some(p) = self.case_twin(rpath, None)
+                    // remote file waits below, as a case twin. (Elsewhere
+                    // `here` has the folders spelled as here already: only
+                    // the file names differ.)
+                    if !local.contains_key(here)
+                        && let Some(p) = self.case_twin(here, None)
                         && created.contains(&p)
                         && local.get(&p).is_some_and(|lf| lf.hash == rhash)
                         && !self.state.files.values().any(|t| !t.deleted && t.path == p)
                     {
                         if !self.vault.fs().refuses_case_twins() {
-                            self.state.files.insert(fid.clone(), remote_tracked(&p));
+                            self.state.files.insert(fid.clone(), remote_tracked(&p, here));
                             self.save_base(&fid, &p, rdata);
                             return Ok(());
                         }
-                        if vpath::parent(&p) == vpath::parent(rpath) {
+                        if vpath::parent(&p) == vpath::parent(here) {
                             // If the rename fails, the change waits, listed.
-                            self.rename(&p, rpath, report)?;
+                            self.rename(&p, here, report)?;
                             // The scan's view of the file goes with it, so
                             // that no later change in this pull takes it.
                             if let Some(lf) = local.remove(&p) {
-                                local.insert(rpath.to_string(), lf);
+                                local.insert(here.to_string(), lf);
                             }
-                            self.state.files.insert(fid.clone(), remote_tracked(rpath));
-                            self.save_base(&fid, rpath, rdata);
+                            self.state.files.insert(fid.clone(), remote_tracked(here, here));
+                            self.save_base(&fid, here, rdata);
                             return Ok(());
                         }
                     }
@@ -2910,14 +3107,14 @@ impl SyncEngine {
             // same content, they are one file (see `retire`). A case twin on
             // a file system that refuses it waits instead.
             if !free {
-                self.refuse_case_twin(rpath, None)?;
+                self.refuse_case_twin(here, None)?;
             }
-            if !free && self.retire(head, rpath, rdata, status)? {
+            if !free && self.retire(head, here, rpath, rdata, status)? {
                 return Ok(());
             }
-            let free = free || self.make_way(rpath, &fid, local, status, report)?;
-            let target = if free { self.place(&fid, rpath, rdata, created, report)? } else { self.conflict_copy(rpath, rdata, created, report)? };
-            self.state.files.insert(fid.clone(), remote_tracked(&target));
+            let free = free || self.make_way(here, &fid, local, status, report)?;
+            let target = if free { self.place(&fid, here, rdata, created, report)? } else { self.conflict_copy(here, rdata, created, report)? };
+            self.state.files.insert(fid.clone(), remote_tracked(&target, here));
             self.save_base(&fid, &target, rdata);
             return Ok(());
         };
@@ -2948,14 +3145,15 @@ impl SyncEngine {
             (Some(sp), Status::Renamed(to)) => (Tracked { path: sp, server_path: None, ..old }, Status::Renamed(to)),
             (_, st) => (old, st),
         };
+        let (moved, here) = self.remote_move(&old, rpath, head.deleted);
 
         // The remote name is another name of this file here, one no other
         // tracked file has (another device renamed its copy to the name of
         // its second copy, after deleting that): nothing moves on disk.
-        let same_file = rpath != old.path
+        let same_file = here != old.path
             && !head.deleted
-            && self.vault.fs().other_names(&old.path).iter().any(|p| p == rpath)
-            && !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.alias_of.is_none() && t.path == rpath);
+            && self.vault.fs().other_names(&old.path).contains(&here)
+            && !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.alias_of.is_none() && t.path == here);
         match st {
             Status::Unreadable => return Err(SyncError::Local(format!("cannot read {} on this device", old.path))),
             Status::Shared => return Err(SyncError::Local(format!("{} is the same file as another one on this device: their names differ only in case", old.path))),
@@ -2967,7 +3165,7 @@ impl SyncEngine {
                     // a duplicate of it, which is this file here too: the
                     // note stays, and syncs on as that one (FINDING-224).
                     log::info!("sync: {} was deleted elsewhere; it syncs on as its other copy", old.path);
-                    self.state.files.insert(fid.clone(), remote_tracked(&old.path));
+                    self.state.files.insert(fid.clone(), remote_tracked(&old.path, &here));
                     let _ = std::fs::remove_file(self.base_path(&fid));
                     for t in self.state.files.values_mut().filter(|t| t.alias_of.as_deref() == Some(fid.as_str())) {
                         t.alias_of = Some(heir.clone());
@@ -2982,14 +3180,14 @@ impl SyncEngine {
                     if rhash != old.hash {
                         self.write(&old.path, rdata, Some(&old.hash), report)?;
                     }
-                    self.state.files.insert(fid.clone(), remote_tracked(rpath));
-                    self.save_base(&fid, rpath, rdata);
+                    self.state.files.insert(fid.clone(), remote_tracked(&here, &here));
+                    self.save_base(&fid, &here, rdata);
                     return Ok(());
                 }
                 if head.deleted {
                     let others = self.vault.fs().other_names(&old.path);
                     self.delete(&old.path, &old.hash, report)?;
-                    self.state.files.insert(fid.clone(), remote_tracked(&old.path));
+                    self.state.files.insert(fid.clone(), remote_tracked(&old.path, &here));
                     let _ = std::fs::remove_file(self.base_path(&fid));
                     // Deleting a symlink to a note leaves the note: the file
                     // goes under its other names too, as the note was
@@ -3007,14 +3205,14 @@ impl SyncEngine {
                     return Ok(());
                 }
                 let mut path = old.path.clone();
-                if rpath != old.path {
-                    let target = if self.taken(rpath, Some(&old.path)) {
-                        self.refuse_case_twin(rpath, Some(&old.path))?;
-                        let c = self.conflict_path(rpath)?;
+                if here != old.path {
+                    let target = if self.taken(&here, Some(&old.path)) {
+                        self.refuse_case_twin(&here, Some(&old.path))?;
+                        let c = self.conflict_path(&here)?;
                         report.conflicts.push(c.clone());
                         c
                     } else {
-                        rpath.to_string()
+                        here.clone()
                     };
                     self.rename(&old.path, &target, report)?;
                     path = target;
@@ -3022,13 +3220,13 @@ impl SyncEngine {
                 if rhash != old.hash {
                     self.write(&path, rdata, Some(&old.hash), report)?;
                 }
-                self.state.files.insert(fid.clone(), remote_tracked(&path));
+                self.state.files.insert(fid.clone(), remote_tracked(&path, &here));
                 self.save_base(&fid, &path, rdata);
             }
             Status::Modified => {
                 if head.deleted {
                     // Edit beats delete: keep ours; it is revived on push.
-                    self.state.files.insert(fid.clone(), remote_tracked(&old.path));
+                    self.state.files.insert(fid.clone(), remote_tracked(&old.path, &here));
                     let _ = std::fs::remove_file(self.base_path(&fid));
                     return Ok(());
                 }
@@ -3037,14 +3235,14 @@ impl SyncEngine {
                     if rhash != lf_hash {
                         self.merge(&fid, &old.path, &lf_hash, rdata, created, report)?;
                     }
-                    self.state.files.insert(fid.clone(), remote_tracked(rpath));
-                    self.save_base(&fid, rpath, rdata);
+                    self.state.files.insert(fid.clone(), remote_tracked(&here, &here));
+                    self.save_base(&fid, &here, rdata);
                     return Ok(());
                 }
                 let mut path = old.path.clone();
-                if rpath != old.path && !self.taken(rpath, Some(&old.path)) {
-                    self.rename(&old.path, rpath, report)?;
-                    path = rpath.to_string();
+                if here != old.path && !self.taken(&here, Some(&old.path)) {
+                    self.rename(&old.path, &here, report)?;
+                    path = here.clone();
                     // If the merge below fails, the change stays pending: the
                     // edited file must still be known under its new name, or
                     // it would be pushed as a new file.
@@ -3052,28 +3250,28 @@ impl SyncEngine {
                         t.path = path.clone();
                         t.server_path = Some(old.path.clone());
                     }
-                } else if rpath != old.path {
+                } else if here != old.path {
                     // A name this storage cannot hold here waits, with the
                     // edit: pushing the old name would undo the rename on
                     // every device (FINDING-172).
-                    self.refuse_case_twin(rpath, Some(&old.path))?;
+                    self.refuse_case_twin(&here, Some(&old.path))?;
                 }
                 let lf_hash = local.get(&old.path).map(|l| l.hash.clone()).unwrap_or_default();
                 if rhash != lf_hash {
                     self.merge(&fid, &path, &lf_hash, rdata, created, report)?;
                 }
                 // Record the server's version; the local difference is pushed next.
-                self.state.files.insert(fid.clone(), remote_tracked(&path));
+                self.state.files.insert(fid.clone(), remote_tracked(&path, &here));
                 self.save_base(&fid, &path, rdata);
             }
             Status::Deleted => {
                 // Under a name this device did not know it by: renamed there.
-                let renamed = rpath != old.path && old.server_path.as_deref() != Some(rpath);
+                let renamed = moved && rpath != old.path && old.server_path.as_deref() != Some(rpath);
                 if head.deleted || (rhash == old.hash && !renamed) {
                     // Deleted remotely too, or not changed there: our delete
                     // stands (pushed next unless already deleted).
-                    let path = if head.deleted { old.path.clone() } else { rpath.to_string() };
-                    self.state.files.insert(fid.clone(), remote_tracked(&path));
+                    let path = if head.deleted { old.path.clone() } else { here.clone() };
+                    self.state.files.insert(fid.clone(), remote_tracked(&path, &here));
                     let _ = std::fs::remove_file(self.base_path(&fid));
                     // Its duplicates go with it, as when its delete is pushed
                     // from here (see `regroup`).
@@ -3096,7 +3294,7 @@ impl SyncEngine {
                     .filter(|p| !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == **p))
                     .collect();
                 let found = match same.as_slice() {
-                    s if s.iter().any(|p| p.as_str() == rpath) => Some(rpath.to_string()),
+                    s if s.iter().any(|p| **p == here) => Some(here.clone()),
                     [p] if !rdata.is_empty() => Some(p.to_string()),
                     _ => None,
                 };
@@ -3105,24 +3303,24 @@ impl SyncEngine {
                 // stopped before recording it) and edited since. It is taken
                 // for the remote version, and the edit is pushed.
                 let found = found.or_else(|| {
-                    let free = !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == rpath);
-                    (rhash == old.hash && created.contains(rpath) && free).then(|| rpath.to_string())
+                    let free = !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == here);
+                    (rhash == old.hash && created.contains(&here) && free).then(|| here.clone())
                 });
                 if let Some(p) = found {
-                    self.state.files.insert(fid.clone(), remote_tracked(&p));
+                    self.state.files.insert(fid.clone(), remote_tracked(&p, &here));
                     self.save_base(&fid, &p, rdata);
                     return Ok(());
                 }
                 // Edited or renamed remotely after we deleted it: the edit or
                 // the rename wins, whichever device synced first (see
                 // `Status::Renamed`).
-                let target = if self.taken(rpath, None) {
-                    self.refuse_case_twin(rpath, None)?;
-                    self.conflict_copy(rpath, rdata, created, report)?
+                let target = if self.taken(&here, None) {
+                    self.refuse_case_twin(&here, None)?;
+                    self.conflict_copy(&here, rdata, created, report)?
                 } else {
-                    self.place(&fid, rpath, rdata, created, report)?
+                    self.place(&fid, &here, rdata, created, report)?
                 };
-                self.state.files.insert(fid.clone(), remote_tracked(&target));
+                self.state.files.insert(fid.clone(), remote_tracked(&target, &here));
                 self.save_base(&fid, &target, rdata);
             }
             Status::Renamed(to) => {
@@ -3142,24 +3340,24 @@ impl SyncEngine {
                 // it stays theirs (`renamed`): a later remote delete does not
                 // override it either.
                 let tracked = |path: &str| {
-                    let t = remote_tracked(path);
+                    let t = remote_tracked(path, &here);
                     Tracked { renamed: mine && t.server_path.is_some(), ..t }
                 };
                 // Rename before writing: if the write fails, the unchanged
                 // content still shows where the file went, and it is not
                 // taken for a new file.
                 let mut path = to.clone();
-                if rpath != old.path && rpath != to && !self.taken(rpath, Some(&to)) {
+                if moved && here != to && !self.taken(&here, Some(&to)) {
                     // Both renamed: the remote name wins.
-                    self.rename(&to, rpath, report)?;
-                    path = rpath.to_string();
-                } else if rpath != old.path && rpath != to && !mine {
+                    self.rename(&to, &here, report)?;
+                    path = here.clone();
+                } else if moved && here != to && !mine {
                     // The name here is one the sync chose: it is not pushed
                     // over a remote name this storage cannot hold here, which
                     // waits instead (FINDING-172). One the user gave the file
                     // here is kept and pushed, as when another file has the
                     // remote name.
-                    self.refuse_case_twin(rpath, Some(&to))?;
+                    self.refuse_case_twin(&here, Some(&to))?;
                 }
                 // A case-only rename on a file system that ignores case is
                 // recognised even when the file was edited too; then the
@@ -3272,6 +3470,7 @@ mod tests {
         let s: SyncState =
             serde_json::from_str(r#"{"last_seq": 7, "files": {"f": {"path": "a.md", "seq": 3, "hash": "ab", "deleted": false}}}"#).unwrap();
         assert_eq!(s.files["f"].server_path, None);
+        assert_eq!(s.files["f"].server_spelling, None);
         // Their size and mtime may describe newer bytes than the hash: the
         // file is hashed again.
         let s: SyncState = serde_json::from_str(
@@ -3279,6 +3478,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.files["f"].seen, None);
+    }
+
+    /// The server's spelling of a file's folders goes into state.json and
+    /// comes back from it, and is left out when there is none, so such a
+    /// state is the one older builds write. A field the state does not know
+    /// (one that a newer build wrote) is ignored, as older builds ignore
+    /// this one.
+    #[test]
+    fn server_spelling_round_trips_through_the_state() {
+        let old = r#"{"last_seq": 7, "files": {"f": {"path": "Drafts/a.md", "seq": 3, "hash": "ab", "deleted": false}}}"#;
+        let mut s: SyncState = serde_json::from_str(old).unwrap();
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(!json.contains("server_spelling"), "{json}");
+        s.files.get_mut("f").unwrap().server_spelling = Some("DRAFTS/a.md".into());
+        let json = serde_json::to_string_pretty(&s).unwrap();
+        let back: SyncState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.files["f"], s.files["f"]);
+        assert_eq!(back.files["f"].server_spelling.as_deref(), Some("DRAFTS/a.md"));
+        let newer = r#"{"last_seq": 7, "files": {"f": {"path": "Drafts/a.md", "seq": 3, "hash": "ab", "deleted": false, "server_spelling": "DRAFTS/a.md", "later": 1}}}"#;
+        let s: SyncState = serde_json::from_str(newer).unwrap();
+        assert_eq!(s.files["f"].server_spelling.as_deref(), Some("DRAFTS/a.md"));
     }
 
     #[test]
