@@ -95,6 +95,8 @@ export class AxApp {
   }
 
   async stop(finalShot) {
+    // Session.screenshot and Session.close give up when a wedged
+    // WebKitWebDriver does not answer, so this cannot hang the run.
     if (this.s && finalShot) {
       try {
         fs.writeFileSync(path.join(EVIDENCE, finalShot), await this.s.screenshot());

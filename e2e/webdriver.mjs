@@ -18,6 +18,7 @@ export async function startDriver(port = 4444, env = {}) {
   let log = "";
   proc.stdout.on("data", (d) => (log += d));
   proc.stderr.on("data", (d) => (log += d));
+  releaseOnExit(proc);
   for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/status`);
@@ -27,6 +28,19 @@ export async function startDriver(port = 4444, env = {}) {
   }
   proc.kill();
   throw new Error("tauri-driver did not start:\n" + log);
+}
+
+/**
+ * WebKitWebDriver and the app it starts write to tauri-driver's stderr pipe.
+ * If one of them outlives tauri-driver (a session that could not be closed),
+ * node would wait for that pipe after the last test, forever: once
+ * tauri-driver is gone, its pipes no longer keep the run alive.
+ */
+export function releaseOnExit(proc) {
+  proc.once("exit", () => {
+    proc.stdout?.unref();
+    proc.stderr?.unref();
+  });
 }
 
 export class Session {
@@ -44,11 +58,13 @@ export class Session {
     return new Session(base, j.value.sessionId);
   }
 
-  async cmd(method, p, body) {
+  /** `timeout` (ms): give up on a command that gets no answer (a wedged WebKitWebDriver). */
+  async cmd(method, p, body, timeout) {
     const r = await fetch(`${this.base}/session/${this.id}${p}`, {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: { "content-type": "application/json" },
+      signal: timeout ? AbortSignal.timeout(timeout) : undefined,
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(`${method} ${p}: ${JSON.stringify(j.value ?? j)}`);
@@ -137,13 +153,16 @@ export class Session {
     await this.cmd("DELETE", "/actions");
   }
 
-  async screenshot() {
-    return Buffer.from(await this.cmd("GET", "/screenshot"), "base64");
+  // Screenshots and close run in teardown (after hooks, failure shots): a
+  // wedged WebKitWebDriver must not hang the run there, so both give up.
+
+  async screenshot(timeout = 15000) {
+    return Buffer.from(await this.cmd("GET", "/screenshot", undefined, timeout), "base64");
   }
 
-  async close() {
+  async close(timeout = 15000) {
     try {
-      await this.cmd("DELETE", "");
+      await this.cmd("DELETE", "", undefined, timeout);
     } catch {}
   }
 }

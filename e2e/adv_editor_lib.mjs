@@ -10,7 +10,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn } from "node:child_process";
 import net from "node:net";
-import { Session, Key } from "./webdriver.mjs";
+import { Session, Key, releaseOnExit } from "./webdriver.mjs";
 
 export { Key, sleep };
 export const ROOT = path.resolve(import.meta.dirname, "..");
@@ -113,6 +113,7 @@ export async function startDriver(port = 4444, env = {}, cwd = undefined) {
   let log = "";
   proc.stdout.on("data", (d) => (log += d));
   proc.stderr.on("data", (d) => (log += d));
+  releaseOnExit(proc);
   for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/status`);
@@ -211,10 +212,8 @@ export class AppDriver {
     return this.s.exec(script, ...args);
   }
   async stop() {
-    try {
-      // A wedged WebKitWebDriver must not hang the run.
-      await Promise.race([this.s.close(), sleep(8000)]);
-    } catch {}
+    // Session.close gives up when a wedged WebKitWebDriver does not answer.
+    await this.s.close();
     const p = this.drv.proc;
     if (p.exitCode == null) {
       const done = new Promise((r) => p.once("exit", r));
