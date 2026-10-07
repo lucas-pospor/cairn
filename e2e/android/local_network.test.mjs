@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Device, adb, devSh, eventually, APK, PKG, startServer, fillSyncForm, ensureAppVault, uiClick, uiDump } from "./adv_helpers.mjs";
+import { Device, adb, devSh, runAs, appPid, eventually, APK, PKG, APP_DATA, startServer, fillSyncForm, ensureAppVault, writeAppFile, rescan, uiClick, uiDump } from "./adv_helpers.mjs";
 
 const TOKEN = "lnp-token-0123456789abcdef";
 const PASS = "local network passphrase";
@@ -51,9 +51,14 @@ after(async () => {
   setTimeout(() => process.exit(), 1500).unref();
 });
 
-/** Not granted, and Android may ask again (as on a fresh install). Revoking ends the app. */
+/**
+ * Not granted, and Android may ask again, as on a fresh install: the app is
+ * stopped (as a revoke in Android settings does), and Tauri's own record of
+ * an earlier refusal is removed too. `fixed`: refused for good instead.
+ */
 function resetPermission({ fixed = false } = {}) {
-  devSh(`pm revoke ${PKG} ${PERM}; pm clear-permission-flags ${PKG} ${PERM} user-set user-fixed`);
+  devSh(`am force-stop ${PKG}; pm revoke ${PKG} ${PERM}; pm clear-permission-flags ${PKG} ${PERM} user-set user-fixed`);
+  runAs("rm -f shared_prefs/PluginPermStates.xml");
   if (fixed) devSh(`pm set-permission-flags ${PKG} ${PERM} user-set user-fixed`);
 }
 
@@ -93,6 +98,9 @@ test("the manifest declares the permission, and Android blocks the server withou
 
 test("Connect and sync asks for Nearby devices; refusing stops at once with a message that names the setting", { skip }, async () => {
   await ensureAppVault(d, "LanSync");
+  // A note for the version history test at the end.
+  writeAppFile(`${APP_DATA}/vaults/LanSync/Lan note.md`, "written on the phone\n");
+  await rescan(d);
   await fillSyncForm(d, { port, token: TOKEN, vaultId: "lan", device: "phone", pass: PASS });
   await uiClick(/^Don.t allow$/i, 20000);
   const t0 = Date.now();
@@ -120,7 +128,13 @@ test("pressing Connect and sync again and allowing it connects and syncs", { ski
 });
 
 test("revoked in Android settings: the background sync says to press Sync now, which asks again", { skip }, async () => {
-  resetPermission(); // ends the app, as a change in Android settings does
+  // Android ends the app when a permission is revoked: Cairn keeps a grant
+  // for the life of the process (android.rs, GRANTED) on that ground.
+  const pid = appPid();
+  assert.ok(pid, "the app runs, with the permission granted");
+  devSh(`pm revoke ${PKG} ${PERM}`);
+  await eventually(() => appPid() !== pid, { message: "Android ends the app when the permission is revoked" });
+  resetPermission();
   await d.launch();
   // The first sync runs shortly after the vault opens; it must not ask by itself.
   await d.click("[data-testid=open-settings]");
@@ -158,4 +172,29 @@ test("refused for good: Sync now does not hang and points to Android settings", 
   assert.ok(took < 15000, `${took} ms`);
   assert.match(err ?? "", /Allow "Nearby devices" for Cairn in Android settings \(Apps > Cairn > Permissions\), then sync again/);
   resetPermission();
+});
+
+test("version history asks for Nearby devices too, and loads once allowed", { skip }, async () => {
+  resetPermission();
+  await d.launch();
+  // Ask for a note's history without waiting: Android's prompt comes first.
+  const start = () =>
+    d.eval(
+      `(window.__hist = null, window.__TAURI_INTERNALS__.invoke("sync_history", { path: "Lan note.md" }).then((r) => (window.__hist = { ok: r.length }), (e) => (window.__hist = { err: String(e) })), true)`,
+    );
+  await start();
+  await uiClick(/^Don.t allow$/i, 20000);
+  await d.waitFor(`window.__hist !== null`, 20000);
+  const refused = await d.eval(`window.__hist`);
+  console.log(`history, refused: ${JSON.stringify(refused)}`);
+  assert.match(refused.err ?? "", /10\.0\.2\.2 is on your local network/);
+  assert.match(refused.err ?? "", /"Nearby devices" for Cairn in Android settings/);
+  await start();
+  await uiClick(/^Allow$/i, 20000);
+  await d.waitFor(`window.__hist !== null`, 40000);
+  const allowed = await d.eval(`window.__hist`);
+  console.log(`history, allowed: ${JSON.stringify(allowed)}`);
+  assert.equal(allowed.err, undefined, "the history loads from the server once allowed");
+  assert.ok(allowed.ok >= 1, `the note's history has a version: ${JSON.stringify(allowed)}`);
+  assert.equal(granted(), true);
 });

@@ -386,7 +386,7 @@ impl SyncManager {
     /// setup), Android asks for it. Elsewhere always yes.
     fn local_network(&self, server: &str, ask: bool) -> Result<(), SyncError> {
         #[cfg(target_os = "android")]
-        return crate::android::allow_server(&self.app, server, ask);
+        return crate::android::allow_server(&self.app, server, ask, &|| self.cancel.is_set());
         #[cfg(not(target_os = "android"))]
         {
             let _ = (server, ask);
@@ -418,18 +418,25 @@ impl SyncManager {
     /// saved configuration.
     pub fn read<T>(&self, f: impl FnOnce(&SyncEngine) -> Result<T, SyncError>) -> Result<T, String> {
         let not_set_up = || "sync is not set up".to_string();
-        if let Some(_run) = self.running.try_lock() {
+        // The user opened the version history, so Android may ask for the
+        // local network permission, as for Sync now. No lock is held while
+        // it asks.
+        let server = self.inner.lock().status.server.clone().ok_or_else(not_set_up)?;
+        self.local_network(&server, true).map_err(|e| e.to_string())?;
+        let result = if let Some(_run) = self.running.try_lock() {
             let mut inner = self.inner.lock();
             let e = inner.engine.as_mut().ok_or_else(not_set_up)?;
             // As in `with_engine`: with what the last sync saved.
             e.refresh().map_err(|e| e.to_string())?;
-            return f(e).map_err(|e| e.to_string());
-        }
-        if !self.inner.lock().status.configured {
-            return Err(not_set_up());
-        }
-        let e = load_engine(self.vault.clone(), &self.dir, Arc::default()).map_err(|e| e.to_string())?.ok_or_else(not_set_up)?;
-        f(&e).map_err(|e| e.to_string())
+            f(e)
+        } else {
+            if !self.inner.lock().status.configured {
+                return Err(not_set_up());
+            }
+            let e = load_engine(self.vault.clone(), &self.dir, Arc::default()).map_err(|e| e.to_string())?.ok_or_else(not_set_up)?;
+            f(&e)
+        };
+        result.map_err(|e| self.explain(e).to_string())
     }
 }
 

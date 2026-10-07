@@ -31,6 +31,15 @@ class LocalNetworkArgs {
 @TauriPlugin(permissions = [Permission(strings = ["android.permission.ACCESS_LOCAL_NETWORK"], alias = ALIAS)])
 class LocalNetworkPlugin(activity: Activity) : Plugin(activity) {
     /**
+     * The calls waiting for Android's answer. Tauri keeps one permission
+     * callback, so a second request while a prompt is open would leave the
+     * first call unanswered: callers that come meanwhile wait for the same
+     * prompt and get its answer. Commands and the answer both run on the
+     * main thread.
+     */
+    private val waiting = mutableListOf<Invoke>()
+
+    /**
      * Answers {state}: "granted"; "prompt" when Android can still ask the
      * user; "denied" when the user said no and Android no longer asks (only
      * Android settings can allow it then). With `ask`, a permission that is
@@ -43,12 +52,26 @@ class LocalNetworkPlugin(activity: Activity) : Plugin(activity) {
         // request would never answer and sync would wait forever.
         val now = state() ?: return invoke.reject("the local network permission is not declared")
         if (now == "granted" || !args.ask) return answer(invoke, now)
-        // Commands run on the main thread, which the permission request needs.
-        requestPermissionForAlias(ALIAS, invoke, "localNetworkAnswered")
+        waiting.add(invoke)
+        if (waiting.size > 1) return
+        try {
+            requestPermissionForAlias(ALIAS, invoke, "localNetworkAnswered")
+        } catch (e: Exception) {
+            // No answer will come: let no caller wait for it.
+            val all = waiting.toList()
+            waiting.clear()
+            for (call in all) call.reject("cannot ask for the local network permission: ${e.message}")
+        }
     }
 
     @PermissionCallback
-    private fun localNetworkAnswered(invoke: Invoke) = answer(invoke, state() ?: "prompt")
+    private fun localNetworkAnswered(invoke: Invoke) {
+        val now = state() ?: "prompt"
+        val all = waiting.toList()
+        waiting.clear()
+        if (invoke !in all) answer(invoke, now)
+        for (call in all) answer(call, now)
+    }
 
     private fun answer(invoke: Invoke, state: String) {
         val ret = JSObject()

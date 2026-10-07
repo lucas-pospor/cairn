@@ -342,17 +342,25 @@ fn local_network<R: Runtime>(app: &tauri::AppHandle<R>, ask: bool) -> String {
 }
 
 /// Whether sync may connect to the server at URL `server`: yes when Cairn
-/// holds the local network permission or the server is not on the local
-/// network (`local_network::server_is_local`). Otherwise, with `ask` (the
-/// user started this), Android's prompt is shown; without it (a sync in the
-/// background) nothing is asked. The error says how to allow it.
-pub fn allow_server<R: Runtime>(app: &tauri::AppHandle<R>, server: &str, ask: bool) -> Result<(), cairn_sync::SyncError> {
+/// holds the local network permission, when the server is not on the local
+/// network (`local_network::local_addrs`), or when it answers all the same
+/// (`local_network::answers`): Android does not block a connection through a
+/// VPN. Otherwise, with `ask` (the user started this), Android's prompt is
+/// shown; without it (a sync in the background) nothing is asked. The error
+/// says how to allow it. `cancelled`: the user gave up the setup meanwhile,
+/// so no prompt is shown; the caller's request then reports the cancel.
+pub fn allow_server<R: Runtime>(app: &tauri::AppHandle<R>, server: &str, ask: bool, cancelled: &dyn Fn() -> bool) -> Result<(), cairn_sync::SyncError> {
+    use crate::local_network::{answers, denied_text, local_addrs, PROBE};
     // Granted is the usual case: then the server's name is not even resolved.
     let now = local_network(app, false);
-    if now == "granted" || !crate::local_network::server_is_local(server) {
+    if now == "granted" {
         return Ok(());
     }
-    let refused = |can_ask| Err(cairn_sync::SyncError::Network(crate::local_network::denied_text(server, can_ask)));
+    let Some(addrs) = local_addrs(server) else { return Ok(()) };
+    if answers(&addrs, PROBE) || cancelled() {
+        return Ok(());
+    }
+    let refused = |can_ask| Err(cairn_sync::SyncError::Network(denied_text(server, can_ask)));
     if !ask {
         // Sync now can ask, unless the user refused for good earlier.
         return refused(now == "prompt");
@@ -367,8 +375,8 @@ pub fn allow_server<R: Runtime>(app: &tauri::AppHandle<R>, server: &str, ask: bo
 
 /// A sync to `server` timed out: if Cairn lacks the local network
 /// permission, add how to allow it. Android may count the server as on the
-/// local network although `server_is_local` does not (a public address on
-/// the phone's own network).
+/// local network although `local_network::is_local` does not (a public
+/// IPv6 address on the phone's own network).
 pub fn explain_timeout<R: Runtime>(app: &tauri::AppHandle<R>, e: cairn_sync::SyncError) -> cairn_sync::SyncError {
     use cairn_sync::{transport::TIMED_OUT, SyncError};
     match e {
