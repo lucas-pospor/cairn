@@ -13,6 +13,8 @@ Cairn has three light themes and three dark themes:
 
 Under Settings, then Appearance, the Theme list holds System and every theme: pick a theme to use it always, or System to follow the system's light or dark mode with the light and dark theme picked under it.
 
+![Settings, then Appearance: the Theme list set to System, with Limestone as the light theme and Slate as the dark theme](../images/appearance.png)
+
 The high-contrast themes keep all text at 7:1 or more (WCAG AAA), except on disabled buttons and a file tree row while it is dragged, and add a ring or bar in the accent color to selected rows, pressed panel buttons and focused controls, so these do not show by a tint alone.
 
 Older versions show Limestone or Slate in a notebook set to a theme they do not have, and keep the choice.

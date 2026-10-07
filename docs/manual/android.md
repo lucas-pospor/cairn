@@ -2,6 +2,8 @@
 
 The Android app is built from the same code as the desktop app, with a touch layout and a formatting toolbar. It has no zoom keys and cannot open files in other apps yet, images included.
 
+![A note on Android, with the formatting toolbar](../images/android-editor.png)
+
 ## Install
 
 The APK on the [releases page](https://github.com/lucas-pospor/cairn/releases), `cairn-<version>-universal.apk`, is for Android 7.0 or later, on arm64, armv7, x86 and x86_64 devices. Every version is signed with the same key, so a new APK installs over an older one as an update and keeps the app's data, its notebooks and its sync setup.
@@ -11,6 +13,8 @@ The signing certificate has the SHA-256 fingerprint `1D:10:FE:DC:B9:A2:55:63:DA:
 ## Notebooks on a phone
 
 "Create a notebook on this device" keeps the notebook in the app's private storage. "Open a folder from storage" uses the system folder picker (Storage Access Framework), so you can share the folder with other apps. Opening a folder this way needs no storage permission. Sync works as on the desktop, except for the names a shared folder cannot hold ([below](#shared-folders)).
+
+![The Files drawer on Android, with the folders of a notebook](../images/android-files.png)
 
 ## Sync on the local network
 

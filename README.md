@@ -12,14 +12,14 @@ The manual, in [docs/manual](docs/manual/README.md), describes how to use Cairn,
 
 ![Cairn on Linux: a note in Live Preview, with the file tree on the left and the note's backlinks on the right](docs/images/editor.png)
 
-| Graph view (dark theme) | Full-text search |
+| Graph view (Slate theme) | Full-text search |
 |:---:|:---:|
-| ![The graph view in the dark theme, with one note and its links highlighted](docs/images/graph.png) | ![Search results for "tomato" next to the open note](docs/images/search.png) |
+| ![The graph view in the Slate theme, with one note and its links highlighted](docs/images/graph.png) | ![Search results for "tomato" next to the open note](docs/images/search.png) |
 
 <p align="center">
   <img src="docs/images/android-editor.png" width="270" alt="A note on Android, with the formatting toolbar">
   &nbsp;&nbsp;
-  <img src="docs/images/android-files.png" width="270" alt="The file tree on Android">
+  <img src="docs/images/android-files.png" width="270" alt="The Files drawer on Android">
 </p>
 
 ## Manual

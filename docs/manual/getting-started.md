@@ -2,6 +2,8 @@
 
 Cairn is a local-first Markdown notes app. A notebook is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. The search index and link graph live in memory, and Cairn rebuilds them from the files.
 
+![Cairn on Linux: a note in Live Preview, with the file tree on the left and the note's backlinks on the right](../images/editor.png)
+
 ## Install
 
 Prebuilt Linux packages, a Windows installer, the Android APK and the sync server's Docker image are on the [releases page](https://github.com/lucas-pospor/cairn/releases). [Windows](windows.md) describes the installer and [Android](android.md) the APK. There is no macOS build. To build Cairn yourself, see [Building from source](building.md).
