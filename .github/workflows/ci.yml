@@ -87,6 +87,30 @@ jobs:
         working-directory: app
         run: npx vitest run
 
+  # Builds the website, which fails on a link or image between its pages that
+  # leads nowhere. It takes the download page's files from the latest release,
+  # since main can be ahead of it.
+  site:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # The build uses markdown-it from the app's dependencies.
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the site and check its links
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node site/build.mjs --release latest
+
   # Builds and tests on Windows. svelte-check runs on Linux only: its result
   # does not depend on the platform. The installer is built in a job of its
   # own, which runs at the same time.
