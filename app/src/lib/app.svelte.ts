@@ -51,6 +51,8 @@ export class Tab {
   baseText: string | null = null;
   saving = false;
   saveAgain = false;
+  /** The last save failed for another reason than a conflict (a read-only or locked note, a full disk). */
+  saveFailed = false;
   saveTimer: ReturnType<typeof setTimeout> | undefined;
   scrollTop = 0;
   /** Line to reveal once the note is shown. */
@@ -204,6 +206,8 @@ class App {
   private unlistenClose: (() => void) | null = null;
   /** A window close is being handled (saving, or asking). */
   private closing = false;
+  /** The user let the window close (everything saved, or Discard): unloading the page must not ask again. */
+  private closeConfirmed = false;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   /** A batch waiting for refreshTimer added, deleted or renamed something. */
   private refreshStructural = false;
@@ -649,6 +653,7 @@ class App {
         current.path = path;
         current.conflict = null;
         current.dirty = false;
+        current.saveFailed = false;
         current.editorState = null;
         tab = current;
       } else {
@@ -785,6 +790,7 @@ class App {
       tab.baseHash = r.hash;
       tab.baseText = content;
       tab.conflict = null;
+      tab.saveFailed = false;
       if (this.fileTextOf(tab) === content) tab.dirty = false;
     } catch (e) {
       if (isCoreError(e) && e.kind === "conflict") {
@@ -802,6 +808,7 @@ class App {
           if (gone && this.entries.some((x) => x.path === tab.path)) void backend.rescan().catch(() => {});
         }
       } else {
+        tab.saveFailed = true;
         this.toast(`Could not save ${tab.title}: ${errorMessage(e)}`, "error");
       }
     } finally {
@@ -898,10 +905,34 @@ class App {
     try {
       if (!(await this.flushOrConfirm([...this.tabs], true))) return false;
       this.saveSession();
+      this.closeConfirmed = true;
       return true;
     } finally {
       this.closing = false;
     }
+  }
+
+  /**
+   * Tabs whose edits a page reload would lose: a conflict, or a failed save.
+   * Edits still waiting for autosave do not count, as the page going hidden
+   * saves them (see init).
+   */
+  unsavableTabs(): Tab[] {
+    return this.tabs.filter((t) => t.dirty && (t.conflict !== null || t.saveFailed));
+  }
+
+  /**
+   * The page is about to unload: keep the session, and while a tab holds
+   * edits that could not be saved, or a change of the settings could not be
+   * written, have the web view ask before a reload drops them. Closing the
+   * window asked already (beforeClose).
+   */
+  beforeUnload(e: { preventDefault(): void; returnValue: unknown }) {
+    this.saveSession();
+    if (this.closeConfirmed || (!this.unsavableTabs().length && !settings.saveFailed)) return;
+    e.preventDefault();
+    // Older engines ask only when returnValue is set.
+    e.returnValue = true;
   }
 
   /** Conflict resolution: keep the editor text and overwrite the file. */
@@ -920,6 +951,7 @@ class App {
       this.replaceDoc(tab, n.content, true);
       tab.dirty = false;
       tab.conflict = null;
+      tab.saveFailed = false;
     } catch (e) {
       this.toast(errorMessage(e), "error");
     }

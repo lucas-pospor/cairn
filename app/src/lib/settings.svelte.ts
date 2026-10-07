@@ -109,6 +109,8 @@ class SettingsStore {
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
   /** A change not written to settings.json yet. */
   private dirty = false;
+  /** The last write of settings.json failed, and no write has worked since. */
+  private failed = false;
   private writing: Promise<void> = Promise.resolve();
   private loaded = false;
   /** Told when a change could not be saved after the debounce; the app shows a toast. */
@@ -131,6 +133,7 @@ class SettingsStore {
   async load() {
     clearTimeout(this.saveTimer);
     this.dirty = false;
+    this.failed = false;
     this.loaded = false;
     let data: Partial<Settings> = {};
     try {
@@ -183,12 +186,23 @@ class SettingsStore {
     const run = this.writing.then(async () => {
       while (this.dirty) {
         const value = this.value;
-        await backend.writeConfig("settings.json", JSON.stringify(value, null, 2) + "\n");
+        try {
+          await backend.writeConfig("settings.json", JSON.stringify(value, null, 2) + "\n");
+        } catch (e) {
+          this.failed = true;
+          throw e;
+        }
+        this.failed = false;
         if (this.value === value) this.dirty = false;
       }
     });
     this.writing = run.catch(() => {});
     return run;
+  }
+
+  /** A change whose write failed is not saved yet; one that waits for the debounce does not count. */
+  get saveFailed() {
+    return this.failed;
   }
 
   async apply() {
@@ -317,6 +331,7 @@ class SettingsStore {
   reset() {
     clearTimeout(this.saveTimer);
     this.dirty = false;
+    this.failed = false;
     this.loaded = false;
     this.value = { ...DEFAULT_SETTINGS };
     this.available = [];

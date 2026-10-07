@@ -134,7 +134,11 @@ export class AxApp {
     try {
       await this.s.cmd("POST", "/window/maximize", {});
     } catch {}
-    await this.s.exec(`addEventListener("beforeunload", () => { try { localStorage.clear(); } catch {} }); return 1`);
+    // The app's own beforeunload listener asks before a reload while a note
+    // holds edits that could not be saved, which a test that failed half way
+    // can leave behind. This reload drops them on purpose: a capture
+    // listener on the window runs before the app's, and stops it.
+    await this.s.exec(`addEventListener("beforeunload", (e) => { e.stopImmediatePropagation(); try { localStorage.clear(); } catch {} }, true); return 1`);
     await this.s.cmd("POST", "/refresh", {});
     await this.s.waitFor(
       `return document.querySelectorAll('[data-testid=tree-row]').length >= ${minRows} && !document.querySelector('[data-testid=tab]') && !document.querySelector('.workspace.narrow')`,

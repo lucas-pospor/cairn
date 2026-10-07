@@ -194,6 +194,35 @@ test("save into a read-only folder fails visibly and keeps the edits in the tab"
   }
 });
 
+test("a reload asks first while a save is blocked, and not once the note is saved", async () => {
+  const v = env.vault("v", { "d/A.md": "alpha\n" });
+  const app = await env.launch(v);
+  // The web view asks before it unloads the page when the beforeunload
+  // event is cancelled. A synthetic event shows what the app's listener
+  // does, without a real reload.
+  const reloadAsks = () => app.exec(`const e = new Event("beforeunload", { cancelable: true }); dispatchEvent(e); return e.defaultPrevented`);
+  try {
+    await app.openFromTree("d/A.md");
+    await app.source();
+    await app.insertEnd("MINE");
+    assert.equal(await reloadAsks(), false, "an edit waiting for autosave is saved when the page goes away");
+    await app.waitSaved();
+    fs.chmodSync(v.p("d"), 0o555);
+    await app.insertEnd(" MORE");
+    await eventually(async () => (await app.toasts()).some((t) => /Could not save/.test(t)), { message: "error toast" });
+    assert.equal(await reloadAsks(), true, "a reload would drop the edit that could not be saved");
+    fs.chmodSync(v.p("d"), 0o755);
+    await app.focusEnd();
+    await app.s.keys({ chord: [Key.ctrl, "s"] });
+    await eventually(() => v.read("d/A.md") === "alpha\nMINE MORE", { message: "saved with Ctrl+S" });
+    await app.waitSaved();
+    assert.equal(await reloadAsks(), false, "nothing left to lose");
+  } finally {
+    fs.chmodSync(v.p("d"), 0o755);
+    await app.close();
+  }
+});
+
 // ---------- findings ----------
 
 test(

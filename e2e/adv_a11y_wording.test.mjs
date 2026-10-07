@@ -149,6 +149,10 @@ test("FINDING-120: a failed save shows a plain message, not the raw OS error ('P
     msg = await nextToast("Could not save");
   } finally {
     fs.chmodSync(app.p("Locked"), 0o755);
+    // Save the edit now that it can be, so that the next test does not
+    // start with a note holding edits that could not be saved.
+    await app.chord(K.ctrl, "s").catch(() => {});
+    await app.s.waitFor(`return !document.querySelector('[data-testid=tab] .dot')`, { message: "the note saved" }).catch(() => {});
   }
   log("save failure toast", msg);
   await app.shot("AX-28-save-error.png");

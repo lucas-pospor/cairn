@@ -27,9 +27,7 @@
         ),
       );
     });
-    const beforeUnload = () => {
-      app.saveSession();
-    };
+    const beforeUnload = (e: BeforeUnloadEvent) => app.beforeUnload(e);
     window.addEventListener("beforeunload", beforeUnload);
     // Android Back (MainActivity asks here first): close the overlay opened
     // last. With none open, save pending edits, then let the app leave, so
