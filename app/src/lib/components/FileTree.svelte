@@ -356,6 +356,7 @@
           onblur={() => app.rename(node.path, renameValue)}
           onclick={(e) => e.stopPropagation()}
           onpointerdown={(e) => e.stopPropagation()}
+          oncontextmenu={(e) => e.stopPropagation()}
         />
       {:else}
         <span class="name">{node.kind === "file" ? displayName(node.path) : node.name}</span>

@@ -1222,6 +1222,39 @@ test("FINDING-008: typing while reading view, the graph view or Settings is show
 });
 
 // Last: needs a sync server and leaves sync configured until it disconnects.
+// Found in a hands-on Windows test, and the same on Linux: the row's menu
+// opened instead of the text box's, and the box lost focus, which renamed
+// the note to the half-typed name. WebDriver cannot right-click in
+// WebKitGTK, so the event a right-click fires is dispatched at the box.
+test("a right-click in the rename box opens no file tree menu and leaves the half-typed name unapplied", async () => {
+  app.write("Clip.md", "clip\n");
+  await app.reset();
+  try {
+    await app.openNote("clip", "Clip.md");
+    await app.palette("rename current");
+    await app.s.waitFor(`return document.activeElement?.dataset.testid === 'rename-input'`, { message: "rename box focused" });
+    // Lower case: WebKitWebDriver sometimes drops the Shift of a typed capital.
+    await app.keys(K.end, "half");
+    const prevented = await app.exec(
+      `const box = document.activeElement; const r = box.getBoundingClientRect();
+       return !box.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5 }))`,
+    );
+    await sleep(300);
+    const st = await app.exec(
+      `return { menu: !!document.querySelector('[role=menu]'), focus: document.activeElement?.dataset.testid ?? null, value: document.activeElement?.value ?? null }`,
+    );
+    assert.deepEqual({ prevented, ...st }, { prevented: false, menu: false, focus: "rename-input", value: "Cliphalf" });
+    assert.ok(app.exists("Clip.md") && !app.exists("Cliphalf.md"), "the note kept its name");
+    await app.keys(K.esc);
+    await app.s.waitFor(`return !document.querySelector('[data-testid=rename-input]')`, { message: "rename cancelled" });
+    await sleep(300);
+    assert.ok(app.exists("Clip.md") && !app.exists("Cliphalf.md"), "Escape kept the name");
+  } finally {
+    fs.rmSync(app.p("Clip.md"), { force: true });
+    fs.rmSync(app.p("Cliphalf.md"), { force: true });
+  }
+});
+
 test("FINDING-108: the version history modal takes focus, is aria-modal and closes with Escape", async () => {
   await app.reset();
   const port = 19000 + Math.floor(Math.random() * 900);
