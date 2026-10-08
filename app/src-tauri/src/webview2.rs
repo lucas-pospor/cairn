@@ -118,19 +118,59 @@ pub fn menu_items_to_remove(items: &[(&str, bool)], devtools: bool) -> Vec<usize
     (0..items.len()).filter(|&i| !keep[i]).collect()
 }
 
+/// The log line for a WebView2 process that failed: which one (`kind`,
+/// WebView2's COREWEBVIEW2_PROCESS_FAILED_KIND), why (`reason`, its
+/// COREWEBVIEW2_PROCESS_FAILED_REASON, from runtimes that give one), and
+/// its exit code. When the browser process is gone, so is the page and the
+/// text it had not saved.
+pub fn process_failed_text(kind: i32, reason: Option<i32>, exit_code: Option<i32>) -> String {
+    let process = match kind {
+        0 => "browser process exited; the page is gone",
+        1 => "page's process exited",
+        2 => "page's process stopped responding",
+        3 => "process of a frame in the page exited",
+        4 => "utility process exited",
+        5 => "sandbox helper process exited",
+        6 => "GPU process exited",
+        7 => "plugin process exited",
+        8 => "plugin broker process exited",
+        _ => "process exited",
+    };
+    let why = reason.map(|r| match r {
+        0 => "unexpectedly",
+        1 => "unresponsive",
+        2 => "terminated",
+        3 => "crashed",
+        4 => "failed to start",
+        5 => "out of memory",
+        6 => "its profile was deleted",
+        _ => "for an unknown reason",
+    });
+    let details: Vec<String> = why.map(String::from).into_iter().chain(exit_code.map(|c| format!("exit code {c}"))).collect();
+    if details.is_empty() {
+        format!("WebView2's {process}")
+    } else {
+        format!("WebView2's {process} ({})", details.join(", "))
+    }
+}
+
 #[cfg(windows)]
 pub use glue::{attach, parent_window};
 
 #[cfg(windows)]
 mod glue {
-    use super::{KeyPress, browser_key_allowed, is_reload_key, menu_items_to_remove};
+    use super::{KeyPress, browser_key_allowed, is_reload_key, menu_items_to_remove, process_failed_text};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR, COREWEBVIEW2_KEY_EVENT_KIND,
-        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, ICoreWebView2_11,
-        ICoreWebView2AcceleratorKeyPressedEventArgs, ICoreWebView2AcceleratorKeyPressedEventArgs2,
-        ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Controller,
+        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN,
+        COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON, ICoreWebView2_11, ICoreWebView2AcceleratorKeyPressedEventArgs,
+        ICoreWebView2AcceleratorKeyPressedEventArgs2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Controller,
+        ICoreWebView2ProcessFailedEventArgs, ICoreWebView2ProcessFailedEventArgs2,
     };
-    use webview2_com::{AcceleratorKeyPressedEventHandler, ContextMenuRequestedEventHandler, take_pwstr};
+    use webview2_com::{
+        AcceleratorKeyPressedEventHandler, ContextMenuRequestedEventHandler, ProcessFailedEventHandler, take_pwstr,
+    };
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT};
     use windows::core::{Interface, PWSTR, Result};
@@ -145,6 +185,15 @@ mod glue {
                 &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| match args {
                     Some(args) => on_key(&args, devtools),
                     None => Ok(()),
+                })),
+                &mut token,
+            )?;
+            controller.CoreWebView2()?.add_ProcessFailed(
+                &ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                    if let Some(args) = args {
+                        on_process_failed(&args);
+                    }
+                    Ok(())
                 })),
                 &mut token,
             )?;
@@ -169,6 +218,30 @@ mod glue {
         let mut hwnd = HWND::default();
         unsafe { controller.ParentWindow(&mut hwnd)? };
         Ok(hwnd)
+    }
+
+    /// Logs a WebView2 process that failed: the browser process as an error,
+    /// as the page went with it.
+    fn on_process_failed(args: &ICoreWebView2ProcessFailedEventArgs) {
+        let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+        if unsafe { args.ProcessFailedKind(&mut kind) }.is_err() {
+            return;
+        }
+        // The reason and exit code came with runtime 1.0.992 (2021).
+        let (reason, exit_code) = match args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+            Ok(args2) => unsafe {
+                let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
+                let mut code = 0;
+                (args2.Reason(&mut reason).ok().map(|_| reason.0), args2.ExitCode(&mut code).ok().map(|_| code))
+            },
+            Err(_) => (None, None),
+        };
+        let text = process_failed_text(kind.0, reason, exit_code);
+        if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED {
+            log::error!("{text}");
+        } else {
+            log::warn!("{text}");
+        }
     }
 
     /// Whether `key` is held down, as Microsoft's sample checks it in this
@@ -260,6 +333,17 @@ mod tests {
     /// Ctrl+Alt, which is also AltGr on Windows.
     const fn ctrl_alt(vk: u32) -> KeyPress {
         KeyPress { alt: true, ..ctrl(vk) }
+    }
+
+    #[test]
+    fn process_failures_read_well_in_the_log() {
+        assert_eq!(
+            process_failed_text(0, Some(2), Some(1)),
+            "WebView2's browser process exited; the page is gone (terminated, exit code 1)"
+        );
+        assert_eq!(process_failed_text(2, Some(1), None), "WebView2's page's process stopped responding (unresponsive)");
+        assert_eq!(process_failed_text(6, None, None), "WebView2's GPU process exited");
+        assert_eq!(process_failed_text(42, Some(42), Some(-1)), "WebView2's process exited (for an unknown reason, exit code -1)");
     }
 
     #[test]
