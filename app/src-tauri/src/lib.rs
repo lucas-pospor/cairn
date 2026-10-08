@@ -237,4 +237,19 @@ mod tests {
             assert_eq!((size(18), size(22)), (width, height));
         }
     }
+
+    /// A guard of the installer hooks in tauri.conf.json, not a test of what
+    /// they do (CI builds the installer; a hand test runs it). Without them
+    /// the installer goes round in circles on "Unable to uninstall!" when the
+    /// old install folder is gone but its uninstall entry is left.
+    #[test]
+    fn the_windows_installer_drops_an_uninstall_entry_whose_uninstaller_is_gone() {
+        use tauri::utils::config::Config;
+        let config: Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let hooks = config.bundle.windows.nsis.and_then(|n| n.installer_hooks).expect("installerHooks is set");
+        let text = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(hooks)).unwrap();
+        assert!(text.contains("!define MUI_CUSTOMFUNCTION_GUIINIT CairnDropStaleUninstallEntry"));
+        assert!(text.contains(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Cairn"));
+        assert_eq!(config.product_name.as_deref(), Some("Cairn"), "the hooks spell out the product name in the key");
+    }
 }
