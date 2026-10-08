@@ -115,6 +115,8 @@ class SettingsStore {
   private loaded = false;
   /** Told when a change could not be saved after the debounce; the app shows a toast. */
   onSaveError: (e: unknown) => void = (e) => console.warn("settings.json not saved", e);
+  /** Told after each write of settings.json, whether it worked or not (see saveFailed). */
+  onWriteResult: () => void = () => {};
   /** The font file named by textFont, or null when none is (or it is not a file name at all). */
   font = $state<FontFileState | null>(null);
   private face: FontFace | null = null;
@@ -190,9 +192,11 @@ class SettingsStore {
           await backend.writeConfig("settings.json", JSON.stringify(value, null, 2) + "\n");
         } catch (e) {
           this.failed = true;
+          this.onWriteResult();
           throw e;
         }
         this.failed = false;
+        this.onWriteResult();
         if (this.value === value) this.dirty = false;
       }
     });

@@ -3,6 +3,8 @@
 const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
 
 export const isAndroid = /Android/i.test(ua);
+/** WebView2 on Windows. (Node, under the tests, says "Node.js/..." on every system.) */
+export const isWindows = /Windows NT/.test(ua);
 export const isMobile = isAndroid || /iPhone|iPad|iPod/i.test(ua);
 
 /** Narrow layout: sidebars become drawers. */

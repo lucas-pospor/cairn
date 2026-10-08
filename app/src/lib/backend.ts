@@ -20,6 +20,7 @@ import type {
   WriteResult,
 } from "./types";
 import type { PluginApproval } from "./plugins";
+import type { HeldNote, HeldRelease } from "./held";
 import { isAndroid } from "./platform";
 
 /** Base64 of `bytes`, in pieces so a large file does not overflow the call stack. */
@@ -27,6 +28,24 @@ function base64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
+}
+
+/** A request of the page to session_hold (see held.ts). */
+export interface HeldRequest {
+  seq: number;
+  root: string | null;
+  reset?: boolean;
+  round?: number;
+  settingsFailed: boolean;
+  notes: (HeldNote | HeldRelease)[];
+}
+
+/** What the backend did at the end of a session that went on. */
+export interface SessionEndNews {
+  /** Notes it wrote: the file the page knew as `from` is now `to`. */
+  written: { path: string; from: string; to: string; edit: number }[];
+  /** What it could not save, after a no: a note's path (null for the settings) and its name. */
+  refused: { path: string | null; name: string }[];
 }
 
 /** URL under which the web view can load a vault file (images, media). */
@@ -45,10 +64,11 @@ export const backend = {
   listEntries: () => invoke<FileStat[]>("list_entries"),
   // `inVault` (plugins): refuse a path that a symlink leads out of the vault.
   readNote: (path: string, inVault = false) => invoke<NoteContent>("read_note", { path, inVault }),
-  writeNote: (path: string, content: string, baseHash: string | null, inVault = false) =>
-    invoke<WriteResult>("write_note", { path, content, baseHash, inVault }),
+  // `edit`: the page's edit number of `content` (see held.ts); plugins send none.
+  writeNote: (path: string, content: string, baseHash: string | null, inVault = false, edit?: number) =>
+    invoke<WriteResult>("write_note", { path, content, baseHash, inVault, edit }),
   /** Write a note whose file is gone; a "conflict" error if a file is there again. */
-  recreateNote: (path: string, content: string) => invoke<WriteResult>("recreate_note", { path, content }),
+  recreateNote: (path: string, content: string, edit?: number) => invoke<WriteResult>("recreate_note", { path, content, edit }),
   /** Merge unsaved text with a change made on disk since `base`, as sync does; null when they overlap. */
   mergeText: (base: string, ours: string, theirs: string) => invoke<string | null>("merge_text", { base, ours, theirs }),
   createNote: (path: string, content = "", inVault = false) => invoke<WriteResult>("create_note", { path, content, inVault }),
@@ -111,6 +131,15 @@ export const backend = {
   setWindowTitle: (title: string) => getCurrentWindow().setTitle(title),
   appVaults: () => invoke<[string, string][]>("app_vaults"),
   pickFolder: () => invoke<{ uri: string | null; name: string | null }>("pick_folder"),
+  /** Windows: what the page has not saved, for the end of the session (held.ts). */
+  sessionHold: (hold: HeldRequest) => invoke<{ floor: number; applied: boolean }>("session_hold", { hold }),
+  /** Windows: the file the backend put in place of `base`, when it wrote the note itself. */
+  sessionMoved: (path: string, base: string) => invoke<string | null>("session_moved", { path, base }),
+  /** Windows: the backend asks for what the page holds, as the answer to `round`. */
+  onSessionEnd: (cb: (round: number) => void): Promise<UnlistenFn> => listen<number>("session-end", (e) => cb(e.payload)),
+  /** Windows: what the backend wrote, and what it could not, once the session goes on. */
+  onSessionEndNews: (cb: (news: SessionEndNews) => void): Promise<UnlistenFn> =>
+    listen<SessionEndNews>("session-end-news", (e) => cb(e.payload)),
   onSyncStatus: (cb: (s: SyncStatus) => void): Promise<UnlistenFn> => listen<SyncStatus>("sync-status", (e) => cb(e.payload)),
   onVaultChanged: (cb: (changes: Change[]) => void): Promise<UnlistenFn> =>
     listen<Change[]>("vault-changed", (e) => cb(e.payload)),

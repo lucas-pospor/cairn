@@ -18,7 +18,9 @@ import { FONT_NAMES, settings } from "./settings.svelte";
 import { commands, displayCombo, isMac as macPlatform } from "./commands";
 import { toggleWrap, toggleTask, insertWikilink } from "./editor/format";
 import { lineBreaksOf, textWithLineBreaks } from "./editor/lineBreaks";
-import { isMobile, narrowQuery } from "./platform";
+import { isMobile, isWindows, narrowQuery } from "./platform";
+import { changes as heldChanges, wanted as heldWanted, wellFormed, TEXT_LIMIT, type Sent } from "./held";
+import type { SessionEndNews } from "./backend";
 import { PluginHost } from "./plugins";
 import { coreCommands, type CoreHost } from "./corePlugins/core";
 import { CORE_PLUGINS } from "./corePlugins";
@@ -26,6 +28,10 @@ import { CORE_PLUGINS } from "./corePlugins";
 export type ViewMode = "live" | "source" | "preview" | "split";
 
 const AUTOSAVE_MS = 600;
+/** Windows: the text of a note goes to the backend this long after typing stops (see held.ts)... */
+const HOLD_MS = 200;
+/** ...and at least this often while the user keeps typing. */
+const HOLD_MAX_MS = 1000;
 /** Toasts on screen at once; a new one pushes out the oldest (a plugin can toast in a loop). */
 const MAX_TOASTS = 5;
 let nextTabId = 1;
@@ -59,6 +65,12 @@ export class Tab {
   revealLine: number | null = null;
   /** Image tabs: shown at its own size rather than fitted to the tab. */
   actualSize = $state(false);
+  /** Grows with every change to the text (see held.ts); set when the note loads. */
+  edit = 0;
+  /** The user discarded this tab's edits, and it is about to go. */
+  discarded = false;
+  /** Saves since the last one that worked that went again over a file the backend wrote (see movedByTheBackend). */
+  movedSaves = 0;
 
   constructor(path: string, kind: TabKind = "note") {
     this.path = path;
@@ -214,6 +226,26 @@ class App {
   private toastId = 0;
   private syncSetupId = 0;
   private toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  // Windows: the backend's copy of what is not saved yet (see held.ts). Edit
+  // and request numbers start from the clock, so that they keep growing
+  // across page loads.
+  private editSeq = Date.now() * 1000;
+  private heldSeq = this.editSeq;
+  /** What the backend took last; null: everything is to be sent, starting with a reset. */
+  private heldSent: Map<string, Sent> | null = null;
+  /** Counts resets: a request sent before the last one says nothing of what the backend holds now. */
+  private heldGen = 0;
+  private heldSettings: boolean | null = null;
+  /** The requests to the backend, one at a time; a run that has not started yet sends the latest state. */
+  private heldQueue: Promise<void> = Promise.resolve();
+  private heldQueued = false;
+  private heldTimer: ReturnType<typeof setTimeout> | undefined;
+  /** When the text waiting to be sent changed first. */
+  private heldTextSince = 0;
+  /** The settings' failed write was discarded with the window or the notebook. */
+  private settingsDiscarded = false;
+  /** The notice of a refused sign-out or shutdown, until nothing it names is unsaved. */
+  private refusal: { paths: Set<string>; settings: boolean; close: () => void } | null = null;
 
   /** Sync status of the open vault. */
   get sync() {
@@ -252,6 +284,10 @@ class App {
       this.toast(`Could not use the font file ${name}: ${message} Notes use the Text font, ${FONT_NAMES[settings.value.fontFamily] ?? "Sans serif"}, instead.`, "error");
     // Lines change height with the font, and the editor keeps the heights it measured.
     settings.onFontChange = () => this.view?.requestMeasure();
+    settings.onWriteResult = () => {
+      this.settingsDiscarded = false;
+      this.heldSync();
+    };
     this.unlistenClose = await backend.onCloseRequested(() => this.beforeClose());
     this.registerCommands();
     const q = narrowQuery();
@@ -295,6 +331,11 @@ class App {
       if (root === this.vault?.root) this.handleChanges(c);
     });
     await backend.onSyncStatus((st) => (this.sync = st));
+    if (isWindows) {
+      await backend.onSessionEnd((round) => this.answerSessionEnd(round));
+      await backend.onSessionEndNews((news) => this.sessionEndNews(news));
+      this.heldReset();
+    }
     this.recent = await backend.recentVaults();
     const start = await backend.startupVault();
     if (start) await this.openVault(start);
@@ -321,6 +362,8 @@ class App {
       this.imageChanges.clear();
       this.imageEpoch++;
       await settings.load();
+      this.settingsDiscarded = false;
+      this.heldReset();
       commands.setOverrides(settings.value.hotkeys);
       this.sync = await backend.syncStatus().catch(() => null);
       this.plugins.stopAll();
@@ -332,6 +375,7 @@ class App {
       this.restoreSession();
       this.recent = await backend.recentVaults();
     } catch (e) {
+      this.undiscard(this.tabs, true);
       if (create === "ask" && isCoreError(e) && e.kind === "notFound") {
         const ok = await this.confirm({
           title: "Create a new notebook?",
@@ -361,6 +405,8 @@ class App {
     this.tabs = [];
     this.activeId = null;
     this.entries = [];
+    this.settingsDiscarded = false;
+    this.heldReset();
     this.recent = await backend.recentVaults();
   }
 
@@ -471,6 +517,9 @@ class App {
           // A file moved over an open image.
           this.imageChanged(c.entry.path);
         } else this.imageEpoch++;
+        // The notice of a refused sign-out follows the notes it names.
+        const r = this.refusal;
+        if (r) r.paths = new Set([...r.paths].map((p) => (isSameOrInside(p, c.from) ? rebase(p, c.from, c.entry.path) : p)));
         for (const t of [...this.tabs]) {
           if (!isSameOrInside(t.path, c.from)) continue;
           t.path = rebase(t.path, c.from, c.entry.path);
@@ -505,6 +554,7 @@ class App {
     // new size is shown in its tab, so a changed image counts too. The flag
     // outlives the timer it was set for, so a content-only batch that
     // follows within 60 ms does not drop the refetch.
+    if (changes.some((c) => c.type !== "modified")) this.heldSync();
     if (changes.some((c) => c.type !== "modified" || isImage(c.entry.path))) this.refreshStructural = true;
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
@@ -577,7 +627,9 @@ class App {
     const spec = diskChange(st, content, undoable);
     if (isActive) this.view!.dispatch(spec);
     else tab.editorState = st.update(spec).state;
+    tab.edit = ++this.editSeq;
     if (this.active === tab) this.docSeq++;
+    this.heldSync();
   }
 
   // ---------- tabs ----------
@@ -620,6 +672,7 @@ class App {
         selection: { anchor },
         extensions: [this.extensions, lineBreaksOf(n.content)],
       });
+      tab.edit = ++this.editSeq;
     } catch (e) {
       tab.error = errorMessage(e);
     } finally {
@@ -731,6 +784,7 @@ class App {
       this.activeId = next?.id ?? null;
     }
     this.saveSession();
+    this.heldSync();
   }
 
   cycleTab(dir: 1 | -1) {
@@ -766,10 +820,15 @@ class App {
   private onEdit() {
     const tab = this.viewTab;
     if (!tab) return;
+    const first = !tab.dirty;
     tab.dirty = true;
+    tab.discarded = false;
+    tab.edit = ++this.editSeq;
     this.docSeq++;
     clearTimeout(tab.saveTimer);
     tab.saveTimer = setTimeout(() => void this.save(tab), AUTOSAVE_MS);
+    // The first edit of a saved note at once: the backend then knows it holds edits.
+    this.heldSync(first ? "now" : "text");
   }
 
   async save(tab: Tab, force = false) {
@@ -781,20 +840,24 @@ class App {
     }
     tab.saving = true;
     const content = this.fileTextOf(tab);
+    const edit = tab.edit;
+    const sentBase = tab.baseHash;
     // "Save my version" of a deleted note: never over a file that is back.
     const recreate = force && tab.conflict === "deleted";
     try {
       const r = recreate
-        ? await backend.recreateNote(tab.path, content)
-        : await backend.writeNote(tab.path, content, force ? null : tab.baseHash);
+        ? await backend.recreateNote(tab.path, content, edit)
+        : await backend.writeNote(tab.path, content, force ? null : tab.baseHash, false, edit);
       tab.baseHash = r.hash;
       tab.baseText = content;
       tab.conflict = null;
       tab.saveFailed = false;
+      tab.movedSaves = 0;
       if (this.fileTextOf(tab) === content) tab.dirty = false;
     } catch (e) {
       if (isCoreError(e) && e.kind === "conflict") {
-        if (!force && (await this.mergeFromDisk(tab))) tab.saveAgain = true;
+        if (!force && (await this.movedByTheBackend(tab, sentBase))) tab.saveAgain = true;
+        else if (!force && (await this.mergeFromDisk(tab))) tab.saveAgain = true;
         else if (recreate) tab.conflict = "changed";
         else {
           // Ask the disk whether the note is still there: the file list can lag
@@ -813,11 +876,30 @@ class App {
       }
     } finally {
       tab.saving = false;
+      this.heldSync();
       if (tab.saveAgain) {
         tab.saveAgain = false;
         void this.save(tab);
       }
     }
+  }
+
+  /**
+   * A save found the file changed: true when that was Cairn's own doing, so
+   * the save can simply go again over the new file. Either the backend
+   * reported writing the note meanwhile (the tab took the new base already),
+   * or, on Windows, it wrote the note at the end of a session that went on.
+   */
+  private async movedByTheBackend(tab: Tab, sentBase: string | null): Promise<boolean> {
+    // A few times at most per save that works: then the merge or the banner decides.
+    if (++tab.movedSaves > 3) return false;
+    if (tab.baseHash !== sentBase) return true;
+    if (!isWindows || sentBase === null) return false;
+    const to = await backend.sessionMoved(tab.path, sentBase).catch(() => null);
+    if (tab.baseHash !== sentBase) return true;
+    if (!to || to === sentBase) return false;
+    tab.baseHash = to;
+    return true;
   }
 
   /**
@@ -890,6 +972,12 @@ class App {
       danger: true,
     });
     if (!ok && unsaved.length && this.tabs.includes(unsaved[0])) this.activate(unsaved[0]);
+    if (ok) {
+      // Discarded: the backend lets them go before they close or are deleted.
+      for (const t of unsaved) t.discarded = true;
+      if (names.includes("the settings")) this.settingsDiscarded = true;
+      await this.heldSend();
+    }
     return ok;
   }
 
@@ -906,6 +994,7 @@ class App {
       if (!(await this.flushOrConfirm([...this.tabs], true))) return false;
       this.saveSession();
       this.closeConfirmed = true;
+      await this.heldSend();
       return true;
     } finally {
       this.closing = false;
@@ -938,6 +1027,7 @@ class App {
   /** Conflict resolution: keep the editor text and overwrite the file. */
   async keepMine(tab: Tab) {
     tab.dirty = true;
+    tab.discarded = false;
     await this.save(tab, true);
   }
 
@@ -952,9 +1042,177 @@ class App {
       tab.dirty = false;
       tab.conflict = null;
       tab.saveFailed = false;
+      this.heldSync();
     } catch (e) {
       this.toast(errorMessage(e), "error");
     }
+  }
+
+  // ---------- the end of a Windows session ----------
+
+  /** What a Discard was for did not happen: the backend holds these edits again. */
+  private undiscard(tabs: Tab[], settingsToo: boolean) {
+    for (const t of tabs) t.discarded = false;
+    if (settingsToo) this.settingsDiscarded = false;
+    this.heldSync();
+  }
+
+  /** What the backend should hold, from the tabs (see held.ts). */
+  private heldWanted() {
+    if (this.closeConfirmed) return new Map();
+    return heldWanted(
+      this.tabs.map((t) => ({
+        kind: t.kind,
+        path: t.path,
+        dirty: t.dirty,
+        conflict: t.conflict,
+        saveFailed: t.saveFailed,
+        baseHash: t.baseHash,
+        edit: t.edit,
+        loaded: !t.loading && this.stateOf(t) !== null,
+        discarded: t.discarded,
+      })),
+    );
+  }
+
+  /** A note's text for the backend, or null: too large (unless `limit` is Infinity) or not well formed. */
+  private heldText(path: string, limit = TEXT_LIMIT): string | null {
+    const tab = this.tabs.find((t) => t.kind === "note" && t.path === path && t.dirty && !t.discarded);
+    const st = tab ? this.stateOf(tab) : null;
+    if (!st || st.doc.length + st.doc.lines > limit) return null;
+    const text = textWithLineBreaks(st);
+    return wellFormed(text) ? text : null;
+  }
+
+  private heldSettingsFailed() {
+    return settings.saveFailed && !this.settingsDiscarded && !this.closeConfirmed;
+  }
+
+  /** Start over with the backend: the page loaded, or another notebook opened or closed. */
+  private heldReset() {
+    if (!isWindows) return;
+    this.heldGen++;
+    this.heldSent = null;
+    this.heldSync();
+  }
+
+  /**
+   * Tell the backend what changed: "now", or "text" for typing, which waits
+   * until HOLD_MS after the last key, HOLD_MAX_MS at most.
+   */
+  heldSync(when: "now" | "text" = "now") {
+    if (!isWindows) return;
+    if (when === "text") {
+      const now = Date.now();
+      if (!this.heldTextSince) this.heldTextSince = now;
+      const due = Math.min(now + HOLD_MS, this.heldTextSince + HOLD_MAX_MS);
+      clearTimeout(this.heldTimer);
+      this.heldTimer = setTimeout(() => void this.heldSend(), due - now);
+      return;
+    }
+    queueMicrotask(() => void this.heldSend());
+  }
+
+  /** Send what changed now, one request at a time; resolves once the backend took it. */
+  private heldSend(): Promise<void> {
+    if (!isWindows) return Promise.resolve();
+    clearTimeout(this.heldTimer);
+    this.heldTextSince = 0;
+    if (!this.heldQueued) {
+      this.heldQueued = true;
+      this.heldQueue = this.heldQueue.then(() => {
+        this.heldQueued = false;
+        return this.heldSendOnce();
+      });
+    }
+    return this.heldQueue;
+  }
+
+  private async heldSendOnce() {
+    const gen = this.heldGen;
+    const reset = this.heldSent === null;
+    const { notes, next } = heldChanges(this.heldSent ?? new Map(), this.heldWanted(), (p) => this.heldText(p));
+    const settingsFailed = this.heldSettingsFailed();
+    if (!reset && !notes.length && settingsFailed === this.heldSettings) {
+      this.checkRefusal();
+      return;
+    }
+    try {
+      const reply = await backend.sessionHold({ seq: ++this.heldSeq, root: this.vault?.root ?? null, reset, settingsFailed, notes });
+      if (reset) this.editSeq = this.heldSeq = Math.max(this.editSeq, this.heldSeq, reply.floor);
+      if (reply.applied && gen === this.heldGen) {
+        this.heldSent = next;
+        this.heldSettings = settingsFailed;
+      }
+    } catch (e) {
+      // Everything again, a little later.
+      console.warn("session end: the backend did not take what the page holds", e);
+      this.heldSent = null;
+      this.heldSettings = null;
+      setTimeout(() => this.heldSync(), 1000);
+    }
+    this.checkRefusal();
+  }
+
+  /**
+   * Windows is ending the session and the backend asks for what the page
+   * holds: every note with unsaved edits, with its text whatever its size,
+   * at once and without waiting for anything.
+   */
+  answerSessionEnd(round: number) {
+    const want = this.heldWanted();
+    const { notes, next } = heldChanges(new Map(), want, (p) => this.heldText(p, Infinity));
+    const settingsFailed = this.heldSettingsFailed();
+    const gen = this.heldGen;
+    backend.sessionHold({ seq: ++this.heldSeq, root: this.vault?.root ?? null, round, settingsFailed, notes }).then(
+      (reply) => {
+        if (reply.applied && gen === this.heldGen) {
+          this.heldSent = next;
+          this.heldSettings = settingsFailed;
+        }
+      },
+      (e) => console.warn("session end: no answer", e),
+    );
+  }
+
+  /**
+   * The session went on after Windows asked to end it. Notes the backend
+   * wrote take the new file as their base and are saved again (the editor
+   * may hold newer text). After a no, a notice says what is not saved.
+   */
+  sessionEndNews(news: SessionEndNews) {
+    for (const w of news.written) {
+      const tabs = this.tabs.filter((t) => t.kind === "note" && t.path === w.path);
+      const t = tabs[0];
+      if (tabs.length !== 1 || !t.dirty || t.baseHash !== w.from) continue;
+      t.baseHash = w.to;
+      if (!t.conflict) void this.save(t);
+    }
+    if (news.refused.length) {
+      this.refusal?.close();
+      const names = news.refused.map((r) => r.name).join(", ");
+      const close = this.toast(
+        `Windows was about to sign out or shut down, but changes to ${names} are not saved. Save or discard them, then try again.`,
+        "error",
+        0,
+      );
+      const paths = new Set(news.refused.flatMap((r) => (r.path === null ? [] : [r.path])));
+      this.refusal = { paths, settings: news.refused.some((r) => r.path === null), close };
+      const first = this.tabs.find((t) => t.kind === "note" && paths.has(t.path) && t.dirty);
+      if (first) this.activate(first);
+    }
+    this.heldSync();
+  }
+
+  /** The notice of a refusal goes once nothing it names is unsaved. */
+  private checkRefusal() {
+    const r = this.refusal;
+    if (!r) return;
+    const left =
+      this.tabs.some((t) => t.kind === "note" && t.dirty && !t.discarded && r.paths.has(t.path)) || (r.settings && this.heldSettingsFailed());
+    if (left) return;
+    r.close();
+    this.refusal = null;
   }
 
   // ---------- links ----------
@@ -1413,6 +1671,7 @@ class App {
     try {
       await backend.deleteEntry(path);
     } catch (e) {
+      this.undiscard(affected, false);
       this.toast(errorMessage(e), "error");
       return;
     }
@@ -1455,8 +1714,13 @@ class App {
     const id = ++this.toastId;
     this.toasts.push({ id, message, kind, ms });
     if (this.toasts.length > MAX_TOASTS) {
-      for (const old of this.toasts.slice(0, this.toasts.length - MAX_TOASTS)) this.holdToast(old.id);
-      this.toasts.splice(0, this.toasts.length - MAX_TOASTS);
+      // The oldest timed toasts go first: one that stays until it is closed,
+      // such as the notice of a refused sign-out, only when no timed one is left.
+      const older = this.toasts.slice(0, -1);
+      const out = [...older.filter((t) => t.ms), ...older.filter((t) => !t.ms)].slice(0, this.toasts.length - MAX_TOASTS);
+      for (const old of out) this.holdToast(old.id);
+      const gone = new Set(out.map((t) => t.id));
+      this.toasts = this.toasts.filter((t) => !gone.has(t.id));
     }
     this.releaseToast(id);
     return () => this.dismissToast(id);
