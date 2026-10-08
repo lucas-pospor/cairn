@@ -119,7 +119,7 @@ pub fn menu_items_to_remove(items: &[(&str, bool)], devtools: bool) -> Vec<usize
 }
 
 #[cfg(windows)]
-pub use glue::attach;
+pub use glue::{attach, parent_window};
 
 #[cfg(windows)]
 mod glue {
@@ -131,6 +131,7 @@ mod glue {
         ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Controller,
     };
     use webview2_com::{AcceleratorKeyPressedEventHandler, ContextMenuRequestedEventHandler, take_pwstr};
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT};
     use windows::core::{Interface, PWSTR, Result};
 
@@ -160,6 +161,14 @@ mod glue {
             }
         }
         Ok(())
+    }
+
+    /// The window the web view of `controller` sits in: wry's WRY_WEBVIEW,
+    /// a child of the app's window.
+    pub fn parent_window(controller: &ICoreWebView2Controller) -> Result<HWND> {
+        let mut hwnd = HWND::default();
+        unsafe { controller.ParentWindow(&mut hwnd)? };
+        Ok(hwnd)
     }
 
     /// Whether `key` is held down, as Microsoft's sample checks it in this

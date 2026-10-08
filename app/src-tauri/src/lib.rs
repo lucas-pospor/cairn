@@ -6,6 +6,8 @@ mod config;
 mod protocol;
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(any(windows, test))]
+mod menu_mode;
 #[cfg(any(target_os = "android", test))]
 mod listing;
 #[cfg(any(target_os = "android", test))]
@@ -133,11 +135,22 @@ pub fn run() {
             close_on_sigterm(app.handle().clone());
             // WebView2 keeps its zoom keys and the editing items of its
             // right-click menu, and leaves the other browser keys to the page.
+            // Menu keys it hands on to the app's windows no longer hold it up
+            // while the window is in keyboard menu mode (menu_mode.rs).
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
+                match window.hwnd() {
+                    Ok(main) => menu_mode::install(&[main]),
+                    Err(e) => log::warn!("menu keys: no handle for the main window: {e}"),
+                }
                 let attached = window.with_webview(|w| {
-                    if let Err(e) = webview2::attach(&w.controller()) {
+                    let controller = w.controller();
+                    if let Err(e) = webview2::attach(&controller) {
                         log::warn!("WebView2 keeps its browser keys and menu: {e}");
+                    }
+                    match webview2::parent_window(&controller) {
+                        Ok(parent) => menu_mode::install(&[parent]),
+                        Err(e) => log::warn!("menu keys: no handle for the web view's window: {e}"),
                     }
                 });
                 if let Err(e) = attached {
