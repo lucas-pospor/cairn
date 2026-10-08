@@ -1,6 +1,6 @@
 # Known limits
 
-These limits hold in version 1.3.1, with the fixes listed under Unreleased in the [release notes](../RELEASE_NOTES.md). The FINDING numbers in parentheses name the tests in the repository that reproduce or check each case, except FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 and FINDING-176, which no test names. For FINDING-177, only the Android case is tested, and that case is fixed.
+These limits hold in version 1.4.0. The FINDING numbers in parentheses name the tests in the repository that reproduce or check each case, except FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 and FINDING-176, which no test names. For FINDING-177, only the Android case is tested, and that case is fixed.
 
 ## Files and links
 

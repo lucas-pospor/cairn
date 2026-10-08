@@ -1,10 +1,14 @@
 # Release notes
 
-## Unreleased
+## 1.4.0 (2026-10-08)
+
+### Manual and website
+
+The user documentation moved out of the README into a manual in `docs/manual`, which the website at https://lucas-pospor.github.io/cairn/ also shows, together with a download page for the latest release.
 
 ### Fixes
 
-These fixes come from the first test of Cairn by hand on Windows 11.
+These fixes come from two tests of Cairn by hand on Windows 11.
 
 - On Windows, on a 1920 by 1080 screen at 125% scaling, the window opened with its bottom, status bar included, under the taskbar. The window now opens centered on the primary monitor, and smaller when its usual size would not fit in the area that the taskbar leaves free. This also holds on Linux with X11. On Wayland the window still opens where the system puts it.
 - On Windows, F5, Ctrl+R, Shift+F5, Ctrl+Shift+R and Ctrl+F5 reloaded the window, as in a web browser, and so did Refresh in the right-click menu. A reload drops, without a question, the edits that Cairn could not save, such as those of a read-only note or of a note in conflict with the disk. The web view also acted on its other browser keys wherever Cairn did not use them: Ctrl+P with Settings open opened Print, Ctrl+F outside the editor opened its find bar, and F7 asked about caret browsing. These keys now reach only Cairn, so none of this happens, while Cairn's hotkeys, the editor's keys and the zoom keys work as before. With a WebView2 Runtime older than 120.0.2210, only the reload keys are taken from the web view, and Cairn does not get them either, so a hotkey set to F5 or Ctrl+R does not run there. The right-click menu keeps only Emoji, its editing items, the spelling suggestions, Copy link and Copy image. Back, Refresh, Save as, Print and More tools are gone. Outside text fields, a selection, a link or an image, the web view shows no menu. In the reading view, Ctrl+F now does nothing: press Ctrl+E to edit the note and use Ctrl+F there, or search the notebook with Ctrl+Shift+F.
@@ -19,6 +23,8 @@ These fixes come from the first test of Cairn by hand on Windows 11.
 
 - The sync protocol and the sync server's API are unchanged, so servers and devices on 1.0.0 to 1.3.1 keep working with this version.
 - The sync state of a notebook gains an optional field: the server's spelling of a file whose folder this device spells otherwise. Older versions ignore it, and a sync state they wrote loads with it empty.
+- Nothing else changes on disk: notes, settings, the session and the plugin approvals keep their formats.
+- The desktop installers and the APK install over 1.3.1 and older as an update and keep the app's data, its notebooks and its sync setup. The Windows installer is still not signed.
 - A device still on 1.3.1 or older applies another device's spelling of such a folder and sends the notes back under its own spelling, as before. Two devices caught in that loop settle once both are updated: each sends its own spelling of a note once more, and the other takes it for the server's spelling.
 
 ## 1.3.1 (2026-10-07)
