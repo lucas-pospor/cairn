@@ -50,7 +50,7 @@ fn vault_for(state: &State<'_, AppState>, path: &str, in_vault: Option<bool>) ->
     Ok(v)
 }
 
-fn emit(app: &AppHandle, changes: &[Change]) {
+pub(crate) fn emit(app: &AppHandle, changes: &[Change]) {
     if !changes.is_empty() {
         let _ = app.emit("vault-changed", changes);
         // Local change: let sync know.
@@ -157,8 +157,11 @@ pub async fn open_vault(app: AppHandle, state: State<'_, AppState>, path: String
         let dir = crate::sync::state_dir(&data, &root_str);
         *state.sync.lock() = Some(crate::sync::SyncManager::new(app.clone(), v.clone(), dir, root_str.clone()));
     }
-    *state.vault.write() = Some(v.clone());
+    // The root first: a reset of what the page holds (held.rs) reads the
+    // root, the vault and the root again, so it never takes this vault for
+    // the root of the one before.
     *state.vault_root.write() = Some(root_str.clone());
+    *state.vault.write() = Some(v.clone());
     state.config.lock().touch_recent(&root_str);
     Ok(VaultInfo { name, root: root_str, entries: v.entries() })
 }
@@ -248,6 +251,8 @@ pub async fn read_note(state: State<'_, AppState>, path: String, in_vault: Optio
     vault_for(&state, &path, in_vault)?.read_note(&path)
 }
 
+/// Save a note. `edit` is the page's edit number of `content`, which the
+/// end of the session on Windows uses (held.rs); plugins send none.
 #[tauri::command]
 pub async fn write_note(
     app: AppHandle,
@@ -256,8 +261,17 @@ pub async fn write_note(
     content: String,
     base_hash: Option<String>,
     in_vault: Option<bool>,
+    edit: Option<u64>,
 ) -> CmdResult<WriteResult> {
-    let r = vault_for(&state, &path, in_vault)?.write_note(&path, &content, base_hash.as_deref())?;
+    let v = vault_for(&state, &path, in_vault)?;
+    #[cfg(windows)]
+    state.held.lock().saving(&path);
+    let r = v.write_note(&path, &content, base_hash.as_deref());
+    #[cfg(windows)]
+    state.held.lock().saved(&path, &v, base_hash.as_deref(), edit, r.as_ref().ok().map(|r| r.hash.as_str()));
+    #[cfg(not(windows))]
+    let _ = edit;
+    let r = r?;
     emit(&app, &r.changes);
     Ok(r)
 }
@@ -269,8 +283,17 @@ pub async fn recreate_note(
     state: State<'_, AppState>,
     path: String,
     content: String,
+    edit: Option<u64>,
 ) -> CmdResult<WriteResult> {
-    let r = vault(&state)?.recreate_note(&path, &content)?;
+    let v = vault(&state)?;
+    #[cfg(windows)]
+    state.held.lock().saving(&path);
+    let r = v.recreate_note(&path, &content);
+    #[cfg(windows)]
+    state.held.lock().saved(&path, &v, None, edit, r.as_ref().ok().map(|r| r.hash.as_str()));
+    #[cfg(not(windows))]
+    let _ = edit;
+    let r = r?;
     emit(&app, &r.changes);
     Ok(r)
 }
@@ -324,6 +347,8 @@ pub async fn rename_entry(
         Some(s) => s.rename(&v, &from, &to)?,
         None => v.rename(&from, &to)?,
     };
+    #[cfg(windows)]
+    state.held.lock().renamed(&from, &to);
     emit(&app, &c);
     Ok(c)
 }
@@ -331,6 +356,8 @@ pub async fn rename_entry(
 #[tauri::command]
 pub async fn delete_entry(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdResult<Vec<Change>> {
     let c = vault(&state)?.delete(&path)?;
+    #[cfg(windows)]
+    state.held.lock().deleted(&path);
     emit(&app, &c);
     Ok(c)
 }
@@ -390,7 +417,12 @@ pub async fn read_config(state: State<'_, AppState>, name: String) -> CmdResult<
 
 #[tauri::command]
 pub async fn write_config(state: State<'_, AppState>, name: String, content: String) -> CmdResult<()> {
-    vault(&state)?.write_config(&name, &content)
+    vault(&state)?.write_config(&name, &content)?;
+    #[cfg(windows)]
+    if name == "settings.json" {
+        state.held.lock().settings_written();
+    }
+    Ok(())
 }
 
 /// File names in a `.cairn/` subfolder (e.g. "snippets").

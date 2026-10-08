@@ -32,10 +32,11 @@ pub fn starts_menu_mode(msg: u32, wparam: usize) -> bool {
 }
 
 #[cfg(windows)]
-pub use win::install;
+pub use win::{hold_menu_keys, install};
 
 #[cfg(windows)]
 mod win {
+    use std::cell::Cell;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -56,6 +57,20 @@ mod win {
 
     /// Our subclass of the windows.
     const SUBCLASS_ID: usize = 0x4d4d;
+
+    thread_local! {
+        /// Set while the end of the session waits for the page: a menu loop
+        /// started then would run inside that wait and outlast it. The
+        /// windows and that wait are on the main thread.
+        static HOLD: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Holds back the keys that start keyboard menu mode (`on`), or lets
+    /// them through again, for the windows of this thread. Their sender is
+    /// let go either way.
+    pub fn hold_menu_keys(on: bool) {
+        HOLD.set(on);
+    }
 
     /// Answers menu keys sent to `windows` (the Tauri window and the web
     /// view's parent) from another thread before menu mode starts. Call it
@@ -79,6 +94,10 @@ mod win {
         if starts_menu_mode(msg, wparam.0) {
             // A panic must not leave a window procedure: the process would abort.
             let _ = catch_unwind(AssertUnwindSafe(release_sender));
+            if HOLD.get() {
+                log::info!("menu keys: held back while Cairn saves at the end of the session");
+                return LRESULT(0);
+            }
         }
         if msg == WM_NCDESTROY {
             let _removed = unsafe { RemoveWindowSubclass(hwnd, Some(subclass_proc), id) };
@@ -126,7 +145,7 @@ mod win {
         };
         use windows::core::{PCWSTR, w};
 
-        use super::install;
+        use super::{hold_menu_keys, install};
         use super::super::{SC_KEYMENU, WM_SYSCHAR};
 
         /// How often `release_sender` replied.
@@ -326,6 +345,21 @@ mod win {
             unsafe { SendMessageW(w.top, WM_SYSCOMMAND, Some(WPARAM(SC_KEYMENU)), Some(LPARAM(0))) };
             assert_eq!(take_log(), ["menu loop for 0xf020", "menu loop for 0xf100"]);
             assert_eq!(REPLIES.load(Ordering::SeqCst), 0);
+        }
+
+        #[test]
+        fn menu_keys_are_held_back_while_cairn_saves() {
+            let _serial = SERIAL.lock();
+            let w = stand_ins();
+            install(&[w.top, w.child]);
+            hold_menu_keys(true);
+            let took = send(w.top, WM_SYSCOMMAND, SC_KEYMENU, 0);
+            let took_space = send(w.child, WM_SYSCHAR, ALT_SPACE.0, ALT_SPACE.1);
+            hold_menu_keys(false);
+            assert!(released(took) && released(took_space), "the sender waited {took:?}, {took_space:?}");
+            // No menu loop started, and the senders were let go.
+            assert_eq!(take_log(), Vec::<String>::new());
+            assert_eq!(REPLIES.load(Ordering::SeqCst), 2);
         }
 
         #[test]

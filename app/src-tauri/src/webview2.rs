@@ -154,12 +154,19 @@ pub fn process_failed_text(kind: i32, reason: Option<i32>, exit_code: Option<i32
     }
 }
 
+/// Whether a WebView2 process of `kind` that failed took the page with it:
+/// the browser process, or the page's own process. A page that stopped
+/// responding may come back; WebView2 starts the other processes again.
+pub fn page_went_with(kind: i32) -> bool {
+    matches!(kind, 0 | 1)
+}
+
 #[cfg(windows)]
 pub use glue::{attach, parent_window};
 
 #[cfg(windows)]
 mod glue {
-    use super::{KeyPress, browser_key_allowed, is_reload_key, menu_items_to_remove, process_failed_text};
+    use super::{KeyPress, browser_key_allowed, is_reload_key, menu_items_to_remove, page_went_with, process_failed_text};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR, COREWEBVIEW2_KEY_EVENT_KIND,
         COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN,
@@ -174,6 +181,14 @@ mod glue {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT};
     use windows::core::{Interface, PWSTR, Result};
+
+    // The kinds page_went_with names, as WebView2 numbers them.
+    const _: () = {
+        use webview2_com::Microsoft::Web::WebView2::Win32 as wv;
+        assert!(wv::COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED.0 == 0);
+        assert!(wv::COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED.0 == 1);
+        assert!(wv::COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE.0 == 2);
+    };
 
     /// Install the key and menu rules on the web view of `controller`. They
     /// apply at once, also to the page that is loading now.
@@ -221,7 +236,8 @@ mod glue {
     }
 
     /// Logs a WebView2 process that failed: the browser process as an error,
-    /// as the page went with it.
+    /// as the page went with it. The end of the session no longer waits for
+    /// a page that is gone.
     fn on_process_failed(args: &ICoreWebView2ProcessFailedEventArgs) {
         let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
         if unsafe { args.ProcessFailedKind(&mut kind) }.is_err() {
@@ -241,6 +257,9 @@ mod glue {
             log::error!("{text}");
         } else {
             log::warn!("{text}");
+        }
+        if page_went_with(kind.0) {
+            crate::session_end::page_gone();
         }
     }
 
@@ -344,6 +363,14 @@ mod tests {
         assert_eq!(process_failed_text(2, Some(1), None), "WebView2's page's process stopped responding (unresponsive)");
         assert_eq!(process_failed_text(6, None, None), "WebView2's GPU process exited");
         assert_eq!(process_failed_text(42, Some(42), Some(-1)), "WebView2's process exited (for an unknown reason, exit code -1)");
+    }
+
+    #[test]
+    fn the_page_goes_with_the_browser_process_or_its_own() {
+        // COREWEBVIEW2_PROCESS_FAILED_KIND: browser, render, render unresponsive, frame,
+        // utility, sandbox helper, GPU, plugin, plugin broker, unknown.
+        let went: Vec<i32> = (0..=9).filter(|&k| page_went_with(k)).collect();
+        assert_eq!(went, [0, 1]);
     }
 
     #[test]

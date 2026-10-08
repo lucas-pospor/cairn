@@ -3,6 +3,8 @@
 
 mod commands;
 mod config;
+#[cfg(any(windows, test))]
+mod held;
 mod protocol;
 #[cfg(target_os = "android")]
 mod android;
@@ -10,6 +12,8 @@ mod android;
 mod menu_mode;
 #[cfg(any(windows, test))]
 mod session_end;
+#[cfg(windows)]
+mod session_end_ui;
 #[cfg(any(target_os = "android", test))]
 mod listing;
 #[cfg(any(target_os = "android", test))]
@@ -33,6 +37,9 @@ pub struct AppState {
     pub watcher: Mutex<Option<watcher::Watcher>>,
     pub config: Mutex<config::AppConfig>,
     pub sync: Mutex<Option<Arc<sync::SyncManager>>>,
+    /// What the page has not saved, for the end of the session on Windows.
+    #[cfg(windows)]
+    pub held: Mutex<held::Held>,
 }
 
 /// Process start, for start-up timing.
@@ -132,11 +139,15 @@ pub fn run() {
                 watcher: Mutex::new(None),
                 config: Mutex::new(cfg),
                 sync: Mutex::new(None),
+                #[cfg(windows)]
+                held: Mutex::new(held::Held::default()),
             });
             #[cfg(all(desktop, unix))]
             close_on_sigterm(app.handle().clone());
+            // Saves, or keeps Windows from ending the session, when it signs
+            // out, shuts down or an installer closes Cairn (session_end.rs).
             #[cfg(windows)]
-            session_end::ask_cairn_first();
+            session_end_ui::install(app);
             // WebView2 keeps its zoom keys and the editing items of its
             // right-click menu, and leaves the other browser keys to the page.
             // Menu keys it hands on to the app's windows no longer hold it up
@@ -214,6 +225,10 @@ pub fn run() {
             commands::platform,
             commands::app_vaults,
             commands::pick_folder,
+            #[cfg(windows)]
+            session_end_ui::session_hold,
+            #[cfg(windows)]
+            session_end_ui::session_moved,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Cairn");
