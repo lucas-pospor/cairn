@@ -531,6 +531,31 @@ test("FINDING-217: 'Sync now' with sync not set up opens Settings on the Sync pa
   assert.equal(st.heading, "Sync", `Settings opened on "${st.heading}" with toasts ${JSON.stringify(st.toasts)}`);
 });
 
+// Found in a hands-on Windows test, and the same on Linux: the field filled
+// itself in again as soon as Backspace emptied it.
+test("the sync form keeps the device name and notebook name empty once the user deletes them", async () => {
+  await app.reset();
+  await app.exec(`document.querySelector('[data-testid=open-settings]').click(); return 1`);
+  await app.s.click(await app.s.findWait("[data-testid=settings-sync]"));
+  // Both start filled: the computer's name and the notebook's.
+  await app.s.waitFor(
+    `return !!document.querySelector('[data-testid=sync-device]')?.value && !!document.querySelector('[data-testid=sync-vault]')?.value`,
+    { message: "the sync form is filled" },
+  );
+  const backspace = "\uE003";
+  for (const id of ["sync-device", "sync-vault"]) {
+    await app.s.click(await app.s.findWait(`[data-testid=${id}]`));
+    await app.chord(K.ctrl, "a");
+    await app.keys(backspace);
+  }
+  await sleep(800);
+  const left = await app.exec(
+    `return ["sync-device", "sync-vault"].map((id) => document.querySelector('[data-testid=' + id + ']').value)`,
+  );
+  await closeSettings();
+  assert.deepEqual(left, ["", ""]);
+});
+
 test("FINDING-218: an error toast stays while hovered and has a close button that removes it", async () => {
   await app.reset();
   await addFile("Toast me.md", "toast\n");

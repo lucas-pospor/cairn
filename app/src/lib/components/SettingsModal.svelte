@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { app, type SettingsSection } from "../app.svelte";
   import { settings, DEFAULT_SETTINGS, type Settings } from "../settings.svelte";
   import { FONT_DIR, FONT_EXTENSIONS, fontBytesProblem, fontFailure, fontNameProblem, fontSizeProblem, loadFontFace } from "../textFont";
@@ -332,9 +332,11 @@
     return new Date(ms).toLocaleString();
   }
 
+  // Runs when the section changes. What the two read is untracked: the sync
+  // form reads its own fields, and an emptied field must stay empty.
   $effect(() => {
-    if (section === "sync") void prepareSyncForm();
-    if (section === "plugins") void refreshPlugins();
+    if (section === "sync") untrack(() => void prepareSyncForm());
+    if (section === "plugins") untrack(() => void refreshPlugins());
   });
 
   // ----- focus -----
