@@ -55,6 +55,7 @@ async function cardText(path: string): Promise<string> {
   if (check === "type") return `${kind}. Cairn does not open this type of file in another app.`;
   if (check === "linktype") return `${kind}. Cairn does not open it in another app, because it links to a type of file that Cairn does not open.`;
   if (check === "executable") return `${kind}. Cairn does not open it in another app, because it is marked as executable.`;
+  if (check === "path") return `${kind}. Windows apps cannot open it at this path.`;
   return `${kind}.`;
 }
 

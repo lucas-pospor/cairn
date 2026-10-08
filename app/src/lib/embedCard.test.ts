@@ -37,6 +37,7 @@ vi.mock("./backend", () => ({
       if (path === "gone.pdf") throw new Error("not found");
       if (path === "run.log") return "executable";
       if (path === "looks.pdf") return "linktype";
+      if (path === "deep.pdf") return "path";
       return path.endsWith(".pdf") || path.endsWith(".log") ? "opens" : "type";
     },
   },
@@ -73,6 +74,10 @@ describe("the card of an embedded file", () => {
   it("on the desktop says that Cairn does not open a type it refuses, or a file with no extension", async () => {
     expect(cardText(await embed("tool.exe"))).toBe("EXE file. Cairn does not open this type of file in another app.");
     expect(cardText(await embed("archive"))).toBe("File. Cairn does not open this type of file in another app.");
+  });
+
+  it("on Windows says that apps cannot open a file at a path too long for them", async () => {
+    expect(cardText(await embed("deep.pdf"))).toBe("PDF file. Windows apps cannot open it at this path.");
   });
 
   it("on the desktop says that Cairn does not open a link to a type it refuses, though the link's own type is allowed", async () => {

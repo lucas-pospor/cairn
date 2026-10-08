@@ -564,7 +564,8 @@ fn os_path(state: &State<'_, AppState>, path: &str) -> CmdResult<PathBuf> {
 /// name after the share ends in a dot or a space, is a device name or has a
 /// character Windows refuses (Windows would change or reject those without
 /// the prefix), and the path is shorter than the shell's 260 characters.
-/// Otherwise the path stays as it is, and the shell's error says why.
+/// Otherwise the path stays as it is: Reveal fails with the shell's error,
+/// and Open refuses it first (`open_refusal`).
 fn shell_path(p: &std::path::Path) -> PathBuf {
     let p = dunce::simplified(p);
     if let Some(rest) = p.to_str().and_then(|s| s.strip_prefix(r"\\?\UNC\")) {
@@ -578,6 +579,16 @@ fn shell_path(p: &std::path::Path) -> PathBuf {
         }
     }
     p.to_path_buf()
+}
+
+/// Why Open does not hand `shell`, a `shell_path`, to another app: it kept
+/// the `\\?\` prefix, which the shell and most apps cannot take. The shell
+/// starts the app anyway, and the app then fails on its own (Notepad says
+/// "The system cannot find the path specified."), so Cairn refuses first.
+fn open_refusal(shell: &std::path::Path) -> Option<&'static str> {
+    shell.as_os_str().as_encoded_bytes().starts_with(br"\\?\").then_some(
+        "Windows apps cannot open this path. It may be too long, or have a name that Windows apps cannot handle.",
+    )
 }
 
 /// What the opener was asked to do with a file.
@@ -667,6 +678,8 @@ pub enum OpenCheck {
     Executable,
     /// Refused: not a file.
     NotFile,
+    /// Refused: Windows apps cannot take its path (`open_refusal`).
+    Path,
 }
 
 /// The checks of `open_externally`, in its order, on the file at `p`.
@@ -682,6 +695,9 @@ fn open_check(p: &std::path::Path) -> std::io::Result<OpenCheck> {
     }
     if (kind == OpenKind::Text || real_kind == OpenKind::Text) && is_executable(&meta) {
         return Ok(OpenCheck::Executable);
+    }
+    if open_refusal(&shell_path(p)).is_some() {
+        return Ok(OpenCheck::Path);
     }
     Ok(OpenCheck::Opens)
 }
@@ -699,6 +715,7 @@ pub async fn open_externally(state: State<'_, AppState>, path: String) -> CmdRes
         ),
         OpenCheck::Executable => Some("it is marked as executable. Use Reveal in file manager to open it yourself."),
         OpenCheck::NotFile => Some("it is not a file."),
+        OpenCheck::Path => open_refusal(&shell_path(&p)),
     };
     if let Some(why) = refusal {
         return Err(CoreError::Io(why.into()));
@@ -990,6 +1007,42 @@ mod tests {
         assert_eq!(shell(r"\\?\C:\Users\u\notes\a.md"), PathBuf::from(r"C:\Users\u\notes\a.md"));
         let long = format!(r"\\?\C:\Users\{}a.md", format!(r"{}\", "x".repeat(60)).repeat(5));
         assert_eq!(shell(&long), PathBuf::from(&long));
+    }
+
+    #[test]
+    fn open_refuses_paths_the_shell_cannot_take() {
+        let refused = |p: &str| open_refusal(&shell_path(Path::new(p))).is_some();
+        let folders = |n: usize| format!(r"{}\", "x".repeat(50)).repeat(n);
+        // A share path too long for the shell, or with a name Windows would
+        // change, keeps its prefix and is refused.
+        assert!(refused(&format!(r"\\?\UNC\server\share\{}t.txt", folders(5))));
+        assert!(refused(r"\\?\UNC\s\sh\aux.txt"));
+        assert!(refused(r"\\?\UNC\s\sh\a \t.txt"));
+        // Paths the shell takes are opened.
+        assert!(!refused(&format!(r"\\?\UNC\server\share\{}t.txt", folders(4))));
+        assert!(!refused(r"\\server\share\t.txt"));
+        assert!(!refused("/home/u/notes/t.txt"));
+        let why = open_refusal(Path::new(r"\\?\UNC\s\sh\aux.txt")).unwrap();
+        assert!(why.starts_with("Windows apps cannot open this path."), "{why}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn open_check_refuses_a_file_at_a_path_too_long_for_the_shell() {
+        let d = std::fs::canonicalize(temp("long-open")).unwrap();
+        let deep = d.join("x".repeat(100)).join("y".repeat(100)).join("z".repeat(100));
+        std::fs::create_dir_all(&deep).unwrap();
+        assert_eq!(open_check(&file(&deep, "t.txt")).unwrap(), OpenCheck::Path);
+        assert_eq!(open_check(&file(&d, "t.txt")).unwrap(), OpenCheck::Opens);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn open_refuses_drive_paths_too_long_for_the_shell() {
+        let refused = |p: &str| open_refusal(&shell_path(Path::new(p))).is_some();
+        assert!(!refused(r"\\?\C:\Users\u\notes\t.txt"));
+        assert!(refused(&format!(r"\\?\C:\Users\{}t.txt", format!(r"{}\", "x".repeat(60)).repeat(5))));
     }
 
     #[test]
