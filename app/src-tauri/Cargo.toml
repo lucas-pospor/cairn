@@ -37,13 +37,15 @@ notify-debouncer-full = "0.7"
 [target.'cfg(all(unix, not(any(target_os = "android", target_os = "ios"))))'.dependencies]
 tokio = { version = "1", features = ["signal"] }
 
-# WebView2's key and right-click menu handlers (webview2.rs) and the menu
-# keys it hands on (menu_mode.rs). These must be the versions Tauri uses:
-# with_webview hands over webview2-com's types.
+# WebView2's key and right-click menu handlers (webview2.rs), the menu keys
+# it hands on (menu_mode.rs) and the end of the session (session_end.rs).
+# These must be the versions Tauri uses: with_webview hands over
+# webview2-com's types.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
+    "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",

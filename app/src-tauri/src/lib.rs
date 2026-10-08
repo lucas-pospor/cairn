@@ -8,6 +8,8 @@ mod protocol;
 mod android;
 #[cfg(any(windows, test))]
 mod menu_mode;
+#[cfg(any(windows, test))]
+mod session_end;
 #[cfg(any(target_os = "android", test))]
 mod listing;
 #[cfg(any(target_os = "android", test))]
@@ -133,6 +135,8 @@ pub fn run() {
             });
             #[cfg(all(desktop, unix))]
             close_on_sigterm(app.handle().clone());
+            #[cfg(windows)]
+            session_end::ask_cairn_first();
             // WebView2 keeps its zoom keys and the editing items of its
             // right-click menu, and leaves the other browser keys to the page.
             // Menu keys it hands on to the app's windows no longer hold it up
