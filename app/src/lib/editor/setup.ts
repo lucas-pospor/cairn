@@ -14,8 +14,9 @@ import {
   highlightSpecialChars,
   rectangularSelection,
   placeholder,
+  type KeyBinding,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory, redo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { livePreview, livePreviewCompartment } from "./livePreview";
@@ -370,6 +371,13 @@ export function livePreviewExtension(hooks: EditorHooks): Extension {
   });
 }
 
+/**
+ * Ctrl+Shift+Z redoes on Windows too, as it does on Linux and in Cairn's
+ * text boxes. CodeMirror binds it on Linux only and Ctrl+Y elsewhere, and
+ * Settings already lists the key as Redo's.
+ */
+export const redoKeymap: readonly KeyBinding[] = [{ win: "Mod-Shift-z", run: redo, preventDefault: true }];
+
 export function noteExtensions(hooks: EditorHooks): Extension[] {
   return [
     highlightSpecialChars(),
@@ -388,7 +396,7 @@ export function noteExtensions(hooks: EditorHooks): Extension[] {
     livePreviewCompartment.of([]),
     syntaxHighlighting(highlight),
     autocompletion({ override: [wikilinkCompletion(hooks)], icons: false, activateOnTyping: true }),
-    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...redoKeymap, ...completionKeymap, indentWithTab]),
     wikilinkDecorations(hooks),
     codeBlockLines(),
     linkClicks(hooks),
