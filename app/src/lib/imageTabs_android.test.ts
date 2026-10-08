@@ -67,14 +67,14 @@ describe("opening files on Android", () => {
   });
 
   it("keeps the toast for other attachments and never calls the default app", async () => {
+    const toast = "doc.pdf is an attachment. On Android, Cairn cannot open attachments in other apps yet.";
     await app.openNote("doc.pdf");
+    expect(app.toasts.map((t) => t.message)).toEqual([toast]);
+    app.toasts = [];
     await app.openLink("doc.pdf", null);
+    expect(app.toasts.map((t) => t.message)).toEqual([toast]);
     expect(app.tabs).toEqual([]);
     expect(calls).toEqual([]);
-    expect(app.toasts.map((t) => t.message)).toEqual([
-      "doc.pdf is an attachment. On Android, Cairn cannot open attachments in other apps yet.",
-      "doc.pdf is an attachment. On Android, Cairn cannot open attachments in other apps yet.",
-    ]);
   });
 
   it("opens notes as before", async () => {

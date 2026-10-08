@@ -1439,8 +1439,19 @@ class App {
     });
   }
 
-  /** Show a toast for `ms` (0: until the returned function is called). */
+  /**
+   * Show a toast for `ms` (0: until the returned function is called). The
+   * same timed message again while it is up, such as a save that keeps
+   * failing, shows no second toast: the one that is up starts its time
+   * again, unless it is held. Toasts that stay until they are closed are
+   * never merged, as each has its own caller that closes it.
+   */
   toast(message: string, kind: Toast["kind"] = "info", ms = kind === "error" ? 7000 : 3500) {
+    const same = ms > 0 ? this.toasts.find((t) => t.ms > 0 && t.kind === kind && t.message === message) : undefined;
+    if (same) {
+      if (this.toastTimers.has(same.id)) this.releaseToast(same.id);
+      return () => this.dismissToast(same.id);
+    }
     const id = ++this.toastId;
     this.toasts.push({ id, message, kind, ms });
     if (this.toasts.length > MAX_TOASTS) {
