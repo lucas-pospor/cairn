@@ -4,7 +4,7 @@ A notebook is an ordinary folder of Markdown files. Cairn reads and writes those
 
 ## The file tree
 
-The file tree has expand/collapse, new note, new folder, inline rename (double-click or F2), delete (Delete key or context menu) and drag-and-drop moves. On the desktop, a deleted file goes to the system trash; on Android, it goes to a `.trash` folder in the notebook folder. Large folders stay fast because Cairn draws only the visible rows. The tree also works from the keyboard: the arrow keys move through it, Enter opens a note or an image, and Shift+F10 or the Menu key opens a row's menu.
+The file tree has expand/collapse, new note, new folder, inline rename (double-click or F2), delete (Delete key or context menu) and drag-and-drop moves. On the desktop, a deleted file goes to the system trash; on Android, it goes to a `.trash` folder in the notebook folder. On Windows, what the Recycle Bin cannot take, such as a file on a network share or a USB stick, or one larger than the Recycle Bin takes, goes to the notebook's `.trash` folder instead. File Explorer shows that folder, but the file tree does not (see [Windows](windows.md#deleted-notes)). Large folders stay fast because Cairn draws only the visible rows. The tree also works from the keyboard: the arrow keys move through it, Enter opens a note or an image, and Shift+F10 or the Menu key opens a row's menu.
 
 On the desktop, changes made outside Cairn (another editor, `git pull`, a file manager) show up in the tree and in open notes within about a second. On Android, Cairn looks for them when you switch back to it and every 20 seconds while it is on screen. If a note, or a folder it is in, is renamed outside Cairn, the note stays open in its tab.
 

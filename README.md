@@ -76,7 +76,7 @@ Type-check the UI:
 cd app && npm run check
 ```
 
-End-to-end tests drive the real app through WebDriver, so they need `tauri-driver` (the tests look for it in `~/.cargo/bin`, or set `TAURI_DRIVER`) and, on Linux, `WebKitWebDriver` (shipped with WebKitGTK on most distributions; Debian and Ubuntu package it as `webkit2gtk-driver`). WebDriver testing is not available on macOS, and the desktop end-to-end tests have been run only on Linux.
+End-to-end tests drive the real app through WebDriver, so they need `tauri-driver` (the tests look for it in `~/.cargo/bin`, or set `TAURI_DRIVER`) and, on Linux, `WebKitWebDriver` (shipped with WebKitGTK on most distributions; Debian and Ubuntu package it as `webkit2gtk-driver`). WebDriver testing is not available on macOS, and the desktop end-to-end tests are run on Linux. On Windows, a run uses your own Cairn settings in `%APPDATA%\app.cairn.notes`: its test notebooks join your recent notebooks and are gone afterwards, so the next normal start opens the Welcome screen.
 
 ```bash
 cargo install tauri-driver --locked

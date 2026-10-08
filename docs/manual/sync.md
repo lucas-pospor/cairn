@@ -6,7 +6,7 @@ Sync does not copy files or folders whose names start with a dot. So the `.cairn
 
 ## What the server can see
 
-The server stores notes and file names only in encrypted form. Each device encrypts them with a random notebook key that only your passphrase unlocks, so the server never sees the content or the name of any file. The server does see the notebook name, the name of each device (set in the setup form, where it starts as the host name on Linux, usually "windows" on Windows, or "Android" on a phone), how many files the notebook has, which changes belong to the same file, and the size, upload time and kind of each change.
+The server stores notes and file names only in encrypted form. Each device encrypts them with a random notebook key that only your passphrase unlocks, so the server never sees the content or the name of any file. The server does see the notebook name, the name of each device (set in the setup form, where it starts as the host name on Linux, the computer's name on Windows, or "Android" on a phone), how many files the notebook has, which changes belong to the same file, and the size, upload time and kind of each change.
 
 ## Run a server
 
@@ -68,7 +68,7 @@ If one device renames a note, or the folder it is in, and another deletes the no
 
 ## Renames, deleted files and version history
 
-A note renamed or moved in Cairn keeps its version history even when you edit it before the next sync. A note renamed outside Cairn and edited before the next sync counts as deleted and new: its history starts again, and the other devices move the old note to their trash. Deleted files go to the trash (`.trash/` in the notebook folder on Android).
+A note renamed or moved in Cairn keeps its version history even when you edit it before the next sync. A note renamed outside Cairn and edited before the next sync counts as deleted and new: its history starts again, and the other devices move the old note to their trash. Deleted files go to the trash (`.trash/` in the notebook folder on Android). On Windows, what the Recycle Bin cannot take, such as a file on a network share or a USB stick, goes to `.trash/` in the notebook folder too. If Windows still deletes a file for good instead of moving it to the Recycle Bin, Settings, then Sync, lists it under "Files not synced" with an error that says so, until the next sync.
 
 With sync on, "Version history" in a file's menu in the file tree ("Show version history of current note" in the command palette) shows earlier versions of a note and can restore them. Restoring syncs first, so the text it replaces stays in the history. If that sync fails, Cairn restores nothing.
 
@@ -78,7 +78,7 @@ A file that cannot sync does not hold up the others. The status bar then says "S
 
 - too large, refused or stalled on upload;
 - unreadable here, or not decryptable;
-- not writable on this device, for example a name that Windows does not allow, or a name that the phone's shared storage does not allow or that differs only in case from another file there;
+- not writable on this device, for example a name that Windows does not allow, or a name that the phone's shared storage does not allow, that differs only in case from another file there, or that is in a folder the phone has under another spelling;
 - a change the server no longer has;
 - a name with a backslash;
 - a change to a file that this device reaches under two names through a symlink (see [Files under two names](notebooks-and-files.md#files-under-two-names)), or that may be another name of a file in a folder this device cannot read now;

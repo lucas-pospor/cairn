@@ -12,7 +12,7 @@ Cairn is a local-first Markdown notes app for Linux, Windows and Android. A note
 - [Core plugins](core-plugins.md): Templates, Daily notes, Unique note creator, Random note.
 - [Plugins](plugins.md): write a plugin, its API, turning it on.
 - [Android](android.md): install the APK, notebooks on a phone, sync on the local network.
-- [Windows](windows.md): the installer, file names.
+- [Windows](windows.md): the installer, app data, deleted notes, the log, file names.
 - [Building from source](building.md): build the desktop app and the Android app.
 - [Known limits](known-limits.md): what Cairn does not do yet, or does differently.
 - [Release notes](../RELEASE_NOTES.md): what changed in each version.

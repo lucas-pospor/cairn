@@ -10,7 +10,22 @@ The installer installs Cairn for your user account, without administrator rights
 
 ## App data and uninstalling
 
-Cairn keeps its own files (the recent notebooks, plugin approvals and sync state) in `%APPDATA%\app.cairn.notes`, and the data of its window, such as each notebook's open tabs, in `%LOCALAPPDATA%\app.cairn.notes`. Uninstalling leaves both unless you tick "Delete the application data", and never touches your notebooks.
+Cairn keeps its own files (the recent notebooks, plugin approvals and sync state) in `%APPDATA%\app.cairn.notes`, and the data of its window, such as each notebook's open tabs, in `%LOCALAPPDATA%\app.cairn.notes`. Uninstalling leaves both unless you tick "Delete the application data", and never touches your notebooks. It also leaves the registry key `HKCU\Software\cairn\Cairn`, where the installer keeps the install folder, unless you tick that box.
+
+## Deleted notes
+
+A deleted note, folder or file goes to the Recycle Bin. Where the Recycle Bin cannot take it, as on a network share, a mapped drive or a USB stick, or when it is larger than the Recycle Bin of its drive takes, it goes to the notebook's `.trash` folder instead, which File Explorer shows but Cairn's file tree does not. The [known limits](known-limits.md#windows) give the details.
+
+## Cairn's log
+
+Cairn writes its log to standard error. The installed `cairn.exe` is a Windows program without a console, so its log goes nowhere unless you send it to a file. To keep it, close Cairn and start it from PowerShell:
+
+```powershell
+$env:RUST_LOG = "info"
+Start-Process "$env:LOCALAPPDATA\Cairn\cairn.exe" -RedirectStandardError "$env:USERPROFILE\cairn-log.txt"
+```
+
+Cairn started this way gets the `RUST_LOG` setting of that PowerShell window, and writes its log to `cairn-log.txt` in your user folder until it closes. `info` is the level Cairn uses when `RUST_LOG` is not set; `debug` writes more. If you installed Cairn in another folder, use that folder's `cairn.exe`.
 
 ## File names
 
