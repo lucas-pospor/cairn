@@ -111,8 +111,8 @@ pub struct Hold {
     pub notes: Vec<serde_json::Value>,
 }
 
-/// One entry of a [`Hold`]. A missing `text` means the text the backend has
-/// for the same edit number; `null` means none.
+/// One entry of a [`Hold`]. A missing or null `text` means the text the
+/// backend has for the same edit number, if any.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NoteHold {
@@ -122,13 +122,8 @@ struct NoteHold {
     base: Option<String>,
     edit: Option<u64>,
     problem: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    text: Option<Option<String>>,
-}
-
-/// Tells a field set to null (Some(None)) from a missing one (None).
-fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
-    Option::<String>::deserialize(d).map(Some)
+    #[serde(default)]
+    text: Option<String>,
 }
 
 /// What a request did.
@@ -231,8 +226,11 @@ impl Held {
         };
         let text = match n.text {
             _ if problem.is_some() => None,
-            Some(text) => text,
-            // The same text as before, if it is for the same edit.
+            Some(text) => Some(text),
+            // The same text as before, if it is for the same edit: one edit
+            // has one text. The page sends null for a note too large to send
+            // while the user types, also just after its answer at the end of
+            // the session gave the backend that very text.
             None => self.notes.get(&n.path).filter(|e| e.edit == edit).and_then(|e| e.text.clone()),
         };
         let entry = Entry { base, edit, problem, text };
@@ -673,6 +671,32 @@ mod tests {
     }
 
     #[test]
+    fn the_answers_text_stays_when_the_next_request_has_none() {
+        // A note too large to send while the user types: only the page's
+        // answer brings its text, and the page's next request, sent before
+        // the answer's reply came back, says null for the same edit.
+        let nb = Notebook::new("answer-kept");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "text": null }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+        let r = held.lock().hold(
+            Hold {
+                seq: 3,
+                root: Some(nb.root()),
+                round: Some(1),
+                notes: vec![json!({ "path": "A.md", "base": base, "edit": 6, "text": "a\nlate" })],
+                ..Hold::default()
+            },
+            || unreachable!(),
+        );
+        assert!(r.applied);
+        assert!(hold(&held, 4, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "text": null }])).applied);
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nlate");
+    }
+
+    #[test]
     fn a_page_save_that_lands_first_moves_the_base_of_newer_text() {
         let nb = Notebook::new("page-first");
         let held = held_for(&nb);
@@ -764,13 +788,15 @@ mod tests {
         assert!(!hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "text": "old" }])).applied);
         assert!(!hold(&held, 4, "elsewhere", json!([{ "path": "A.md", "release": true }])).applied);
         assert_eq!(held.lock().notes["A.md"].text.as_deref(), Some("new"));
-        // A missing text keeps the text of the same edit, and null drops it.
+        // A missing or null text keeps the text of the same edit, and a newer
+        // edit without text has none.
         hold(&held, 5, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6 }]));
         assert_eq!(held.lock().notes["A.md"].text.as_deref(), Some("new"));
-        hold(&held, 6, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 7 }]));
+        hold(&held, 6, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "text": null }]));
+        assert_eq!(held.lock().notes["A.md"].text.as_deref(), Some("new"));
+        hold(&held, 7, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 7, "text": null }]));
         assert_eq!(held.lock().notes["A.md"].text, None);
-        hold(&held, 7, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 8, "text": "newer" }]));
-        hold(&held, 8, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 8, "text": null }]));
+        hold(&held, 8, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 8 }]));
         assert_eq!(held.lock().notes["A.md"].text, None);
         hold(&held, 9, &nb.root(), json!([{ "path": "A.md", "release": true }]));
         assert!(held.lock().nothing_held());

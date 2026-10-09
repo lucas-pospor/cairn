@@ -17,8 +17,8 @@ export interface HeldNote {
   problem: Problem;
   /**
    * The note's text as a save writes it; null when the page does not send
-   * it (too large, or not well formed). Left out: the text the backend has
-   * for the same edit number. Never sent with a problem.
+   * it (too large, or not well formed). Null or left out: the backend keeps
+   * the text it has for the same edit number. Never sent with a problem.
    */
   text?: string | null;
 }
