@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+
+- Shows Cairn's icon on the Windows installer and uninstaller, and the Cairn logo on the installer's pages.
+
 ## 1.4.0 (2026-10-08)
 
 ### Manual and website

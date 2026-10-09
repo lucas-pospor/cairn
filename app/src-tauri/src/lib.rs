@@ -217,4 +217,24 @@ mod tests {
         assert!(main.center);
         assert!(matches!(main.prevent_overflow, Some(PreventOverflowConfig::Enable(true))));
     }
+
+    /// Without these keys the Windows installer and uninstaller show NSIS's
+    /// own icon and plain pages. NSIS takes only BMP images; icons/logo.py
+    /// draws them at the sizes it expects.
+    #[test]
+    fn the_windows_installer_shows_the_cairn_icon_and_images() {
+        use std::path::Path;
+        use tauri::utils::config::Config;
+        let config: Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let nsis = config.bundle.windows.nsis.unwrap();
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(nsis.installer_icon.as_deref(), Some(Path::new("icons/icon.ico")));
+        assert_eq!(nsis.uninstaller_icon.as_deref(), Some(Path::new("icons/icon.ico")));
+        for (image, width, height) in [(nsis.header_image, 150, 57), (nsis.sidebar_image, 164, 314)] {
+            let bmp = std::fs::read(dir.join(image.unwrap())).unwrap();
+            assert_eq!(&bmp[..2], b"BM");
+            let size = |at: usize| i32::from_le_bytes(bmp[at..at + 4].try_into().unwrap());
+            assert_eq!((size(18), size(22)), (width, height));
+        }
+    }
 }

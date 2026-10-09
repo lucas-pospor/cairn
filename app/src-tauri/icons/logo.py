@@ -3,11 +3,14 @@
   python3 logo.py          writes icon.svg (app icon: terracotta on charcoal), icon-alt.svg (secondary:
                            cream on terracotta) and logo-mark.svg (transparent mark)
   python3 logo.py --build  also regenerates every platform icon: runs `tauri icon` on icon.svg, then
-                           redoes iOS full-bleed (iOS masks the corners itself) and the Android
-                           adaptive icon (charcoal background + mark inside the 66dp safe zone).
+                           redoes iOS full-bleed (iOS masks the corners itself), the Android
+                           adaptive icon (charcoal background + mark inside the 66dp safe zone) and
+                           the Windows installer images
+  python3 logo.py --installer  only redoes the Windows installer images: nsis-header.bmp (top of
+                           each page) and nsis-sidebar.bmp (welcome and finish pages)
 Needs rsvg-convert and the app's node_modules.
 """
-import os, shutil, subprocess, tempfile
+import os, shutil, subprocess, tempfile, struct, zlib
 import math, sys, json
 
 def blob(cx, cy, a, b, rot=0, p=2.6, harm=(), n=36, squash_bottom=0.0):
@@ -105,6 +108,63 @@ def render(svg_text, px, out):
     subprocess.run(["rsvg-convert", "-w", str(px), "-h", str(px), f.name, "-o", out], check=True)
     os.unlink(f.name)
 
+def png_rgb(png):
+    """Pixel rows of an 8-bit RGB or RGBA PNG (what rsvg-convert writes), as RGB."""
+    data = open(png, "rb").read()
+    pos, idat = 8, b""
+    while pos < len(data):
+        n, kind = struct.unpack_from(">I4s", data, pos)
+        body = data[pos+8:pos+8+n]
+        if kind == b"IHDR":
+            w, h, depth, ctype = struct.unpack_from(">IIBB", body)
+            assert depth == 8 and ctype in (2, 6), "expected an 8-bit RGB or RGBA PNG"
+            px = 4 if ctype == 6 else 3
+        elif kind == b"IDAT":
+            idat += body
+        pos += 12 + n
+    raw, stride, rows = zlib.decompress(idat), w*px, []
+    prev = bytearray(stride)
+    for y in range(h):
+        f, line = raw[y*(stride+1)], bytearray(raw[y*(stride+1)+1:(y+1)*(stride+1)])
+        for i in range(stride):
+            a = line[i-px] if i >= px else 0
+            b = prev[i]
+            c = prev[i-px] if i >= px else 0
+            if f == 1: line[i] = (line[i] + a) & 255
+            elif f == 2: line[i] = (line[i] + b) & 255
+            elif f == 3: line[i] = (line[i] + (a + b)//2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(b-c), abs(a-c), abs(a+b-2*c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(bytes(v for i in range(0, stride, px) for v in line[i:i+3]))
+        prev = line
+    return w, h, rows
+
+def write_bmp(png, out):
+    """NSIS takes only BMP images: 24-bit, rows bottom-up, each padded to 4 bytes."""
+    w, h, rows = png_rgb(png)
+    pad = b"\0" * (-w*3 % 4)
+    pixels = b"".join(bytes(row[i+2-j] for i in range(0, w*3, 3) for j in range(3)) + pad for row in reversed(rows))
+    head = struct.pack("<2sIHHI", b"BM", 54 + len(pixels), 0, 0, 54)
+    info = struct.pack("<IiiHHIIiiII", 40, w, h, 1, 24, 0, len(pixels), 2835, 2835, 0, 0)
+    open(out, "wb").write(head + info + pixels)
+
+def installer():
+    """The mark on the Windows installer's pages: small on white in the header (150x57, which
+    NSIS puts left of the page title), on charcoal in the sidebar of the welcome and finish
+    pages (164x314). The backgrounds are opaque, so the PNG's alpha can be dropped."""
+    mark = svg(BRIGHT_TERRACOTTA)
+    for name, w, h, bg, size, x, y in (("nsis-header.bmp", 150, 57, "#ffffff", 57, 8, 0),
+                                       ("nsis-sidebar.bmp", 164, 314, CHARCOAL, 128, 18, 72)):
+        page = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">'
+                f'<rect width="{w}" height="{h}" fill="{bg}"/>'
+                f'<svg x="{x}" y="{y}" width="{size}" height="{size}"{mark[4:]}</svg>')
+        with tempfile.TemporaryDirectory() as tmp:
+            src, png = os.path.join(tmp, "page.svg"), os.path.join(tmp, "page.png")
+            open(src, "w").write(page)
+            subprocess.run(["rsvg-convert", src, "-o", png], check=True)
+            write_bmp(png, os.path.join(HERE, name))
+
 def build():
     app = os.path.join(HERE, "..", "..")
     with tempfile.TemporaryDirectory() as tmp:
@@ -131,6 +191,7 @@ def build():
         with open(os.path.join(res, "values", "ic_launcher_background.xml"), "w") as f:
             f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
                     f'  <color name="ic_launcher_background">{CHARCOAL}</color>\n</resources>\n')
+    installer()
 
 if __name__ == "__main__":
     open(os.path.join(HERE, "icon.svg"), "w").write(svg(BRIGHT_TERRACOTTA, bg=CHARCOAL, scale=0.88) + "\n")
@@ -138,3 +199,5 @@ if __name__ == "__main__":
     open(os.path.join(HERE, "logo-mark.svg"), "w").write(svg(BRIGHT_TERRACOTTA) + "\n")
     if "--build" in sys.argv:
         build()
+    elif "--installer" in sys.argv:
+        installer()
