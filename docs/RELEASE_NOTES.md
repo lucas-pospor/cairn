@@ -4,6 +4,17 @@
 
 - Shows Cairn's icon on the Windows installer and uninstaller, and the Cairn logo on the installer's pages.
 
+### Fixes
+
+- Saves open notes when Windows signs out, shuts down or restarts, and when an installer closes Cairn. While a note holds edits that cannot be saved, Cairn keeps Windows from signing out, shutting down or restarting and names the note.
+- Keeps saving on Windows after Alt, F10, or Alt+Space and Esc, which left saves waiting until the next key or click.
+- Redoes with Ctrl+Shift+Z in the editor on Windows.
+- Refuses to open a file in another app when Windows apps cannot take its path, with an error instead of an app that fails.
+- Keeps the device name and the notebook name empty in Settings, then Sync, once you delete them.
+- Leaves a right-click in the rename box to the text box, which no longer renames the file to the half-typed name.
+- Shows a repeated message once while it is on screen, instead of stacking copies of it.
+- Lets the installer go on when an older Cairn's install folder is gone.
+
 ## 1.4.0 (2026-10-08)
 
 ### Manual and website
