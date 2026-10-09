@@ -14,8 +14,8 @@
 //! whether the session may end, then gives the outcome with WM_ENDSESSION.
 //! tao, the window library under Tauri, answers yes, and on
 //! WM_ENDSESSION(TRUE) to its hidden "Tao Thread Event Target" window it
-//! ends the process at once. [`install`] subclasses the main window and
-//! tao's window:
+//! ends the process, after a teardown that waits for WebView2. [`install`]
+//! subclasses the main window and tao's window:
 //!
 //! - At a sign-out, shutdown or restart, the main window's question asks
 //!   the page for what it holds once more, for 3 seconds at most, then
@@ -27,8 +27,8 @@
 //!   second, get yes at once. The writing then happens on
 //!   WM_ENDSESSION(TRUE) to tao's window, just before tao ends the process:
 //!   what is held goes to disk first, then the page is asked and its answer
-//!   written. An answer to an earlier question whose wait ran out, already
-//!   on its way, is taken too.
+//!   written. Less than 2 seconds after a question that ran out with no
+//!   answer, Cairn waits for that answer once more instead of asking again.
 //! - When the session goes on (Cairn said no, or WM_ENDSESSION(FALSE)), the
 //!   page hears what the backend wrote and, after a no, what is left
 //!   unsaved.
@@ -190,9 +190,6 @@ mod win {
     const ASK_AGAIN: Duration = Duration::from_secs(2);
     /// How often a wait looks for an answer that came without a message.
     const TICK: Duration = Duration::from_millis(50);
-    /// How long Windows going ahead takes the messages already waiting, for
-    /// an answer on its way.
-    const QUEUED: Duration = Duration::from_millis(250);
     /// Posted to the main window to tell the page, outside the message
     /// that decided (wParam 1 after a no).
     const TELL: u32 = WM_APP + 0x3e5;
@@ -229,6 +226,28 @@ mod win {
         static REFUSED: Cell<bool> = const { Cell::new(false) };
         /// The page heard of a no and holds something unsaved since.
         static TOLD: Cell<bool> = const { Cell::new(false) };
+        /// The round whose wait ran out with no answer, until a newer
+        /// question or its answer.
+        static RAN_OUT: Cell<Option<u64>> = const { Cell::new(None) };
+        /// WM_ENDSESSION(TRUE) is being handled: the session ends.
+        static CLOSING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Marks WM_ENDSESSION(TRUE) as being handled until dropped, also when
+    /// the handling panics.
+    struct Closing;
+
+    impl Closing {
+        fn start() -> Closing {
+            CLOSING.set(true);
+            Closing
+        }
+    }
+
+    impl Drop for Closing {
+        fn drop(&mut self) {
+            CLOSING.set(false);
+        }
     }
 
     /// WebView2 reported the page's process or its browser process gone:
@@ -336,7 +355,11 @@ mod win {
                 None
             }
             TELL if which == MAIN => {
-                if let Some(inst) = installed() {
+                // While the session ends, the page need not hear of a no, and
+                // sync need not start.
+                if !CLOSING.get()
+                    && let Some(inst) = installed()
+                {
                     inst.host.tell(wparam.0 != 0);
                 }
                 Some(LRESULT(0))
@@ -401,20 +424,25 @@ mod win {
         }
     }
 
-    /// WM_ENDSESSION(TRUE) to tao's window, which ends the process when this
-    /// returns: the last chance to save. A forced end can end Cairn sooner,
+    /// WM_ENDSESSION(TRUE) to tao's window, after which tao ends the process
+    /// (its teardown waits for WebView2): the last chance to save. A forced
+    /// end can end Cairn sooner,
     /// so what is held goes to disk before the page is asked; its answer,
     /// with what was typed since the page last handed its text over, is
     /// written after.
     fn closing(flags: u32) {
         let Some(inst) = installed() else { return };
+        let _closing = Closing::start();
         inst.host.write();
         leave_menu_mode();
+        // Whether a question had run out before this message came, not one
+        // that runs out while this message waits.
+        let ran_out = RAN_OUT.get();
         if !ask(&inst) {
-            // An answer to a question whose wait ran out may be on its way
-            // already, as messages waiting in the queue.
-            take_queued();
+            wait_once_more(&inst, ran_out);
         }
+        // Each end waits once more at most.
+        RAN_OUT.set(None);
         let unsaved = inst.host.write();
         set_reason(inst.main, None);
         REFUSED.set(false);
@@ -476,6 +504,7 @@ mod win {
         }
         let round = ROUND.get() + 1;
         ROUND.set(round);
+        RAN_OUT.set(None);
         if !catch_unwind(AssertUnwindSafe(|| inst.host.ask(round))).unwrap_or(false) {
             log::warn!("session end: could not ask the page (round {round})");
             LAST_DONE.set(Some(now));
@@ -505,43 +534,36 @@ mod win {
             LAST_DONE.set(Some(Instant::now()));
             let ms = since.elapsed().as_millis();
             if answered {
+                RAN_OUT.set(None);
                 log::info!("session end: the page answered round {round} after {ms} ms");
             } else if gone() {
                 log::info!("session end: WebView2 reported the page gone {ms} ms into round {round}, so Cairn stops waiting");
             } else {
+                RAN_OUT.set(Some(round));
                 log::info!("session end: no answer from the page to round {round} after {ms} ms");
             }
         }
         answered
     }
 
-    /// Dispatches the sent, posted and paint messages already waiting, but
-    /// no input, for [`QUEUED`] at most, with the menu keys held back.
-    fn take_queued() {
-        if PAGE_GONE.load(Ordering::Relaxed) {
+    /// At WM_ENDSESSION(TRUE) less than [`ASK_AGAIN`] after a question whose
+    /// wait had run out with no answer (`ran_out`, the round, as it was when
+    /// the message came), so that ask() did not ask again: the page may still
+    /// be busy with the keys before it (in a very large paragraph, a second
+    /// or more each), so Cairn waits for that same answer once more, for
+    /// [`ASK`] at most. Not for a question that was still waiting when the
+    /// message came, nor for one that the message asked itself.
+    fn wait_once_more(inst: &Installed, ran_out: Option<u64>) {
+        let round = ROUND.get();
+        if ran_out != Some(round) || PAGE_GONE.load(Ordering::Relaxed) || inst.host.answered(round) {
             return;
         }
-        let outer = ASKING.replace(true);
-        crate::menu_mode::hold_menu_keys(true);
-        let until = Instant::now() + QUEUED;
-        let mut msg = MSG::default();
-        while Instant::now() < until && unsafe { PeekMessageW(&mut msg, None, 0, 0, no_input()) }.as_bool() {
-            if msg.message == WM_QUIT {
-                unsafe { PostQuitMessage(msg.wParam.0 as i32) };
-                break;
-            }
-            // The session ends: the page need not hear of a no, and sync
-            // need not start.
-            if msg.message == TELL {
-                continue;
-            }
-            unsafe {
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-        crate::menu_mode::hold_menu_keys(outer);
-        ASKING.set(outer);
+        // A message inside this wait does not wait once more again.
+        RAN_OUT.set(None);
+        log::info!("session end: waiting once more for the page's answer to round {round}");
+        let until = Instant::now() + ASK;
+        DUE.set(Some((round, until)));
+        wait(inst, round, until);
     }
 
     /// Takes sent, posted, timer and paint messages from the queue, never
@@ -630,7 +652,7 @@ mod win {
     #[cfg(test)]
     pub(super) mod tests {
         use std::sync::Arc;
-        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
         use parking_lot::Mutex;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -725,17 +747,22 @@ mod win {
             answer_after: Option<Duration>,
             answered: Arc<AtomicU64>,
             /// Gets WM_ENDSESSION(TRUE) from another thread 50 ms after the
-            /// question, as when Windows goes ahead while Cairn waits; the
-            /// page then answers 100 ms after the first write.
+            /// question, as when Windows goes ahead while Cairn waits.
             end_to: Option<isize>,
+            /// The page answers 100 ms after the write with this number (1
+            /// for the first) instead of after a time, whatever the threads'
+            /// timing.
+            answer_on_write: Option<usize>,
             /// WebView2 reports the page gone this long after the question.
             gone_after: Option<Duration>,
             /// The answer to round 1 is posted to this window during the
             /// write with this number (1 for the first), as messages on
             /// their way when Windows goes ahead.
             post_answer: Option<(isize, usize)>,
-            writes: Cell<usize>,
-            wrote: Arc<AtomicBool>,
+            /// Cairn's own news of a no is posted to this window during the
+            /// write with this number, as a message still queued then.
+            tell_on_write: Option<(isize, usize)>,
+            writes: Arc<AtomicUsize>,
             /// The first write panics.
             panic_once: Cell<bool>,
             /// Notes the first time the page's answer is checked while
@@ -785,13 +812,11 @@ mod win {
                 if self.answers {
                     let answered = self.answered.clone();
                     let after = self.answer_after.unwrap_or(Duration::from_millis(30));
-                    // With an end during the wait, the answer comes once that end
-                    // has written what is held, whatever the threads' timing.
-                    let wrote = self.end_to.map(|_| self.wrote.clone());
+                    let on_write = self.answer_on_write.map(|n| (n, self.writes.clone()));
                     std::thread::spawn(move || {
-                        if let Some(wrote) = wrote {
+                        if let Some((n, writes)) = on_write {
                             let give_up = Instant::now() + Duration::from_secs(10);
-                            while !wrote.load(Ordering::SeqCst) && Instant::now() < give_up {
+                            while writes.load(Ordering::SeqCst) < n && Instant::now() < give_up {
                                 std::thread::sleep(Duration::from_millis(5));
                             }
                             std::thread::sleep(Duration::from_millis(100));
@@ -811,13 +836,17 @@ mod win {
             }
             fn write(&self) -> Vec<String> {
                 assert!(!self.panics, "a write that panics");
-                self.writes.set(self.writes.get() + 1);
-                self.wrote.store(true, Ordering::SeqCst);
+                let nth = self.writes.fetch_add(1, Ordering::SeqCst) + 1;
                 assert!(!self.panic_once.replace(false), "a first write that panics");
                 if let Some((hwnd, n)) = self.post_answer
-                    && n == self.writes.get()
+                    && n == nth
                 {
                     unsafe { PostMessageW(Some(HWND(hwnd as _)), ANSWER, WPARAM(1), LPARAM(0)) }.unwrap();
+                }
+                if let Some((hwnd, n)) = self.tell_on_write
+                    && n == nth
+                {
+                    unsafe { PostMessageW(Some(HWND(hwnd as _)), TELL, WPARAM(1), LPARAM(0)) }.unwrap();
                 }
                 let answered = self.answered.load(Ordering::SeqCst) != 0 || POSTED_ANSWER.load(Ordering::SeqCst) != 0;
                 note(format!("write{}", if answered { " after the answer" } else { "" }));
@@ -854,11 +883,12 @@ mod win {
         /// Forgets what earlier tests on this thread left.
         fn fresh() {
             take_log();
-            for c in [&ASKING, &REFUSED, &TOLD] {
+            for c in [&ASKING, &REFUSED, &TOLD, &CLOSING] {
                 c.set(false);
             }
             DUE.set(None);
             LAST_DONE.set(None);
+            RAN_OUT.set(None);
             ROUND.set(0);
             POSTED_ANSWER.store(0, Ordering::SeqCst);
             page_heard();
@@ -990,10 +1020,73 @@ mod win {
             assert_eq!(result, 1);
             assert!(took >= ASK && took < ASK + Duration::from_secs(2), "{took:?}");
             assert_eq!(take_log(), ["reason: Saving your notes…", "ask 1", "write", "reason: none"]);
-            // Windows goes ahead: the page is not asked again, and nothing waits again.
+            // Windows goes ahead: the page is not asked again, but Cairn waits once
+            // more for the answer, and no longer.
+            let (_, took) = send(w.target, WM_ENDSESSION, 1, 0);
+            assert!(took >= ASK && took < ASK + Duration::from_secs(2), "{took:?}");
+            assert_eq!(take_log(), ["write", "write", "reason: none", "window got WM_ENDSESSION(1)"]);
+            // A later end does not wait again.
             let (_, took) = send(w.target, WM_ENDSESSION, 1, 0);
             assert!(took < Duration::from_millis(500), "{took:?}");
-            assert_eq!(take_log(), ["write", "write", "reason: none", "window got WM_ENDSESSION(1)"]);
+        }
+
+        #[test]
+        fn an_answer_later_than_the_wait_is_waited_for_once_more_when_windows_goes_ahead() {
+            let _serial = SERIAL.lock();
+            // The page answers 3.6 s after the question: too late for it, so Cairn
+            // says no; Windows goes ahead at once, as after Sign out anyway.
+            // The answer comes once Windows has gone ahead (100 ms after its first
+            // write), when news of the no is still queued.
+            let w = watched(|w| FakeHost {
+                answer_on_write: Some(2),
+                tell_on_write: Some((w.main.0 as isize, 2)),
+                unsaved: vec!["\"Big\"".into()],
+                unsaved_after_answer: Some(vec![]),
+                ..listening()
+            });
+            assert_eq!(send(w.main, WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF).0, 0);
+            take_log();
+            let (result, took) = send(w.target, WM_ENDSESSION, 1, ENDSESSION_LOGOFF);
+            assert_eq!(result, 0);
+            assert!(took < ASK, "{took:?}");
+            // The news is not told: the session ends.
+            assert_eq!(take_log(), ["write", "write after the answer", "reason: none", "window got WM_ENDSESSION(1)"]);
+        }
+
+        #[test]
+        fn an_end_during_a_wait_that_runs_out_does_not_wait_twice() {
+            let _serial = SERIAL.lock();
+            // Windows goes ahead 50 ms into the question's wait, and the page never
+            // answers: the end waits out that question only.
+            let w = watched(|w| FakeHost { answers: false, end_to: Some(w.target.0 as isize), ..listening() });
+            let (result, took) = send(w.main, WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF);
+            assert_eq!(result, 1);
+            assert!(took < ASK + Duration::from_secs(1), "{took:?}");
+            assert_eq!(
+                take_log(),
+                [
+                    "reason: Saving your notes…",
+                    "ask 1",
+                    "write",
+                    "write",
+                    "reason: none",
+                    "window got WM_ENDSESSION(1)",
+                    "write",
+                    "reason: none"
+                ]
+            );
+        }
+
+        #[test]
+        fn a_forced_end_waits_once_for_a_page_that_does_not_answer() {
+            let _serial = SERIAL.lock();
+            // The question at the end itself runs out: no second wait.
+            let w = watched(|_| FakeHost { answers: false, ..listening() });
+            let flags = ENDSESSION_CRITICAL | ENDSESSION_LOGOFF;
+            assert_eq!(send(w.main, WM_QUERYENDSESSION, 0, flags).0, 1);
+            let (_, took) = send(w.target, WM_ENDSESSION, 1, flags);
+            assert!(took >= ASK && took < ASK + Duration::from_secs(2), "{took:?}");
+            assert_eq!(take_log(), ["write", "ask 1", "write", "reason: none", "window got WM_ENDSESSION(1)"]);
         }
 
         #[test]
@@ -1018,7 +1111,7 @@ mod win {
             let _serial = SERIAL.lock();
             // Windows goes ahead 50 ms into the wait; the page answers once that has
             // written what is held.
-            let w = watched(|w| FakeHost { end_to: Some(w.target.0 as isize), ..listening() });
+            let w = watched(|w| FakeHost { end_to: Some(w.target.0 as isize), answer_on_write: Some(1), ..listening() });
             assert_eq!(send(w.main, WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF).0, 1);
             assert_eq!(
                 take_log(),
@@ -1055,6 +1148,7 @@ mod win {
             // question still waits, with the menu keys held back, and takes the answer.
             let w = watched(|w| FakeHost {
                 end_to: Some(w.target.0 as isize),
+                answer_on_write: Some(1),
                 panic_once: Cell::new(true),
                 watch_waiting: true,
                 ..listening()
@@ -1064,13 +1158,16 @@ mod win {
                 take_log(),
                 ["reason: Saving your notes…", "ask 1", "window got WM_ENDSESSION(1)", "write after the answer", "reason: none"]
             );
+            // The end's own flag went with its panic.
+            assert!(!CLOSING.get());
         }
 
         #[test]
         fn an_answer_on_its_way_when_windows_goes_ahead_is_taken() {
             let _serial = SERIAL.lock();
-            // The page answers too late for the question, and its answer is still
-            // in the queue when WM_ENDSESSION(TRUE) comes.
+            // The page answers too late for the question, and its answer is
+            // already in the queue when WM_ENDSESSION(TRUE) comes: waiting once
+            // more takes it at once.
             let w = watched(|w| FakeHost { answers: false, post_answer: Some((w.main.0 as isize, 2)), ..listening() });
             assert_eq!(send(w.main, WM_QUERYENDSESSION, 0, ENDSESSION_LOGOFF).0, 1);
             assert_eq!(take_log(), ["reason: Saving your notes…", "ask 1", "write", "reason: none"]);
