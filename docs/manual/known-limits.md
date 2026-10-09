@@ -1,6 +1,6 @@
 # Known limits
 
-These limits hold in version 1.4.1, with the fixes listed under Unreleased in the [release notes](../RELEASE_NOTES.md). The FINDING numbers in parentheses name the tests in the repository that reproduce or check each case, except FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 and FINDING-176, which no test names. For FINDING-177, only the Android case is tested, and that case is fixed.
+These limits hold in version 1.4.2. The FINDING numbers in parentheses name the tests in the repository that reproduce or check each case, except FINDING-031, FINDING-033, FINDING-127, FINDING-128, FINDING-151, FINDING-163, FINDING-165 and FINDING-176, which no test names. For FINDING-177, only the Android case is tested, and that case is fixed.
 
 ## Files and links
 
@@ -46,7 +46,7 @@ These limits hold in version 1.4.1, with the fixes listed under Unreleased in th
 
 ## Windows
 
-Version 1.3.0 has been tried by hand on Windows 11, on a 1920 by 1080 screen at 125% scaling. A second test by hand, with WebView2 154, tried the fixes that came from that test, except on a phone, a third tried an earlier build of the fixes in 1.4.1, and a fourth the code of 1.4.1. The items below say what still holds. The fixes listed under Unreleased are checked by tests only, and the update from 1.4.0 to 1.4.1 has not been tried by hand. The error when Windows still deletes an item for good has not been tried by hand. The last item lists what nobody has tried yet.
+Version 1.3.0 has been tried by hand on Windows 11, on a 1920 by 1080 screen at 125% scaling. A second test by hand, with WebView2 154, tried the fixes that came from that test, except on a phone, a third tried an earlier build of the fixes in 1.4.1, and a fourth the code of 1.4.1. The items below say what still holds. The fix that 1.4.2 adds is checked by tests only, and updating from 1.4.0 or 1.4.1 has not been tried by hand. The error when Windows still deletes an item for good has not been tried by hand. The last item lists what nobody has tried yet.
 
 - The installer is not signed, so Windows SmartScreen warns before it runs, and on a PC with Smart App Control turned on, Windows can block the installer and Cairn outright.
 - Cairn does not remember the size and position of its window. It opens centered on the primary monitor, and smaller when its usual size would not fit in the area that the taskbar leaves free. The status bar is then in full view, but the window's bottom border, 1 pixel high, lies under the top edge of the taskbar.

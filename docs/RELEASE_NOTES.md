@@ -1,10 +1,15 @@
 # Release notes
 
-## Unreleased
+## 1.4.2 (2026-10-09)
 
 ### Fixes
 
 - Saves the last edit of a very large note when Windows signs out, shuts down or restarts right after Cairn asked it to wait, as with Sign out anyway.
+
+### Compatibility
+
+- Works with servers and devices on 1.0.0 to 1.4.1: the sync protocol, the server's API and the formats on disk are unchanged.
+- Installs over 1.4.1 and older as an update and keeps the app's data, its notebooks and its sync setup. The Windows installer is still not signed.
 
 ## 1.4.1 (2026-10-09)
 
