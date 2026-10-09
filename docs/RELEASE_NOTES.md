@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- Saves the last edit of a very large note when Windows signs out, shuts down or restarts right after Cairn asked it to wait, as with Sign out anyway.
+
 ## 1.4.1 (2026-10-09)
 
 ### Windows installer
