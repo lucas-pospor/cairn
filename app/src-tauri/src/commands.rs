@@ -271,9 +271,19 @@ pub async fn write_note(
     state.held.lock().saved(&path, &v, base_hash.as_deref(), edit, r.as_ref().ok().map(|r| r.hash.as_str()));
     #[cfg(not(windows))]
     let _ = edit;
-    let r = r?;
+    let r = r.inspect_err(|e| log_save_error(&path, e))?;
     emit(&app, &r.changes);
     Ok(r)
+}
+
+/// A save that failed: the page shows it, but only the log keeps it. A
+/// conflict (a change on disk, or a file back where a deleted note was) is
+/// for the page to settle.
+fn log_save_error(path: &str, e: &CoreError) {
+    match e {
+        CoreError::Conflict(_) => log::info!("save of {path:?} found a change on disk"),
+        _ => log::warn!("could not save {path:?}: {e}"),
+    }
 }
 
 /// Save a note whose file is gone; fails with a conflict if a file is there again.
@@ -293,7 +303,7 @@ pub async fn recreate_note(
     state.held.lock().saved(&path, &v, None, edit, r.as_ref().ok().map(|r| r.hash.as_str()));
     #[cfg(not(windows))]
     let _ = edit;
-    let r = r?;
+    let r = r.inspect_err(|e| log_save_error(&path, e))?;
     emit(&app, &r.changes);
     Ok(r)
 }

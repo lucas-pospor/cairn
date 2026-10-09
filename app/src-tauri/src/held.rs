@@ -415,17 +415,23 @@ pub fn write_pass(held: &Mutex<Held>, open: Option<Arc<Vault>>) -> Vec<Unsaved> 
         let mut unsaved = Vec::new();
         let mut todo = Vec::new();
         for (path, e) in &h.notes {
-            match (&e.problem, &e.text) {
-                (Some(_), _) | (None, None) => unsaved.push(unsaved_note(path)),
-                (None, Some(_)) if vault.is_none() => unsaved.push(unsaved_note(path)),
+            let why = match (&e.problem, &e.text) {
+                (Some(Problem::Conflict), _) => "the page reports a conflict with the disk",
+                (Some(Problem::Failed), _) => "the page's last save of it failed",
+                (None, None) => "the page has not handed over its text",
+                (None, Some(_)) if vault.is_none() => "its notebook is not the open one",
                 (None, Some(_)) => {
                     if !h.superseded(path, e) {
                         todo.push(path.clone());
                     }
+                    continue;
                 }
-            }
+            };
+            log::info!("session end: not writing {path:?}: {why}");
+            unsaved.push(unsaved_note(path));
         }
         if h.settings_failed {
+            log::info!("session end: the last write of the settings failed");
             unsaved.push(unsaved_settings());
         }
         (unsaved, todo, vault)
@@ -457,7 +463,10 @@ fn write_one(held: &Mutex<Held>, vault: &Vault, path: &str) -> bool {
             if h.superseded(path, entry) {
                 return true;
             }
-            let Some(text) = entry.text.clone() else { return false };
+            let Some(text) = entry.text.clone() else {
+                log::info!("session end: not writing {path:?}: the page has not handed over its text");
+                return false;
+            };
             let candidates = [h.translate(path, entry), entry.base.clone()];
             match candidates.into_iter().find(|b| !tried.contains(b)) {
                 Some(base) => (text, entry.edit, base),
