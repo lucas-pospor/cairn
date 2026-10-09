@@ -34,7 +34,7 @@ docker build -f crates/cairn-server/Dockerfile -t cairn-server .
 docker run -d --name cairn -p 8787:8787 -v cairn-data:/data -e CAIRN_TOKENS=your-secret cairn-server
 ```
 
-To use the image from a release instead of building it, load it with `docker load -i cairn-server-1.4.0-docker-image.tar.gz` and use `cairn-server:1.4.0` as the image name. That image is for x86_64 machines. On another machine, such as a Raspberry Pi, build the image as above.
+To use the image from a release instead of building it, load it with `docker load -i cairn-server-1.4.1-docker-image.tar.gz` and use `cairn-server:1.4.1` as the image name. That image is for x86_64 machines. On another machine, such as a Raspberry Pi, build the image as above.
 
 ### Without Docker
 

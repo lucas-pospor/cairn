@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/cairn-core", "crates/cairn-sync", "crates/cairn-server", "app/src-tauri"]
 
 [workspace.package]
-version = "1.4.0"
+version = "1.4.1"
 edition = "2024"
 license = "MIT"
 

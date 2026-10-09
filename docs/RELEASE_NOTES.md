@@ -1,6 +1,8 @@
 # Release notes
 
-## Unreleased
+## 1.4.1 (2026-10-09)
+
+### Windows installer
 
 - Shows Cairn's icon on the Windows installer and uninstaller, and the Cairn logo on the installer's pages.
 
@@ -14,6 +16,11 @@
 - Leaves a right-click in the rename box to the text box, which no longer renames the file to the half-typed name.
 - Shows a repeated message once while it is on screen, instead of stacking copies of it.
 - Lets the installer go on when an older Cairn's install folder is gone.
+
+### Compatibility
+
+- Works with servers and devices on 1.0.0 to 1.4.0: the sync protocol, the server's API and the formats on disk are unchanged.
+- Installs over 1.4.0 and older as an update and keeps the app's data, its notebooks and its sync setup. The Windows installer is still not signed.
 
 ## 1.4.0 (2026-10-08)
 
