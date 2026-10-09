@@ -7,7 +7,8 @@ name: Website
 # the manual describes the version the download page offers; the build fails
 # if that version has no release.
 #
-# Settings, then Pages, must use GitHub Actions as the source, and the
+# Settings, then Pages, must use GitHub Actions as the source and keep the
+# custom domain, cairnnotes.app, which needs no CNAME file here. The
 # github-pages environment (Settings, then Environments) must allow the
 # release tags, v*, besides main: a run started by a release deploys from
 # its tag.
