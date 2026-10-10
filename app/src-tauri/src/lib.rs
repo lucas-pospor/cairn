@@ -284,4 +284,80 @@ mod tests {
         assert!(text.contains(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Cairn"));
         assert_eq!(config.product_name.as_deref(), Some("Cairn"), "the hooks spell out the product name in the key");
     }
+
+    /// A guard of the update hook in windows/hooks.nsh (CI runs the installer
+    /// as an update, scripts/windows-installer-update.ps1). From the Welcome
+    /// page the hook moves 4 pages on, to Installing. That holds only while
+    /// Tauri's template has these pages in this order and Cairn adds no
+    /// licence or install-mode page: after a tauri-cli update that changes
+    /// them, count the pages again. The template is read from the CLI's module
+    /// in app/node_modules, which `npm ci` installs.
+    #[test]
+    fn the_windows_installer_updates_an_older_cairn_in_place() {
+        use std::path::Path;
+        use tauri::utils::config::{Config, NSISInstallerMode};
+        let config: Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert!(config.bundle.license_file.is_none(), "a licence page moves Installing");
+        let nsis = config.bundle.windows.nsis.unwrap();
+        assert!(!matches!(nsis.install_mode, NSISInstallerMode::Both), "an install-mode page moves Installing");
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let hooks = std::fs::read_to_string(crate_dir.join(nsis.installer_hooks.unwrap())).unwrap();
+        assert!(hooks.contains("!define MUI_PAGE_CUSTOMFUNCTION_LEAVE CairnUpdateInPlace"));
+        assert!(hooks.contains(r#"SendMessage $HWNDPARENT 0x408 4 """#));
+
+        let app = crate_dir.join("..");
+        let lock: serde_json::Value = serde_json::from_slice(&std::fs::read(app.join("package-lock.json")).unwrap()).unwrap();
+        let cli = &lock["packages"]["node_modules/@tauri-apps/cli"]["version"];
+        let find = |hay: &[u8], needle: &[u8], from: usize| hay[from..].windows(needle.len()).position(|w| w == needle).map(|i| i + from);
+        let mut modules = 0;
+        for entry in std::fs::read_dir(app.join("node_modules/@tauri-apps")).expect("run npm ci in app/") {
+            let dir = entry.unwrap().path();
+            if !dir.file_name().unwrap().to_string_lossy().starts_with("cli-") {
+                continue;
+            }
+            let package: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("package.json")).unwrap()).unwrap();
+            assert_eq!(&package["version"], cli, "run npm ci in app/");
+            for file in std::fs::read_dir(&dir).unwrap() {
+                let file = file.unwrap().path();
+                if file.extension().and_then(|e| e.to_str()) != Some("node") {
+                    continue;
+                }
+                let bytes = std::fs::read(&file).unwrap();
+                let start = find(&bytes, br#"!include "{{installer_hooks}}""#, 0).expect("Tauri's template in the CLI");
+                let last = b"!insertmacro MUI_PAGE_INSTFILES";
+                let end = find(&bytes, last, start).unwrap() + last.len();
+                let text = std::str::from_utf8(&bytes[start..end]).unwrap();
+                let pages: Vec<&str> = text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| {
+                        l.starts_with("!insertmacro MUI_PAGE_")
+                            || l.starts_with("!insertmacro MULTIUSER_PAGE_")
+                            || l.starts_with("Page ")
+                            || l.starts_with("PageEx ")
+                    })
+                    .collect();
+                assert_eq!(
+                    pages,
+                    [
+                        "!insertmacro MUI_PAGE_WELCOME",
+                        r#"!insertmacro MUI_PAGE_LICENSE "${LICENSE}""#,
+                        "!insertmacro MULTIUSER_PAGE_INSTALLMODE",
+                        "Page custom PageReinstall PageLeaveReinstall",
+                        "!insertmacro MUI_PAGE_DIRECTORY",
+                        "!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder",
+                        "!insertmacro MUI_PAGE_INSTFILES",
+                    ]
+                );
+                // The hook reads this setup's version from its file version.
+                assert!(find(&bytes, br#"VIProductVersion "${VERSIONWITHBUILD}""#, 0).is_some());
+                assert!(find(&bytes, b"VIFileVersion", 0).is_none());
+                // The first MUI page after the hooks is Welcome, with no leave function of Tauri's.
+                let welcome = find(&bytes, b"!insertmacro MUI_PAGE_WELCOME", start).unwrap();
+                assert!(find(&bytes[..welcome], b"MUI_PAGE_CUSTOMFUNCTION_LEAVE", start).is_none());
+                modules += 1;
+            }
+        }
+        assert!(modules > 0, "no tauri-cli module in app/node_modules: run npm ci in app/");
+    }
 }
