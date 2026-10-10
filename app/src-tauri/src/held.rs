@@ -234,8 +234,10 @@ impl Held {
             None => self.notes.get(&n.path).filter(|e| e.edit == edit).and_then(|e| e.text.clone()),
         };
         let entry = Entry { base, edit, problem, text };
-        // The page saved this text or a newer one already.
-        if problem.is_none() && self.superseded(&n.path, &entry) {
+        // Cairn put this text or a newer one on disk already, by a page save
+        // or by its own write, also when the page reports that its save of
+        // the note failed: the report came after that write.
+        if problem != Some(Problem::Conflict) && self.superseded(&n.path, &entry) {
             self.notes.remove(&n.path);
             return;
         }
@@ -703,6 +705,63 @@ mod tests {
         assert!(hold(&held, 4, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "text": null }])).applied);
         assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
         assert_eq!(nb.read("A.md"), "a\nlate");
+    }
+
+    #[test]
+    fn a_failed_save_of_an_edit_cairn_wrote_counts_as_saved() {
+        // Cairn wrote the edit at the end of the session; the page's own save
+        // of it failed meanwhile, and the page says so after the write, in a
+        // request and in its answer.
+        let nb = Notebook::new("failed-after-write");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "text": "a\nmine" }]));
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine");
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "problem": "failed" }]));
+        assert!(held.lock().nothing_held());
+        let r = held.lock().hold(
+            Hold {
+                seq: 4,
+                root: Some(nb.root()),
+                round: Some(2),
+                notes: vec![json!({ "path": "A.md", "base": base, "edit": 6, "problem": "failed" })],
+                ..Hold::default()
+            },
+            || unreachable!(),
+        );
+        assert!(r.applied && held.lock().nothing_held());
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        // An older edit that failed is dropped too; a newer one is not saved.
+        hold(&held, 5, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "failed" }]));
+        assert!(held.lock().nothing_held());
+        hold(&held, 6, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 7, "problem": "failed" }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+    }
+
+    #[test]
+    fn a_failed_report_after_a_page_save_of_the_edit_counts_as_saved() {
+        // A page save of edit 5 went through (the user saved again) while a
+        // request saying that an earlier save of it failed was on its way.
+        let nb = Notebook::new("failed-after-save");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        held.lock().saving("A.md");
+        let r = nb.vault.write_note("A.md", "a\nmine", Some(&base)).unwrap();
+        held.lock().saved("A.md", &nb.vault, Some(&base), Some(5), Some(&r.hash));
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "failed" }]));
+        assert!(held.lock().nothing_held());
+    }
+
+    #[test]
+    fn a_conflict_is_never_taken_for_saved() {
+        let nb = Notebook::new("conflict-not-saved");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "text": "a\nmine" }]));
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "problem": "conflict" }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
     }
 
     #[test]
