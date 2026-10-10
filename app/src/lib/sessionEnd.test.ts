@@ -190,13 +190,19 @@ describe("what the page holds", () => {
     expect(lastNotes()).toEqual([{ path: "A.md", release: true }]);
   });
 
-  it("holds a note whose save failed, or that is in conflict, without its text", async () => {
+  it("holds a note whose save failed with its text, and one in conflict without it", async () => {
     const tab = openNote();
     type(tab, "x");
+    await settle();
     writeFails = [READ_ONLY];
     await app.save(tab);
     await settle();
+    // The backend has the text of this edit already.
     expect(lastNotes()).toEqual([{ path: "A.md", base: "B0", edit: tab.edit, problem: "failed" }]);
+    type(tab, "z");
+    await app["heldSend"]();
+    await settle();
+    expect(lastNotes()).toEqual([{ path: "A.md", base: "B0", edit: tab.edit, problem: "failed", text: "on disk\nxz" }]);
     // The file changed on disk and the changes cannot be merged.
     writeFails = [CONFLICT];
     disk = { content: "theirs\n", hash: "B1" };
@@ -267,7 +273,7 @@ describe("what the page holds", () => {
     await settle();
     expect(app.tabs).toEqual([tab]);
     expect(tab.discarded).toBe(false);
-    expect(lastNotes()).toEqual([{ path: "A.md", base: "B0", edit: tab.edit, problem: "failed" }]);
+    expect(lastNotes()).toEqual([{ path: "A.md", base: "B0", edit: tab.edit, problem: "failed", text: "on disk\nx" }]);
   });
 
   it("does not take a request sent before a reset for what the backend holds after it", async () => {
@@ -388,6 +394,26 @@ describe("the end of the session", () => {
     expect(holds[0].notes).toContainEqual({ path: "A.md", base: "B0", edit: tab.edit, problem: null, text: "on disk\nx" });
     const sentBig = holds[0].notes.find((n) => n.path === "Big.md") as { text: string };
     expect(sentBig.text).toHaveLength(TEXT_LIMIT + 1);
+  });
+
+  it("answers with the text of a note whose save failed, whatever its size, and none for a conflict", async () => {
+    const big = openNote("Big.md", "x".repeat(TEXT_LIMIT));
+    type(big, "y");
+    writeFails = [READ_ONLY];
+    await app.save(big);
+    const clash = openNote("C.md");
+    type(clash, "c");
+    writeFails = [CONFLICT];
+    disk = { content: "theirs\n", hash: "B1" };
+    await app.save(clash);
+    await settle();
+    expect([big.saveFailed, clash.conflict]).toEqual([true, "changed"]);
+    holds = [];
+    app.answerSessionEnd(5);
+    const sentBig = holds[0].notes.find((n) => n.path === "Big.md") as { problem: string; text: string };
+    expect(sentBig.problem).toBe("failed");
+    expect(sentBig.text).toHaveLength(TEXT_LIMIT + 1);
+    expect(holds[0].notes).toContainEqual({ path: "C.md", base: "B0", edit: clash.edit, problem: "conflict" });
   });
 
   it("saves a note the backend wrote again over the new file, once the session goes on", async () => {

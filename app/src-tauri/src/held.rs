@@ -6,14 +6,17 @@
 //! of the file the edits are based on, the tab's edit number (a counter that
 //! grows with every change to any tab's text, also across page loads), what
 //! keeps the note from being saved (a conflict with the disk, a failed
-//! save) and, for a note without such a problem, its text as a save would
-//! write it. It also says whether the last write of the settings failed.
+//! save) and, for a note not in conflict, its text as a save would write
+//! it. It also says whether the last write of the settings failed.
 //! Page saves (the write_note and recreate_note commands) report what they
 //! wrote here too.
 //!
 //! [`write_pass`] writes the text held for each note with the same check a
 //! save makes: only over the file the edits are based on, never over a
-//! change made elsewhere, never a file that is gone. It never writes text
+//! change made elsewhere, never a file that is gone. That includes a note
+//! whose last save by the page failed, as what kept that save from working
+//! (another program holding the file) may be over; a note in conflict is
+//! for the user to settle and is never written. It never writes text
 //! older than what Cairn already put on disk for that note. Cairn's own
 //! writes (the page's and its own) are kept per note since the page's last
 //! reset, so that an entry based on a file that Cairn itself replaced since
@@ -37,7 +40,8 @@ pub enum Problem {
     /// The file changed or went away on disk since the tab loaded it, and
     /// the user has not chosen what to keep.
     Conflict,
-    /// The last save failed (read-only, locked, disk full).
+    /// The last save failed (read-only, locked, disk full). The backend
+    /// still writes such a note, which may work by then.
     Failed,
 }
 
@@ -50,7 +54,7 @@ pub struct Entry {
     pub edit: u64,
     pub problem: Option<Problem>,
     /// The note's text, or None when the page does not send it (a note too
-    /// large, a text that is not well formed) or has a problem.
+    /// large, a text that is not well formed) or it is in conflict.
     pub text: Option<String>,
 }
 
@@ -225,7 +229,7 @@ impl Held {
             Some(_) => Some(Problem::Conflict),
         };
         let text = match n.text {
-            _ if problem.is_some() => None,
+            _ if problem == Some(Problem::Conflict) => None,
             Some(text) => Some(text),
             // The same text as before, if it is for the same edit: one edit
             // has one text. The page sends null for a note too large to send
@@ -356,17 +360,6 @@ impl Held {
         self.writes.retain(|p, _| p != path && !p.strip_prefix(path).is_some_and(|rest| rest.starts_with('/')));
     }
 
-    /// What the page reported it cannot save: notes with a problem and the
-    /// settings. Notes waiting for autosave do not count.
-    pub fn unsaved_by_the_page(&self) -> Vec<Unsaved> {
-        let mut out: Vec<Unsaved> =
-            self.notes.iter().filter(|(_, e)| e.problem.is_some()).map(|(p, _)| unsaved_note(p)).collect();
-        if self.settings_failed {
-            out.push(unsaved_settings());
-        }
-        out
-    }
-
     /// Whether the page holds nothing unsaved at all.
     pub fn nothing_held(&self) -> bool {
         self.notes.is_empty() && !self.settings_failed
@@ -405,10 +398,10 @@ fn unsaved_settings() -> Unsaved {
 const SAVE_POLL: Duration = Duration::from_millis(5);
 
 /// Writes what `held` holds into `open`, the open notebook, and returns what
-/// is left unsaved: notes with a problem, notes with no text, notes whose
-/// write failed or found a change made elsewhere, notes of another notebook,
-/// and the settings when their last write failed. Notes already on disk
-/// count as saved. Runs on the calling thread and waits for the vault's
+/// is left unsaved: notes in conflict, notes with no text, notes whose write
+/// failed or found a change made elsewhere, notes of another notebook, and
+/// the settings when their last write failed. Notes already on disk count as
+/// saved. Runs on the calling thread and waits for the vault's
 /// locks as long as they are held; `held` is never locked during a write.
 pub fn write_pass(held: &Mutex<Held>, open: Option<Arc<Vault>>) -> Vec<Unsaved> {
     let (mut unsaved, todo, vault) = {
@@ -419,10 +412,10 @@ pub fn write_pass(held: &Mutex<Held>, open: Option<Arc<Vault>>) -> Vec<Unsaved> 
         for (path, e) in &h.notes {
             let why = match (&e.problem, &e.text) {
                 (Some(Problem::Conflict), _) => "the page reports a conflict with the disk",
-                (Some(Problem::Failed), _) => "the page's last save of it failed",
+                (Some(Problem::Failed), None) => "the page's last save of it failed, and its text was not handed over",
                 (None, None) => "the page has not handed over its text",
-                (None, Some(_)) if vault.is_none() => "its notebook is not the open one",
-                (None, Some(_)) => {
+                (_, Some(_)) if vault.is_none() => "its notebook is not the open one",
+                (_, Some(_)) => {
                     if !h.superseded(path, e) {
                         todo.push(path.clone());
                     }
@@ -458,7 +451,7 @@ fn write_one(held: &Mutex<Held>, vault: &Vault, path: &str) -> bool {
         while held.lock().page_saving(path) {
             std::thread::sleep(SAVE_POLL);
         }
-        let (text, edit, base) = {
+        let (text, edit, failed, base) = {
             let h = held.lock();
             // The page saved it meanwhile, or let it go.
             let Some(entry) = h.notes.get(path) else { return true };
@@ -469,15 +462,17 @@ fn write_one(held: &Mutex<Held>, vault: &Vault, path: &str) -> bool {
                 log::info!("session end: not writing {path:?}: the page has not handed over its text");
                 return false;
             };
+            let failed = entry.problem == Some(Problem::Failed);
             let candidates = [h.translate(path, entry), entry.base.clone()];
             match candidates.into_iter().find(|b| !tried.contains(b)) {
-                Some(base) => (text, entry.edit, base),
+                Some(base) => (text, entry.edit, failed, base),
                 None => break (text, entry.edit),
             }
         };
         match vault.write_note(path, &text, Some(&base)) {
             Ok(r) => {
-                log::info!("session end: wrote {path:?} (edit {edit})");
+                let after = if failed { ", whose last save by the page had failed" } else { "" };
+                log::info!("session end: wrote {path:?} (edit {edit}){after}");
                 let mut h = held.lock();
                 h.record(path, Write { from: Some(base.clone()), to: r.hash.clone(), edit, by_backend: true });
                 h.news.push(Moved { path: path.to_string(), from: base, to: r.hash, edit });
@@ -485,7 +480,8 @@ fn write_one(held: &Mutex<Held>, vault: &Vault, path: &str) -> bool {
             }
             Err(CoreError::Conflict(_)) => tried.push(base),
             Err(e) => {
-                log::warn!("session end: could not write {path:?}: {e}");
+                let too = if failed { ", as the page's last save could not" } else { "" };
+                log::warn!("session end: could not write {path:?}{too}: {e}");
                 return false;
             }
         }
@@ -627,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn notes_with_a_problem_or_no_text_and_the_settings_are_named_and_never_written() {
+    fn notes_in_conflict_or_with_no_text_and_the_settings_are_named_and_never_written() {
         let nb = Notebook::new("problems");
         std::fs::write(nb.dir.join("B.md"), "b\n").unwrap();
         std::fs::write(nb.dir.join("C.md"), "c\n").unwrap();
@@ -648,11 +644,10 @@ mod tests {
             || unreachable!(),
         );
         assert!(reply.applied);
-        assert_eq!(names(&held.lock().unsaved_by_the_page()), ["\"A\"", "\"B\"", "the settings"]);
         assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\"", "\"B\"", "\"C\"", "the settings"]);
         assert_eq!((nb.read("A.md"), nb.read("B.md"), nb.read("C.md")), ("a\n".into(), "b\n".into(), "c\n".into()));
         held.lock().settings_written();
-        assert_eq!(names(&held.lock().unsaved_by_the_page()), ["\"A\"", "\"B\""]);
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\"", "\"B\"", "\"C\""]);
     }
 
     #[test]
@@ -762,6 +757,133 @@ mod tests {
         assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
         hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "problem": "conflict" }]));
         assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+    }
+
+    #[test]
+    fn a_note_whose_save_failed_is_written() {
+        let nb = Notebook::new("failed-written");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "failed", "text": "a\nmine" }]));
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine");
+        let news = held.lock().take_news();
+        assert_eq!((news.len(), news[0].edit), (1, 5));
+    }
+
+    #[test]
+    fn the_text_stays_when_the_save_of_the_same_edit_fails() {
+        // The page handed the text over, then its save of that edit failed
+        // (another program held the note) and it said so without the text.
+        let nb = Notebook::new("failed-keeps-text");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "text": "a\nmine" }]));
+        held.lock().saving("A.md");
+        held.lock().saved("A.md", &nb.vault, Some(&base), Some(5), None);
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "failed" }]));
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine");
+        // A newer edit sent without text has none.
+        hold(&held, 4, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 6, "problem": "failed", "text": null }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+    }
+
+    #[test]
+    fn a_note_whose_save_failed_is_written_once_its_file_can_be() {
+        let nb = Notebook::new("failed-readonly");
+        let held = held_for(&nb);
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": nb.hash("A.md"), "edit": 5, "problem": "failed", "text": "a\nmine" }]));
+        let file = nb.dir.join("A.md");
+        let mut perms = std::fs::metadata(&file).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&file, perms.clone()).unwrap();
+        let unsaved = write_pass(&held, Some(nb.vault.clone()));
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&file, perms).unwrap();
+        assert_eq!(names(&unsaved), ["\"A\""]);
+        assert_eq!(nb.read("A.md"), "a\n");
+        // The next pass, as at the end after a no at the question.
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine");
+    }
+
+    #[test]
+    fn a_note_whose_save_failed_is_never_written_where_it_was_not() {
+        // Gone, in a folder that is gone, changed elsewhere, or of another
+        // notebook: named, and the disk left as it is.
+        let nb = Notebook::new("failed-checks");
+        std::fs::create_dir_all(nb.dir.join("Dir")).unwrap();
+        std::fs::write(nb.dir.join("Dir/B.md"), "b\n").unwrap();
+        std::fs::write(nb.dir.join("C.md"), "c\n").unwrap();
+        std::fs::write(nb.dir.join("D.md"), "d\n").unwrap();
+        let held = held_for(&nb);
+        let (b, c, d) = (nb.hash("Dir/B.md"), nb.hash("C.md"), nb.hash("D.md"));
+        hold(&held, 2, &nb.root(), json!([
+            { "path": "Dir/B.md", "base": b, "edit": 5, "problem": "failed", "text": "b\nmine" },
+            { "path": "C.md", "base": c, "edit": 6, "problem": "failed", "text": "c\nmine" },
+            { "path": "D.md", "base": d, "edit": 7, "problem": "failed", "text": "d\nmine" },
+        ]));
+        std::fs::remove_dir_all(nb.dir.join("Dir")).unwrap();
+        std::fs::remove_file(nb.dir.join("C.md")).unwrap();
+        std::fs::write(nb.dir.join("D.md"), "d\ntheirs\n").unwrap();
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"C\"", "\"D\"", "\"B\""]);
+        assert!(!nb.dir.join("Dir").exists() && !nb.dir.join("C.md").exists());
+        assert_eq!(nb.read("D.md"), "d\ntheirs\n");
+        // Another notebook with the very files the edits are based on.
+        let other = Notebook::new("failed-checks-other");
+        std::fs::create_dir_all(other.dir.join("Dir")).unwrap();
+        std::fs::write(other.dir.join("Dir/B.md"), "b\n").unwrap();
+        std::fs::write(other.dir.join("C.md"), "c\n").unwrap();
+        std::fs::write(other.dir.join("D.md"), "d\n").unwrap();
+        assert_eq!(names(&write_pass(&held, Some(other.vault.clone()))), ["\"C\"", "\"D\"", "\"B\""]);
+        assert_eq!((other.read("Dir/B.md"), other.read("C.md"), other.read("D.md")), ("b\n".into(), "c\n".into(), "d\n".into()));
+    }
+
+    #[test]
+    fn a_conflict_keeps_no_text() {
+        let nb = Notebook::new("conflict-no-text");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "conflict", "text": "a\nmine" }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+        // The conflict settled for the same edit, the text not sent again.
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5 }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+        assert_eq!(nb.read("A.md"), "a\n");
+    }
+
+    /// The case of the Windows test: another program holds the note open
+    /// without delete sharing, so a save cannot replace it, and lets go
+    /// before the session ends.
+    #[cfg(windows)]
+    #[test]
+    fn a_note_held_open_elsewhere_is_written_once_it_is_let_go() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        const FILE_SHARE_WRITE: u32 = 2;
+        let nb = Notebook::new("held-open");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "text": "a\nmine" }]));
+        let other = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(nb.dir.join("A.md"))
+            .unwrap();
+        held.lock().saving("A.md");
+        let page = nb.vault.write_note("A.md", "a\nmine", Some(&base));
+        held.lock().saved("A.md", &nb.vault, Some(&base), Some(5), None);
+        assert!(matches!(page, Err(CoreError::Io(_))), "{page:?}");
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "problem": "failed" }]));
+        assert_eq!(names(&write_pass(&held, Some(nb.vault.clone()))), ["\"A\""]);
+        drop(other);
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine");
+        // No temporary file is left behind.
+        let temps = std::fs::read_dir(&nb.dir).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with(".cairn-tmp-")).count();
+        assert_eq!(temps, 0);
     }
 
     #[test]
@@ -905,9 +1027,8 @@ mod tests {
             { "path": "Dir2/C.md", "base": base, "edit": 6, "problem": "failed" },
         ]));
         held.lock().renamed("Dir", "New");
-        assert_eq!(names(&held.lock().unsaved_by_the_page()), ["\"C\"", "\"B\""]);
-        let paths: Vec<Option<String>> = held.lock().unsaved_by_the_page().into_iter().map(|u| u.path).collect();
-        assert_eq!(paths, [Some("Dir2/C.md".to_string()), Some("New/B.md".to_string())]);
+        let paths: Vec<String> = held.lock().notes.keys().cloned().collect();
+        assert_eq!(paths, ["Dir2/C.md", "New/B.md"]);
     }
 
     #[test]

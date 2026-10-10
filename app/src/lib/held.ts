@@ -18,7 +18,8 @@ export interface HeldNote {
   /**
    * The note's text as a save writes it; null when the page does not send
    * it (too large, or not well formed). Null or left out: the backend keeps
-   * the text it has for the same edit number. Never sent with a problem.
+   * the text it has for the same edit number. Sent for a note whose save
+   * failed too, which the backend may still write; never with a conflict.
    */
   text?: string | null;
 }
@@ -102,7 +103,7 @@ export function changes(
     }
     const note: HeldNote = { path, ...w };
     let withText = false;
-    if (w.problem === null) {
+    if (w.problem !== "conflict") {
       // The backend keeps its text for the same edit when none is sent.
       if (s?.edit === w.edit && s.text) withText = true;
       else {
