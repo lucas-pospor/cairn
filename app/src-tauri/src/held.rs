@@ -272,9 +272,12 @@ impl Held {
     }
 
     /// Whether Cairn has put the entry's text, or newer text based on the
-    /// same file, on disk already.
+    /// same file, on disk already. That includes an entry based on the very
+    /// file Cairn wrote for its edit: the page took that file as its base
+    /// after the write, and one edit has one text.
     fn superseded(&self, path: &str, entry: &Entry) -> bool {
         self.follow(path, &entry.base, |_| true).1.iter().any(|w| w.edit >= entry.edit)
+            || self.writes.get(path).is_some_and(|ws| ws.iter().any(|w| w.to == entry.base && w.edit == entry.edit))
     }
 
     fn record(&mut self, path: &str, w: Write) {
@@ -884,6 +887,26 @@ mod tests {
         // No temporary file is left behind.
         let temps = std::fs::read_dir(&nb.dir).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with(".cairn-tmp-")).count();
         assert_eq!(temps, 0);
+    }
+
+    #[test]
+    fn an_edit_based_on_the_file_cairn_wrote_for_it_counts_as_saved() {
+        // Cairn wrote edit 5 at a question it said no to; the page took the
+        // file as its base, saved the same edit again and failed (the note
+        // is held open elsewhere once more).
+        let nb = Notebook::new("based-on-own-write");
+        let held = held_for(&nb);
+        let base = nb.hash("A.md");
+        hold(&held, 2, &nb.root(), json!([{ "path": "A.md", "base": base, "edit": 5, "text": "a\nmine" }]));
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        let to = held.lock().take_news()[0].to.clone();
+        hold(&held, 3, &nb.root(), json!([{ "path": "A.md", "base": to, "edit": 5, "problem": "failed", "text": "a\nmine" }]));
+        assert!(held.lock().nothing_held());
+        // A newer edit on that file is not saved by it.
+        hold(&held, 4, &nb.root(), json!([{ "path": "A.md", "base": to, "edit": 6, "problem": "failed", "text": "a\nmine too" }]));
+        assert!(!held.lock().nothing_held());
+        assert!(write_pass(&held, Some(nb.vault.clone())).is_empty());
+        assert_eq!(nb.read("A.md"), "a\nmine too");
     }
 
     #[test]

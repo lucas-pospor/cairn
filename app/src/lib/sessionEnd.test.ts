@@ -427,6 +427,30 @@ describe("the end of the session", () => {
     expect(tab.dirty).toBe(false);
   });
 
+  it("takes a note the backend wrote at its last edit as saved, without writing it again", async () => {
+    const tab = openNote();
+    openNote("B.md");
+    type(tab, "x");
+    await settle();
+    writeFails = [READ_ONLY];
+    await app.save(tab);
+    await settle();
+    app.sessionEndNews({ written: [], refused: [{ path: "A.md", name: '"A"' }, { path: "B.md", name: '"B"' }] });
+    await settle();
+    writes = [];
+    const seq = app.changeSeq;
+    // The session went on after a no for another note; the backend had
+    // written this one.
+    app.sessionEndNews({ written: [{ path: "A.md", from: "B0", to: "H9", edit: tab.edit }], refused: [] });
+    await settle();
+    expect(writes).toEqual([]);
+    expect([tab.dirty, tab.saveFailed, tab.baseHash, tab.baseText]).toEqual([false, false, "H9", "on disk\nx"]);
+    expect(lastNotes()).toEqual([{ path: "A.md", release: true }]);
+    expect(app.toasts.map((t) => t.message).filter((m) => m.startsWith("Windows was"))).toEqual([]);
+    // Links, tags and search learn of the new text, as after a save.
+    await vi.waitFor(() => expect(app.changeSeq).toBe(seq + 1));
+  });
+
   it("leaves a tab alone when the backend wrote another file than its own", async () => {
     const tab = openNote();
     type(tab, "x");

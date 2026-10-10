@@ -556,6 +556,11 @@ class App {
     // follows within 60 ms does not drop the refetch.
     if (changes.some((c) => c.type !== "modified")) this.heldSync();
     if (changes.some((c) => c.type !== "modified" || isImage(c.entry.path))) this.refreshStructural = true;
+    this.refreshSoon();
+  }
+
+  /** Refresh what shows the notebook's content (embeds, links, tags, search) 60 ms after the last change. */
+  private refreshSoon() {
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
       if (this.refreshStructural) {
@@ -1177,8 +1182,9 @@ class App {
 
   /**
    * The session went on after Windows asked to end it. Notes the backend
-   * wrote take the new file as their base and are saved again (the editor
-   * may hold newer text). After a no, a notice says what is not saved.
+   * wrote take the new file as their base: saved, when it wrote the tab's
+   * last edit, or else saved again (the editor holds newer text). After a
+   * no, a notice says what is not saved.
    */
   sessionEndNews(news: SessionEndNews) {
     for (const w of news.written) {
@@ -1186,7 +1192,17 @@ class App {
       const t = tabs[0];
       if (tabs.length !== 1 || !t.dirty || t.baseHash !== w.from) continue;
       t.baseHash = w.to;
-      if (!t.conflict) void this.save(t);
+      if (t.edit === w.edit && !t.conflict && !t.saving) {
+        // The backend wrote this very text (one edit has one text): saved,
+        // also when the tab's own save of it had failed. What shows the
+        // note's links and tags learns of it as of a save.
+        clearTimeout(t.saveTimer);
+        t.baseText = this.fileTextOf(t);
+        t.dirty = false;
+        t.saveFailed = false;
+        t.movedSaves = 0;
+        this.refreshSoon();
+      } else if (!t.conflict) void this.save(t);
     }
     if (news.refused.length) {
       this.refusal?.close();
