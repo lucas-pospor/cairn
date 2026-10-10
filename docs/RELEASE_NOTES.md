@@ -1,11 +1,16 @@
 # Release notes
 
-## Unreleased
+## 1.4.3 (2026-10-10)
 
 ### Fixes
 
 - Saves a note whose last save failed, as while another program held it open, when Windows signs out, shuts down or restarts, if Cairn can write it by then.
 - Updates an older Cairn in one window, without opening the old version's uninstaller, which offered to delete the app data.
+
+### Compatibility
+
+- Works with servers and devices on 1.0.0 to 1.4.2: the sync protocol, the server's API and the formats on disk are unchanged.
+- Installs over 1.4.2 and older as an update and keeps the app's data, its notebooks and its sync setup. The Windows installer is still not signed.
 
 ## 1.4.2 (2026-10-09)
 

@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "cairn"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "base64 0.22.1",
  "cairn-core",
@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "cairn-core"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "blake3",
  "dunce",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "cairn-server"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "axum",
  "cairn-sync",
@@ -577,7 +577,7 @@ dependencies = [
 
 [[package]]
 name = "cairn-sync"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "argon2",
  "base64 0.22.1",
