@@ -1,5 +1,12 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- Saves a note whose last save failed, as while another program held it open, when Windows signs out, shuts down or restarts, if Cairn can write it by then.
+- Updates an older Cairn in one window, without opening the old version's uninstaller, which offered to delete the app data.
+
 ## 1.4.2 (2026-10-09)
 
 ### Fixes
