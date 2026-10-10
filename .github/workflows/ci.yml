@@ -204,3 +204,9 @@ jobs:
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
           retention-days: 7
+
+      # Installs that build, then tries it as an update clicked through with
+      # the defaults, over the same version and with /P, and checks that the
+      # app data stays (scripts/windows-installer-update.ps1).
+      - name: Try the installer as an update
+        run: ./scripts/windows-installer-update.ps1
