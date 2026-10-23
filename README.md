@@ -2,7 +2,7 @@
   <img src="app/src-tauri/icons/icon.svg" width="112" alt="Cairn logo: a stack of stones">
 </p>
 
-<h1 align="center">Cairn</h1>
+<h1 align="center">Cairn Notes</h1>
 
 Cairn is a local-first Markdown notes app for Linux, Windows and Android. A notebook is an ordinary folder of `.md` files: Cairn reads and writes those files directly, so you can open the same folder in any other editor, put it under Git, or back it up however you like. Sync between your devices is optional and end-to-end encrypted, through a small server you run yourself.
 
