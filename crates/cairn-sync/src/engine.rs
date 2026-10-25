@@ -1213,9 +1213,13 @@ impl SyncEngine {
             }
         }
         // The file that has a renamed file's name on the server must go
-        // first; following that from each file finds the rings.
+        // first; following that from each file finds the rings. A file under
+        // its own server name is in none: the user renamed it back there from
+        // a name the sync chose here, and its upload must still go up, which
+        // brings back a file deleted there.
         let by_server: HashMap<&str, &str> = renamed.iter().map(|(f, _, s)| (s.as_str(), f.as_str())).collect();
-        let next: HashMap<&str, &str> = renamed.iter().filter_map(|(f, p, _)| Some((f.as_str(), *by_server.get(p.as_str())?))).collect();
+        let next: HashMap<&str, &str> =
+            renamed.iter().filter(|(_, p, s)| p != s).filter_map(|(f, p, _)| Some((f.as_str(), *by_server.get(p.as_str())?))).collect();
         let mut done: HashSet<&str> = HashSet::new();
         for (start, _, _) in &renamed {
             let mut walk: Vec<&str> = Vec::new();

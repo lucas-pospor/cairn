@@ -546,6 +546,43 @@ fn rename_in_app_vs_delete_ends_as_a_rename_outside_the_app() {
     }
 }
 
+
+/// A note under a name the sync chose here, a conflict copy name whose
+/// rename has not gone up yet, which the user renames back to the note's
+/// name on the server, outside the app, while another device deletes the
+/// note: the rename wins, as any rename does, and the note goes up again,
+/// so the other device gets it back. It is not taken for one of files that
+/// swapped names (see `settle_renames`), which would leave it here only.
+#[test]
+fn a_note_renamed_back_to_its_server_name_while_another_device_deletes_it_comes_back() {
+    let srv = server();
+    let mut b = Device::new(&srv, "b", &[("anchor.md", "untouched\n"), ("x.md", "from b\n")]);
+    assert_eq!(traffic(&mut b), (0, 2));
+    let mut a = Device::new(&srv, "a", &[("x.md", "from a\n")]);
+    // a's pull puts b's note under a conflict copy name. Before a uploads
+    // anything, its user deletes a's own note and gives the copy its name,
+    // and b deletes its note.
+    let (root, b) = (a.root.clone(), Arc::new(Mutex::new(b)));
+    let other = b.clone();
+    *a.hooks.before_put.lock() = Some(Box::new(move || {
+        let names: Vec<String> = fs::read_dir(&root).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+        let copy = names.iter().find(|n| n.contains("(conflict ")).expect("a conflict copy");
+        fs::remove_file(root.join("x.md")).unwrap();
+        fs::rename(root.join(copy), root.join("x.md")).unwrap();
+        let mut b = other.lock();
+        b.rm("x.md");
+        assert_eq!(traffic(&mut b), (0, 1));
+    }));
+    let r = a.sync();
+    assert_eq!((r.pulled, r.pushed), (3, 1), "a takes b's delete, and its rename wins");
+    let mut b = Arc::try_unwrap(b).ok().expect("the hook ran").into_inner();
+    assert_eq!(traffic(&mut b), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    for d in [&a, &b] {
+        assert_eq!(d.files(), pairs(&[("anchor.md", "untouched\n"), ("x.md", "from b\n")]), "{}", d.name);
+    }
+}
+
 /// The user deletes a note and gives another one its name in the app, then
 /// edits it: the renamed note keeps its id and history, even when the
 /// deleted one has newer changes.
