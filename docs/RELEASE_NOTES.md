@@ -1,5 +1,20 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- Stores a note on an Android phone with shared storage when another device puts it in a folder that the phone spells differently, such as DRAFTS and Drafts. The phone renames its folder to match, on the phone only.
+- Renames the phone's folder on the phone only, not on every device, when another device moves notes into a folder spelled differently.
+- Stops notes deleted on another device from coming back after a case-only rename of their folder in Cairn on Windows or macOS.
+- Keeps a conflict copy that you rename back to its note's name outside Cairn when another device deletes that note meanwhile.
+- Brings back edited notes in the right folder, as the same note, when another device deleted them in a folder that the devices spell differently.
+- Stops a case-only rename of a folder on Windows or macOS from moving its notes into a new folder on Linux when the devices spell the folder above it differently.
+
+### Compatibility
+
+- Works with servers and devices on 1.0.0 to 1.4.3: the sync protocol, the server's API and the formats on disk are unchanged.
+
 ## 1.4.3 (2026-10-10)
 
 ### Fixes

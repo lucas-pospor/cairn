@@ -78,7 +78,7 @@ A file that cannot sync does not hold up the others. The status bar then says "S
 
 - too large, refused or stalled on upload;
 - unreadable here, or not decryptable;
-- not writable on this device, for example a name that Windows does not allow, or a name that the phone's shared storage does not allow, that differs only in case from another file there, or that is in a folder the phone has under another spelling;
+- not writable on this device, for example a name that Windows does not allow, or a name that the phone's shared storage does not allow, that differs only in case from another file there, or that is in a folder the phone has under another spelling and cannot rename to that one;
 - a change the server no longer has;
 - a name with a backslash;
 - a change to a file that this device reaches under two names through a symlink (see [Files under two names](notebooks-and-files.md#files-under-two-names)), or that may be another name of a file in a folder this device cannot read now;
