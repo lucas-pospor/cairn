@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 1.5.0 (2026-10-25)
 
 ### Properties
 
@@ -20,6 +20,7 @@
 ### Compatibility
 
 - Works with servers and devices on 1.0.0 to 1.4.3: the sync protocol, the server's API and the formats on disk are unchanged.
+- Installs over 1.4.3 and older as an update and keeps the app's data, its notebooks and its sync setup. The Windows installer is still not signed.
 
 ## 1.4.3 (2026-10-10)
 
