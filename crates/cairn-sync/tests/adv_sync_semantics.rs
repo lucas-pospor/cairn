@@ -1866,6 +1866,57 @@ fn a_folder_case_rename_is_not_lost_to_an_edit_from_a_device_that_spells_the_fol
     }
 }
 
+
+/// Notes that a device which tells case apart (Linux) deletes in `Notes`
+/// while a case-insensitive PC that spells the folder `notes` edits them:
+/// the edits beat the deletes, and the notes come back in `Notes`, under
+/// their ids. The PC holds each at the same path as a note of its name that
+/// the desktop deleted in its folder `notes` before, so that its sync state
+/// has two notes deleted at that path as it uploads the edit: the note
+/// deleted last is the one that comes back. (Taking the first of the two
+/// by id brought about half of the edits back in `notes`, under the ids of
+/// the other notes.)
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn edits_that_beat_deletes_come_back_in_the_server_spelling_of_their_folder_where_other_notes_were_deleted_at_their_names() {
+    const N: usize = 16;
+    let srv = server();
+    let old: Vec<(String, String)> = (0..N).map(|i| (format!("notes/n{i}.md"), format!("old {i}\n"))).collect();
+    let mut files: Vec<(&str, &str)> = old.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    files.push(("notes/keep.md", "keep\n"));
+    let mut l = Device::new(&srv, "linux", &files);
+    let mut a = ci(&srv, "win-a", &[]);
+    assert_eq!(traffic(&mut l), (0, N + 1));
+    assert_eq!(traffic(&mut a), (N + 1, 0));
+    // The desktop deletes each note in notes, and makes one of its name in Notes.
+    for i in 0..N {
+        l.rm(&format!("notes/n{i}.md"));
+        l.write(&format!("Notes/n{i}.md"), &format!("new {i}\n"));
+    }
+    assert_eq!(traffic(&mut l), (0, 2 * N));
+    assert_eq!(traffic(&mut a), (2 * N, 0));
+    assert_eq!(server_spelling(&a, "n0.md").as_deref(), Some("Notes/n0.md"));
+    let id_at = |d: &Device, path: &str| d.engine.state().files.iter().find(|(_, t)| !t.deleted && t.path == path).map(|(f, _)| f.clone());
+    let ids: Vec<Option<String>> = (0..N).map(|i| id_at(&l, &format!("Notes/n{i}.md"))).collect();
+    // The desktop deletes them, while the PC edits them.
+    for i in 0..N {
+        l.rm(&format!("Notes/n{i}.md"));
+        a.write(&format!("notes/n{i}.md"), &format!("new {i}, edited on the pc\n"));
+    }
+    assert_eq!(traffic(&mut l), (0, N));
+    assert_eq!(traffic(&mut a), (N, N));
+    assert_eq!(traffic(&mut l), (N, 0));
+    assert_quiet(&mut [&mut l, &mut a]);
+    let mut want: Vec<(String, String)> = (0..N).map(|i| (format!("Notes/n{i}.md"), format!("new {i}, edited on the pc\n"))).collect();
+    want.push(("notes/keep.md".into(), "keep\n".into()));
+    want.sort();
+    assert_eq!(l.files(), want);
+    for (i, id) in ids.iter().enumerate() {
+        assert_eq!(id_at(&l, &format!("Notes/n{i}.md")), *id, "n{i}.md");
+    }
+    assert_eq!(live_server_files(&srv).len(), N + 1);
+}
+
 /// A folder that another program makes on a device whose file system tells
 /// case apart (Linux), after the scan and before the pull applies a note in
 /// it, is not taken for the indexed folder whose name differs only in case:

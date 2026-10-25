@@ -2565,12 +2565,17 @@ impl SyncEngine {
         let mut created: Vec<String> = created.into_iter().collect();
         created.sort();
         for path in created {
-            // Re-creating a file at the path of a deleted one revives its id.
+            // Re-creating a file at the path of a deleted one revives its id:
+            // that of the one deleted last, if there are several. A folder
+            // that this device spells otherwise than the server can have two
+            // notes deleted there under one path here (see `local_spelling`),
+            // and a note whose edit beat its delete is the one deleted last.
             let revive = self
                 .state
                 .files
                 .iter()
-                .find(|(f, t)| t.deleted && t.path == path && !self.state.pending.contains_key(*f))
+                .filter(|(f, t)| t.deleted && t.path == path && !self.state.pending.contains_key(*f))
+                .max_by_key(|(_, t)| t.seq)
                 .map(|(f, t)| (f.clone(), t.seq));
             match revive {
                 Some((fid, seq)) => ops.push((fid, Some(seq), path, false)),
