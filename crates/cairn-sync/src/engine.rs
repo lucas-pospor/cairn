@@ -2274,15 +2274,22 @@ impl SyncEngine {
     /// `Tracked::server_spelling`), so that a folder that this device spells
     /// otherwise is never renamed on the server. A file moved here into
     /// another folder goes up under `path`, also when the folder's name only
-    /// changed in case: the user renamed it so.
+    /// changed in case: the user renamed it so. Then a folder above it that
+    /// kept its name here keeps the server's spelling too, so that only the
+    /// rename goes up.
     fn upload_path(&self, fid: &str, path: &str) -> String {
-        if let Some(t) = self.state.files.get(fid)
-            && let Some(spelled) = &t.server_spelling
-            && vpath::parent(path) == vpath::parent(t.server_here())
-        {
-            return vpath::join(vpath::parent(spelled), vpath::file_name(path));
+        let Some(t) = self.state.files.get(fid) else { return path.to_string() };
+        let Some(spelled) = &t.server_spelling else { return path.to_string() };
+        let (dir, was, theirs) = (vpath::parent(path), vpath::parent(t.server_here()), vpath::parent(spelled));
+        if dir == was {
+            return vpath::join(theirs, vpath::file_name(path));
         }
-        path.to_string()
+        let (a, b, c): (Vec<&str>, Vec<&str>, Vec<&str>) = (dir.split('/').collect(), was.split('/').collect(), theirs.split('/').collect());
+        if dir.to_lowercase() != was.to_lowercase() || b.len() != c.len() {
+            return path.to_string();
+        }
+        let names: Vec<&str> = a.iter().zip(&b).zip(&c).map(|((x, y), z)| if x == y { *z } else { *x }).collect();
+        vpath::join(&names.join("/"), vpath::file_name(path))
     }
 
     // ---------- the round ----------

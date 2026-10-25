@@ -1738,6 +1738,29 @@ fn a_note_back_from_a_delete_in_a_folder_renamed_by_case_in_the_app_leaves_the_n
     }
 }
 
+/// A case-only rename of a folder inside one that a case-insensitive device
+/// spells otherwise than the server (`WORK/Notes` here, `Work/Notes` on the
+/// server): only the renamed folder's new spelling goes up, and the folder
+/// above it keeps the server's, so that a device that tells case apart
+/// renames one folder, not both.
+#[cfg(target_os = "linux")] // The peer needs a file system that tells case apart.
+#[test]
+fn a_case_only_rename_of_a_folder_in_one_spelled_otherwise_goes_up_for_that_folder_only() {
+    let srv = server();
+    let mut l = Device::new(&srv, "linux", &[("Work/Notes/n.md", "n\n"), ("Work/top.md", "top\n")]);
+    let mut a = ci(&srv, "win-a", &[("WORK/a.md", "a\n")]);
+    assert_eq!(traffic(&mut l), (0, 2));
+    assert_eq!(traffic(&mut a), (2, 1));
+    assert_eq!(traffic(&mut l), (1, 0));
+    assert_eq!(a.paths(), strings(&["WORK/Notes/n.md", "WORK/a.md", "WORK/top.md"]));
+    a.mv("WORK/Notes", "WORK/NOTES");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut l), (1, 0));
+    assert_quiet(&mut [&mut l, &mut a]);
+    assert_eq!(l.paths(), strings(&["WORK/a.md", "Work/NOTES/n.md", "Work/top.md"]));
+    assert_eq!(server_spelling(&a, "n.md").as_deref(), Some("Work/NOTES/n.md"));
+}
+
 /// Folders two levels deep, spelled differently at both levels (`Work/DRAFTS`
 /// on one device, `WORK/Drafts` on the other): each device keeps its own
 /// spelling of both, an edit made after that goes up under the server's
