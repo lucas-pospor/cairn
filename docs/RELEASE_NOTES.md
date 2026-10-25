@@ -4,6 +4,7 @@
 
 ### Properties
 
+- Shows a note's properties at the top of the reading view, in the same box as Live Preview.
 - Lists a note's aliases from its properties in the `[[` autocomplete and the quick switcher.
 - Merges a template's properties into the note's properties instead of inserting a second block at the cursor.
 

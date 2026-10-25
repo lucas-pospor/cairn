@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildTree, flatten } from "./tree";
 import { LinkIndex, openWikilinkQuery, splitWikilink, wikilinkAt } from "./links";
-import { renderUnsafe, stripFrontmatter } from "./markdown";
+import { propertiesHtml, renderUnsafe, stripFrontmatter } from "./markdown";
 import { _internal as lp } from "./editor/livePreview";
 import { displayName, isInside, rebase, stem } from "./paths";
 import { back, closeOnBack } from "./back";
@@ -228,6 +228,32 @@ describe("plugins", () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe("properties in the reading view", () => {
+  const note = "---\ntitle: Trip\ntags: [a]\n---\n# Day one\n";
+
+  it("shows the properties box above the body, the same one Live Preview shows", () => {
+    const html = renderUnsafe(note, { links: null, properties: true });
+    expect(html.startsWith(`<div class="md-props">${propertiesHtml("title: Trip\ntags: [a]")}</div>`)).toBe(true);
+    expect(html).toContain("<h1");
+    // The YAML itself is not rendered as text or a rule.
+    expect(html).not.toContain("<hr");
+    expect(html).not.toContain("title: Trip");
+  });
+
+  it("leaves it out of embeds, and shows nothing for no block or an empty one", () => {
+    expect(renderUnsafe(note, { links: null })).not.toContain("md-props");
+    for (const src of ["# Day one\n", "---\n---\n# Day one\n", "\uFEFF---\n  \n---\nx"]) {
+      expect(renderUnsafe(src, { links: null, properties: true })).not.toContain("md-props");
+    }
+  });
+
+  it("shows hostile values as text", () => {
+    const html = renderUnsafe('---\ntitle: "<img src=x onerror=alert(1)>"\n---\nbody', { links: null, properties: true });
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).not.toContain("<img");
   });
 });
 

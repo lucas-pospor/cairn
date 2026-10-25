@@ -130,11 +130,7 @@
   max-width: 100%;
   display: block;
 }
-.md-render .frontmatter {
-  font-size: 0.85em;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
+/* The properties box, styled with Live Preview's in app.css. */
+.md-render .md-props {
   margin-bottom: 1.2em;
 }

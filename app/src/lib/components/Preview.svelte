@@ -21,7 +21,7 @@
     timer = setTimeout(
       async () => {
         const my = ++gen;
-        const out = await renderMarkdown(app.docOf(tab), { links: app.linkIndex, sourcePath: tab.path });
+        const out = await renderMarkdown(app.docOf(tab), { links: app.linkIndex, sourcePath: tab.path, properties: true });
         if (my !== gen) return;
         html = out;
         await tick();

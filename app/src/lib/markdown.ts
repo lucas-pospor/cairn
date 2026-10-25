@@ -15,6 +15,8 @@ export interface RenderContext {
   links: LinkIndex | null;
   /** Path of the note being rendered, for relative links and images. */
   sourcePath?: string;
+  /** Show the note's properties as a box at the top (the reading view; not embeds). */
+  properties?: boolean;
 }
 
 /** `![[pic.png|300]]` or `|300x200` sets the size. */
@@ -161,6 +163,46 @@ export function stripFrontmatter(src: string): { body: string; frontmatter: stri
   return { body: src.slice(m[0].length), frontmatter: m[1] ?? "" };
 }
 
+/**
+ * The properties box that Live Preview and the reading view show in place of
+ * the frontmatter. Its text is escaped here.
+ */
+export function propertiesHtml(yaml: string): string {
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const rows: [string, string[]][] = [];
+  // Set when a line is not a simple `key: value` or list item (block text,
+  // nested maps, comments, not YAML at all): then the box shows the text as
+  // it is, so nothing in the file is hidden.
+  let raw = false;
+  for (const line of yaml.split(/\r?\n/)) {
+    const kv = /^([^\s:#][^:]*):\s*(.*)$/.exec(line);
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    if (kv && !/^[|>]/.test(kv[2].trim())) {
+      let v = kv[2].trim();
+      let vals: string[] = [];
+      if (v.startsWith("[") && v.endsWith("]")) vals = v.slice(1, -1).split(",").map((x) => x.trim()).filter(Boolean);
+      else if (v) vals = [v];
+      vals = vals.map((x) => x.replace(/^["']|["']$/g, ""));
+      rows.push([kv[1].trim(), vals]);
+    } else if (item && rows.length) {
+      rows[rows.length - 1][1].push(item[1].trim().replace(/^["']|["']$/g, ""));
+    } else if (line.trim()) {
+      raw = true;
+    }
+  }
+  if (raw) return `<div class="props"><pre class="props-raw">${esc(yaml)}</pre></div>`;
+  if (!rows.length) return `<div class="props-empty">Properties</div>`;
+  const body = rows
+    .map(
+      ([k, vals]) =>
+        `<div class="prop"><span class="prop-key">${esc(k)}</span><span class="prop-val">${vals
+          .map((v) => (/^tags?$/i.test(k) ? `<span class="tag">#${esc(v.replace(/^#/, ""))}</span>` : `<span>${esc(v)}</span>`))
+          .join(" ")}</span></div>`,
+    )
+    .join("");
+  return `<div class="props">${body}</div>`;
+}
+
 // Without the wikilink and tag plugins: in heading text they are plain text,
 // as in the core.
 const plainMd = new MarkdownIt({ html: true });
@@ -202,7 +244,11 @@ const PURIFY_OPTS = {
 
 /** Render without sanitizing (used in tests). */
 export function renderUnsafe(src: string, ctx: RenderContext = { links: null }): string {
-  return md.render(stripFrontmatter(src).body, { ...ctx });
+  const { body, frontmatter } = stripFrontmatter(src);
+  const html = md.render(body, { ...ctx });
+  // An empty block has nothing to show: Live Preview's empty box is only there to be clicked into.
+  if (!ctx.properties || !frontmatter?.trim()) return html;
+  return `<div class="md-props">${propertiesHtml(frontmatter)}</div>${html}`;
 }
 
 /** Render and sanitize. Needs a DOM (DOMPurify). */

@@ -725,23 +725,23 @@ mark.hit {
   cursor: text;
   margin-bottom: 0.6em;
 }
-.cm-lp-props .props {
+:is(.cm-lp-props, .md-props) .props {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 0.86em;
   background: var(--bg-side);
 }
-.cm-lp-props .prop {
+:is(.cm-lp-props, .md-props) .prop {
   display: grid;
   grid-template-columns: minmax(80px, 30%) 1fr;
   gap: 10px;
   padding: 2px 0;
 }
-.cm-lp-props .prop-key {
+:is(.cm-lp-props, .md-props) .prop-key {
   color: var(--text-muted);
 }
-.cm-lp-props .props-raw {
+:is(.cm-lp-props, .md-props) .props-raw {
   margin: 0;
   padding: 0;
   background: none;
@@ -749,12 +749,12 @@ mark.hit {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.cm-lp-props .prop-val {
+:is(.cm-lp-props, .md-props) .prop-val {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
-.cm-lp-props .tag {
+:is(.cm-lp-props, .md-props) .tag {
   color: var(--accent);
   background: var(--accent-soft);
   border-radius: 10px;

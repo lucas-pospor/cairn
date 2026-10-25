@@ -1,5 +1,6 @@
-// Properties (frontmatter) in the real app: aliases in the [[ autocomplete
-// and the quick switcher, and a template's properties going into the note's.
+// Properties (frontmatter) in the real app: the properties box in the
+// reading view, aliases in the [[ autocomplete and the quick switcher, and a
+// template's properties going into the note's.
 //
 //   scripts/e2e-headless.sh e2e/frontmatter.test.mjs
 
@@ -15,11 +16,50 @@ before(async () => {
     "People/Bob.md": "---\naliases: [Robert, Bobby]\n---\n# Bob\n",
     "Notes/Standup.md": "---\ntitle: Mine\n---\nIntro\n",
     "Templates/Meeting.md": "---\ntitle: Theirs\ntags: [meeting]\n---\n## Agenda\n",
+    "Trip.md": '---\ntitle: Trip\ntags: [travel]\nnote: "<img src=x onerror=window.__pwned=1>"\n---\n# Day one\n',
+    "Host.md": "# Host\n\n![[Trip]]\n",
   });
 });
 
 after(async () => {
   await app?.stop();
+});
+
+/** The look of a properties box: what Live Preview and the reading view must share. */
+const boxStyle = (css) =>
+  app.exec(
+    `const b = document.querySelector(arguments[0]); if (!b) return null; const st = getComputedStyle(b);
+     return { border: st.borderTopWidth + " " + st.borderTopStyle + " " + st.borderTopColor, radius: st.borderTopLeftRadius, background: st.backgroundColor, font: st.fontSize };`,
+    css,
+  );
+
+test("the reading view shows the properties as the box Live Preview shows", async () => {
+  await app.openNote("Trip.md");
+  await app.click("[data-testid=mode-live]");
+  await app.waitFor(`return !!document.querySelector('.cm-lp-props .props')`, { message: "Live Preview box" });
+  const live = await boxStyle(".cm-lp-props .props");
+  await app.click("[data-testid=mode-preview]");
+  await app.waitFor(`return !!document.querySelector('[data-testid=preview] .md-render .md-props .props')`, { message: "reading view box" });
+  const read = await app.exec(`const r = document.querySelector('[data-testid=preview] .md-render');
+    return { keys: [...r.querySelectorAll('.md-props .prop-key')].map((e) => e.textContent), tags: [...r.querySelectorAll('.md-props .tag')].map((e) => e.textContent),
+      first: r.firstElementChild?.className, heading: r.querySelector('h1')?.textContent, text: r.textContent, imgs: r.querySelectorAll('img').length };`);
+  assert.deepEqual(read.keys, ["title", "tags", "note"]);
+  assert.deepEqual(read.tags, ["#travel"]);
+  assert.equal(read.first, "md-props");
+  assert.equal(read.heading, "Day one");
+  // A hostile value shows as text and runs nothing.
+  assert.ok(read.text.includes("<img src=x onerror=window.__pwned=1>"), read.text);
+  assert.equal(read.imgs, 0);
+  assert.equal(await app.exec(`return window.__pwned ?? null`), null);
+  assert.deepEqual(await boxStyle("[data-testid=preview] .md-props .props"), live);
+});
+
+test("an embedded note shows its body without its properties", async () => {
+  await app.openNote("Host.md");
+  await app.click("[data-testid=mode-preview]");
+  await app.waitFor(`return !!document.querySelector('[data-testid=preview] .md-render .embed-body h1')`, { message: "embed filled" });
+  assert.equal(await app.exec(`return document.querySelectorAll('[data-testid=preview] .md-props').length`), 0);
+  await app.click("[data-testid=mode-live]");
 });
 
 const options = () => app.exec(`return [...document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li => li.textContent)`);

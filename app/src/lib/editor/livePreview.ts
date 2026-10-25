@@ -31,7 +31,7 @@ import type { SyntaxNode, Tree } from "@lezer/common";
 import { vaultUrl } from "../backend";
 import { fillEmbeds } from "../embeds";
 import { trimLink, type LinkIndex } from "../links";
-import { FRONTMATTER_RE, renderMarkdownSync } from "../markdown";
+import { FRONTMATTER_RE, propertiesHtml, renderMarkdownSync } from "../markdown";
 import { AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS, extension, parent, resolveRelative } from "../paths";
 import { embeddedImageAt } from "../opening";
 import type { LinkKind } from "../types";
@@ -989,42 +989,6 @@ function rebuildBlocks(
     }),
     left,
   };
-}
-
-function propertiesHtml(yaml: string): string {
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-  const rows: [string, string[]][] = [];
-  // Set when a line is not a simple `key: value` or list item (block text,
-  // nested maps, comments, not YAML at all): then the box shows the text as
-  // it is, so nothing in the file is hidden.
-  let raw = false;
-  for (const line of yaml.split(/\r?\n/)) {
-    const kv = /^([^\s:#][^:]*):\s*(.*)$/.exec(line);
-    const item = /^\s*-\s+(.*)$/.exec(line);
-    if (kv && !/^[|>]/.test(kv[2].trim())) {
-      let v = kv[2].trim();
-      let vals: string[] = [];
-      if (v.startsWith("[") && v.endsWith("]")) vals = v.slice(1, -1).split(",").map((x) => x.trim()).filter(Boolean);
-      else if (v) vals = [v];
-      vals = vals.map((x) => x.replace(/^["']|["']$/g, ""));
-      rows.push([kv[1].trim(), vals]);
-    } else if (item && rows.length) {
-      rows[rows.length - 1][1].push(item[1].trim().replace(/^["']|["']$/g, ""));
-    } else if (line.trim()) {
-      raw = true;
-    }
-  }
-  if (raw) return `<div class="props"><pre class="props-raw">${esc(yaml)}</pre></div>`;
-  if (!rows.length) return `<div class="props-empty">Properties</div>`;
-  const body = rows
-    .map(
-      ([k, vals]) =>
-        `<div class="prop"><span class="prop-key">${esc(k)}</span><span class="prop-val">${vals
-          .map((v) => (/^tags?$/i.test(k) ? `<span class="tag">#${esc(v.replace(/^#/, ""))}</span>` : `<span>${esc(v)}</span>`))
-          .join(" ")}</span></div>`,
-    )
-    .join("");
-  return `<div class="props">${body}</div>`;
 }
 
 function blockField(hooks: LivePreviewHooks) {

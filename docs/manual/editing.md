@@ -16,7 +16,7 @@ The right sidebar shows a note's backlinks, its outgoing links, its outline, its
 
 ## Properties
 
-A note can start with properties (frontmatter): YAML between two `---` lines at the very top, such as `tags: [project, draft]`. The reading view leaves the block out, Live Preview shows it as a box of properties, and the Properties panel in the right sidebar lists them. Search finds the values. Two properties do more:
+A note can start with properties (frontmatter): YAML between two `---` lines at the very top, such as `tags: [project, draft]`. The reading view and Live Preview show it as a box of properties at the top of the note (Live Preview shows the YAML again while the cursor is on it), and the Properties panel in the right sidebar lists them. A note embedded in another shows without its properties. Search finds the values. Two properties do more:
 
 - `tags` (or `tag`), a list or names separated by commas or spaces, counts as tags, as `#tags` in the text do.
 - `aliases` (or `alias`), a list or names separated by commas, gives the note other names. The `[[` autocomplete and the quick switcher list them, as in Obsidian.
