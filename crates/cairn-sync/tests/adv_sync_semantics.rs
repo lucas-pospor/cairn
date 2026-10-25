@@ -2339,9 +2339,18 @@ fn a_case_only_folder_rename_on_a_phone_on_shared_storage_goes_up_for_that_folde
     traffic(&mut a);
     traffic(&mut b);
     assert_quiet(&mut [&mut a, &mut b, &mut phone]);
-    let mut linux = Device::new(&srv, "linux", &[]);
-    traffic(&mut linux);
-    assert_eq!(linux.paths(), strings(&["work/NOTES/x.md", "work/NOTES/z.md", "work/notes/y.md"]));
+    // The server keeps a's spelling of the folder inside for x.md and z.md,
+    // and b's for y.md, which is the phone's own (no spelling of its own).
+    assert_eq!(server_spelling(&phone, "x.md"), Some("work/NOTES/x.md".into()));
+    assert_eq!(server_spelling(&phone, "z.md"), Some("work/NOTES/z.md".into()));
+    assert_eq!(server_spelling(&phone, "y.md"), None);
+    // A device that tells case apart gets them so. It writes to the real
+    // disk, which on Windows cannot hold both spellings.
+    if cfg!(target_os = "linux") {
+        let mut linux = Device::new(&srv, "linux", &[]);
+        traffic(&mut linux);
+        assert_eq!(linux.paths(), strings(&["work/NOTES/x.md", "work/NOTES/z.md", "work/notes/y.md"]));
+    }
 }
 
 /// The same when, in that pull, moves from a PC that renamed the folder by
