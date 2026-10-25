@@ -1,0 +1,168 @@
+name: Release files
+
+# Builds the release files that need tools a Linux desktop may lack, the
+# signed universal APK and the sync server's Docker image, and attaches them
+# to the GitHub release of the tag, then writes SHA256SUMS over every file the
+# release has. A draft release is enough: the files go up before it is
+# published, so its website deploy (site.yml) and its readers see them all.
+#
+# It runs when a v* tag is pushed, and by hand (Actions, then Release files,
+# then Run workflow) for a tag given. Make the release, a draft is enough, and
+# attach the desktop files before the builds end, about 30 minutes after the
+# tag push: each upload waits up to 30 minutes for the release to exist, and
+# SHA256SUMS covers what the release has when the last build ends. Run the
+# workflow again by hand after adding files later.
+#
+# Signing uses these repository secrets (Settings, then Secrets and
+# variables, then Actions):
+#   ANDROID_KEYSTORE_BASE64    the keystore file, base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD  the keystore's password
+#   ANDROID_KEY_ALIAS          the alias of the key in it
+#   ANDROID_KEY_PASSWORD       the key's password (often the keystore's)
+# The job refuses an APK whose certificate is not the one that signed every
+# earlier release (docs/manual/android.md gives its fingerprint): phones only
+# install an update signed with the same key.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, such as v1.5.0
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+  # SHA-256 of the signing certificate, as docs/manual/android.md gives it.
+  CERT_SHA256: 1d10fedcb9a25563daa059ad793064153da87f92c40c49a898f200af09b9828c
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check that the tag names the version in the code
+        run: |
+          v="${TAG#v}"
+          grep -qx "version = \"$v\"" Cargo.toml || { echo "Cargo.toml is not at version $v"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      # The runner's Java 21 and Android SDK, with the SDK packages that
+      # docs/manual/building.md names.
+      - name: Install the Android SDK packages
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Install Rust with the Android targets
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # All four targets in one APK, as earlier releases. app/.cargo/config.toml
+      # gives both cargo runs of the build the web view client override.
+      - name: Build the APK
+        working-directory: app
+        run: npx tauri android build --apk --ci
+
+      # Aligned for 16 KB pages, then signed (v2 and v3 schemes, as apksigner
+      # picks for minSdk 24), then checked against the release certificate.
+      - name: Sign the APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE_BASE64" ] || { echo "The ANDROID_KEYSTORE_BASE64 secret is not set"; exit 1; }
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          unsigned=app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
+          ks="$RUNNER_TEMP/release.keystore"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$ks"
+          "$tools/zipalign" -f -P 16 4 "$unsigned" "$RUNNER_TEMP/aligned.apk"
+          out="cairn-$VERSION-universal.apk"
+          "$tools/apksigner" sign --ks "$ks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KS_PASS --key-pass env:KEY_PASS --out "$out" "$RUNNER_TEMP/aligned.apk"
+          rm -f "$ks"
+          cert=$("$tools/apksigner" verify --print-certs "$out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          [ "$cert" = "$CERT_SHA256" ] || { echo "Signed with certificate $cert, not the release certificate"; exit 1; }
+          echo "APK=$out" >> "$GITHUB_ENV"
+
+      - name: Attach the APK to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do gh release view "$TAG" > /dev/null 2>&1 && break; sleep 30; done
+          gh release upload "$TAG" "$APK" --clobber
+
+  server-image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check that the tag names the version in the code
+        run: |
+          v="${TAG#v}"
+          grep -qx "version = \"$v\"" Cargo.toml || { echo "Cargo.toml is not at version $v"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      # For x86_64, under the name that docs/manual/sync.md gives.
+      - name: Build the server image
+        run: |
+          docker build -f crates/cairn-server/Dockerfile -t "cairn-server:$VERSION" .
+          docker save "cairn-server:$VERSION" | gzip -9 > "cairn-server-$VERSION-docker-image.tar.gz"
+
+      - name: Attach the image to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do gh release view "$TAG" > /dev/null 2>&1 && break; sleep 30; done
+          gh release upload "$TAG" "cairn-server-$VERSION-docker-image.tar.gz" --clobber
+
+  checksums:
+    needs: [apk, server-image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Write SHA256SUMS over the release's files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir files && cd files
+          gh release download "$TAG"
+          rm -f SHA256SUMS
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber
