@@ -2,7 +2,7 @@
 
 ## Quick switcher
 
-Ctrl+O opens the quick switcher, which finds a note by its name. Before you type, it lists recent notes; once you type, it also lists images.
+Ctrl+O opens the quick switcher, which finds a note by its name or by one of its aliases. Before you type, it lists recent notes; once you type, it also lists images.
 
 ## Command palette
 

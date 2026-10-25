@@ -10,6 +10,7 @@ import type {
   GraphData,
   NoteContent,
   NoteInfo,
+  NoteAliases,
   TagCount,
   SyncStatus,
   HistoryEntry,
@@ -102,6 +103,8 @@ export const backend = {
   /** A non-note file's text; null if it is too big or not text (a PDF, an archive). */
   readTextFile: (path: string) => invoke<string | null>("read_text_file", { path }),
   tags: () => invoke<TagCount[]>("tags"),
+  /** Every note with an `aliases` property. */
+  aliases: () => invoke<NoteAliases[]>("aliases"),
   graph: (includeUnresolved: boolean) => invoke<GraphData>("graph", { includeUnresolved }),
   noteInfo: (path: string) => invoke<NoteInfo | null>("note_info", { path }),
   openExternally: (path: string) => invoke<void>("open_externally", { path }),

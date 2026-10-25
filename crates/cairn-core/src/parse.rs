@@ -51,6 +51,9 @@ pub struct ParsedNote {
     pub tags: Vec<String>,
     /// YAML frontmatter converted to JSON. `None` if absent or invalid.
     pub frontmatter: Option<serde_json::Value>,
+    /// Other names from the `aliases` (or `alias`) property, trimmed and
+    /// deduplicated, as written.
+    pub aliases: Vec<String>,
     /// Byte offset where the body starts (after a BOM and frontmatter).
     pub body_start: usize,
 }
@@ -97,6 +100,35 @@ pub fn split_frontmatter(content: &str) -> Option<(&str, usize)> {
         offset += line.len();
     }
     None
+}
+
+/// The `aliases` (or `alias`) property: a list, or a string of names split
+/// at commas, as Obsidian reads it. Numbers count as names (`aliases: [2024]`).
+pub fn frontmatter_aliases(fm: &serde_json::Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: &str| {
+        let s = s.trim();
+        if !s.is_empty() && !out.iter().any(|a| a == s) {
+            out.push(s.to_string());
+        }
+    };
+    for key in ["aliases", "alias"] {
+        match fm.get(key) {
+            Some(serde_json::Value::String(s)) => s.split(',').for_each(&mut push),
+            Some(serde_json::Value::Array(a)) => {
+                for v in a {
+                    match v {
+                        serde_json::Value::String(s) => push(s),
+                        serde_json::Value::Number(n) => push(&n.to_string()),
+                        _ => {}
+                    }
+                }
+            }
+            Some(serde_json::Value::Number(n)) => push(&n.to_string()),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Parse the YAML frontmatter into JSON, if valid.
@@ -200,6 +232,7 @@ pub fn parse(content: &str) -> ParsedNote {
     out.body_start = bom_len(content);
     if let Some((yaml, body)) = split_frontmatter(content) {
         out.frontmatter = parse_frontmatter(yaml);
+        out.aliases = out.frontmatter.as_ref().map(frontmatter_aliases).unwrap_or_default();
         out.body_start = body;
     }
     let body_start = out.body_start;
@@ -485,6 +518,18 @@ mod tests {
         let p = parse("---\n: : bad\n  - [\n---\n[[X]]");
         assert!(p.frontmatter.is_none());
         assert_eq!(targets(&p), vec!["X"]);
+    }
+
+    #[test]
+    fn frontmatter_aliases() {
+        let p = parse("---\naliases: [Alpha, \" Beta \", Alpha, 2024, {x: 1}]\nalias: Gamma, Delta\n---\n");
+        assert_eq!(p.aliases, vec!["Alpha", "Beta", "2024", "Gamma", "Delta"]);
+        let p = parse("---\naliases:\n  - One two\n---\nbody");
+        assert_eq!(p.aliases, vec!["One two"]);
+        // No property, empty values, and aliases in the body are no aliases.
+        assert!(parse("---\naliases:\nalias: \" , \"\n---\n").aliases.is_empty());
+        assert!(parse("aliases: [A]\n").aliases.is_empty());
+        assert!(parse("---\naliases: [A\n---\n").aliases.is_empty());
     }
 
     #[test]

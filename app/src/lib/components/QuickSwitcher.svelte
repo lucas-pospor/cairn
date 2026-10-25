@@ -12,20 +12,33 @@
   let input: HTMLInputElement;
   let list: HTMLDivElement | undefined = $state();
 
+  // `where` is the path, matched too; an alias row matches by the alias only.
+  type Item = { key: string; path: string; name: string; where: string; mtime: number; alias?: string };
   // Notes and images (they open in a tab). Prepared once per open; fuzzysort caches the preparation.
-  const files = app.entries
+  const files: Item[] = app.entries
     .filter((e) => e.kind === "file" && (isMarkdown(e.path) || isImage(e.path)))
-    .map((e) => ({ path: e.path, name: displayName(e.path), mtime: e.mtime }));
+    .map((e) => ({ key: e.path, path: e.path, name: displayName(e.path), where: e.path, mtime: e.mtime }));
+  // A note is found by its aliases too, each on a row of its own, as in Obsidian.
+  const byPath = new Map(files.map((f) => [f.path, f]));
+  const aliasItems: Item[] = app.aliases.flatMap((a) => {
+    const f = byPath.get(a.path);
+    if (!f) return [];
+    return a.aliases
+      .filter((alias) => alias.toLowerCase() !== f.name.toLowerCase())
+      .map((alias) => ({ ...f, key: `${f.path}\n${alias}`, name: alias, where: "", alias }));
+  });
+  const items = [...files, ...aliasItems];
   // Before anything is typed: the recent notes only, so that a batch of new
   // images (a camera folder, a sync) does not push them out.
   const recentFirst = files.filter((f) => isMarkdown(f.path)).sort((a, b) => b.mtime - a.mtime);
 
   let results = $derived(
     query.trim()
-      ? fuzzysort.go(query.trim(), files, { keys: ["name", "path"], limit: 60 }).map((r) => r.obj)
+      ? fuzzysort.go(query.trim(), items, { keys: ["name", "where"], limit: 60 }).map((r) => r.obj)
       : recentFirst.slice(0, 60),
   );
-  let exact = $derived(results.some((r) => r.name.toLowerCase() === query.trim().toLowerCase()));
+  // An alias is no note of that name: creating one stays on offer.
+  let exact = $derived(results.some((r) => r.alias === undefined && r.name.toLowerCase() === query.trim().toLowerCase()));
   let showCreate = $derived(!!query.trim() && !exact);
 
   // Focus stays in the input; aria-activedescendant tells screen readers
@@ -59,7 +72,7 @@
     if (!r) return;
     // The list is made when the switcher opens: the note may be gone since.
     if (app.entries.some((e) => e.path === r.path)) app.openNote(r.path, { newTab });
-    else app.toast(`"${r.name}" was deleted or moved.`);
+    else app.toast(`"${displayName(r.path)}" was deleted or moved.`);
   }
 
   function create() {
@@ -109,7 +122,7 @@
       data-testid="switcher-input"
     />
     <div class="list" bind:this={list} id="{uid}-list" role="listbox" aria-label="Notes and images">
-      {#each results as r, i (r.path)}
+      {#each results as r, i (r.key)}
         <button
           class="item"
           class:sel={i === index}
@@ -122,7 +135,8 @@
           data-testid="switcher-item"
         >
           <span class="name">{r.name}</span>
-          {#if parent(r.path)}<span class="dir">{parent(r.path)}</span>{/if}
+          {#if r.alias !== undefined}<span class="dir" data-testid="switcher-alias-of">↪ {displayName(r.path)}</span>
+          {:else if parent(r.path)}<span class="dir">{parent(r.path)}</span>{/if}
         </button>
       {/each}
       {#if showCreate}

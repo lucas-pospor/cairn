@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Properties
+
+- Lists a note's aliases from its properties in the `[[` autocomplete and the quick switcher.
+- Merges a template's properties into the note's properties instead of inserting a second block at the cursor.
+
 ### Fixes
 
 - Stores a note on an Android phone with shared storage when another device puts it in a folder that the phone spells differently, such as DRAFTS and Drafts. The phone renames its folder to match, on the phone only.

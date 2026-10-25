@@ -44,7 +44,7 @@ import fuzzysort from "fuzzysort";
 import { openWikilinkQuery, trimLink, wikilinkAt, type LinkIndex } from "../links";
 import { displayName, parent } from "../paths";
 import { isMobile } from "../platform";
-import type { LinkKind } from "../types";
+import type { LinkKind, NoteAliases } from "../types";
 import { resetLineBreaks } from "./lineBreaks";
 import { textChanges } from "./textChanges";
 
@@ -52,6 +52,8 @@ export interface EditorHooks {
   linkIndex(): LinkIndex | null;
   /** All file paths in the vault, for autocomplete. */
   files(): string[];
+  /** Notes with an `aliases` property, for autocomplete. */
+  aliases(): NoteAliases[];
   openLink(target: string, subpath: string | null, newTab: boolean, kind?: LinkKind): void;
   openUrl(url: string): void;
   /** Open an image embedded in the note (its vault path) in an image tab. */
@@ -275,15 +277,47 @@ function linkClicks(hooks: EditorHooks): Extension {
   });
 }
 
-// Cached per file list so typing does not rebuild 10k objects per keystroke.
+// Cached per file and alias list so typing does not rebuild 10k objects per keystroke.
 let cachedFiles: string[] | null = null;
-let cachedTargets: { path: string; name: string }[] = [];
-function completionTargets(files: string[]) {
-  if (files !== cachedFiles) {
+let cachedAliases: NoteAliases[] | null = null;
+let cachedTargets: CompletionTarget[] = [];
+
+/** A file to link to, under its name or, for a note, one of its aliases. */
+export interface CompletionTarget {
+  path: string;
+  name: string;
+  /** The path, matched too; an alias matches by itself only. */
+  where: string;
+  alias?: string;
+}
+
+export function completionTargets(files: string[], aliases: NoteAliases[]): CompletionTarget[] {
+  if (files !== cachedFiles || aliases !== cachedAliases) {
     cachedFiles = files;
-    cachedTargets = files.map((p) => ({ path: p, name: displayName(p) }));
+    cachedAliases = aliases;
+    cachedTargets = files.map((p) => ({ path: p, name: displayName(p), where: p }));
+    // The alias list can lag behind the file list by a moment: only files that are there.
+    const there = new Set(files);
+    for (const a of aliases) {
+      if (!there.has(a.path)) continue;
+      const name = displayName(a.path).toLowerCase();
+      for (const alias of a.aliases) if (alias.toLowerCase() !== name) cachedTargets.push({ path: a.path, name: alias, where: "", alias });
+    }
   }
   return cachedTargets;
+}
+
+/**
+ * What the autocomplete puts between `[[` and `]]` for `target`: the link
+ * text, then `|alias` when it was picked by an alias, as in Obsidian. Null
+ * when no wikilink reaches the file, or the alias cannot be link text.
+ */
+export function completionText(idx: LinkIndex | null, target: CompletionTarget): string | null {
+  const text = idx ? idx.linkText(target.path) : target.name;
+  if (text === null || target.alias === undefined) return text;
+  const alias = target.alias.replace(/\s+/g, " ");
+  if (/[[\]]/.test(alias)) return null;
+  return `${text}|${alias}`;
 }
 
 function wikilinkCompletion(hooks: EditorHooks) {
@@ -293,16 +327,17 @@ function wikilinkCompletion(hooks: EditorHooks) {
     if (!q) return null;
     const from = line.from + q.start;
     const idx = hooks.linkIndex();
-    const targets = completionTargets(hooks.files());
+    const targets = completionTargets(hooks.files(), hooks.aliases());
     const picked = q.query
-      ? fuzzysort.go(q.query, targets, { keys: ["name", "path"], limit: 50 }).map((r) => r.obj)
-      : [...targets].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50);
+      ? fuzzysort.go(q.query, targets, { keys: ["name", "where"], limit: 50 }).map((r) => r.obj)
+      : targets.filter((f) => f.alias === undefined).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50);
     const options: Completion[] = picked.flatMap((f) => {
-      const text = idx ? idx.linkText(f.path) : f.name;
+      const text = completionText(idx, f);
       if (text === null) return []; // no wikilink reaches this file
       return {
         label: f.name,
-        detail: parent(f.path) || undefined,
+        // An alias names its note, as Obsidian's curved arrow does.
+        detail: f.alias !== undefined ? `↪ ${displayName(f.path)}` : parent(f.path) || undefined,
         type: /\.(md|markdown)$/i.test(f.path) ? "text" : "variable",
         apply: (view, _c, aFrom, aTo) => {
           const after = view.state.sliceDoc(aTo, aTo + 2);

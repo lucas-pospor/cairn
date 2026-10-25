@@ -1093,6 +1093,10 @@ impl Vault {
         self.index.read().tags()
     }
 
+    pub fn aliases(&self) -> Vec<index::NoteAliases> {
+        self.index.read().aliases()
+    }
+
     pub fn graph(&self, include_unresolved: bool) -> index::Graph {
         self.index.read().graph(include_unresolved)
     }

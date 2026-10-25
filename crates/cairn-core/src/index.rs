@@ -436,6 +436,20 @@ impl Index {
         out
     }
 
+    /// Every note with an `aliases` property, by path, for the link
+    /// autocomplete and the quick switcher. Links do not resolve through
+    /// aliases, as in Obsidian: `[[Alias]]` stays unresolved.
+    pub fn aliases(&self) -> Vec<NoteAliases> {
+        let mut out: Vec<NoteAliases> = self
+            .notes
+            .iter()
+            .filter(|(_, rec)| !rec.parsed.aliases.is_empty())
+            .map(|(p, rec)| NoteAliases { path: p.clone(), aliases: rec.parsed.aliases.clone() })
+            .collect();
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        out
+    }
+
     /// Notes and the links between them. Unresolved link targets become
     /// nodes of kind `Unresolved` when `include_unresolved` is set.
     pub fn graph(&self, include_unresolved: bool) -> Graph {
@@ -502,6 +516,7 @@ impl Index {
             // A `---` block was found but could not be read.
             frontmatter_invalid: rec.parsed.body_start > 0 && rec.parsed.frontmatter.is_none(),
             tags: rec.parsed.tags.clone(),
+            aliases: rec.parsed.aliases.clone(),
             headings: rec.parsed.headings.clone(),
         })
     }
@@ -511,6 +526,12 @@ impl Index {
 pub struct TagCount {
     pub tag: String,
     pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct NoteAliases {
+    pub path: String,
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -542,6 +563,7 @@ pub struct NoteInfo {
     #[serde(rename = "frontmatterInvalid")]
     pub frontmatter_invalid: bool,
     pub tags: Vec<String>,
+    pub aliases: Vec<String>,
     pub headings: Vec<crate::parse::Heading>,
 }
 
@@ -768,5 +790,23 @@ mod tests {
         assert_eq!(info("Good.md").frontmatter, Some(serde_json::json!({ "key": "value" })));
         assert!(!info("Good.md").frontmatter_invalid);
         assert!(info("None.md").frontmatter.is_none() && !info("None.md").frontmatter_invalid);
+    }
+
+    #[test]
+    fn aliases_list_notes_and_do_not_resolve() {
+        let mut idx = build(&[
+            ("b/Bob.md", "---\naliases: [Robert, Bobby]\n---\n"),
+            ("A.md", "---\nalias: Ay\n---\n[[Robert]]"),
+            ("C.md", "no frontmatter"),
+        ]);
+        let got: Vec<_> = idx.aliases().into_iter().map(|a| (a.path, a.aliases)).collect();
+        assert_eq!(got, vec![("A.md".into(), vec!["Ay".to_string()]), ("b/Bob.md".into(), vec!["Robert".into(), "Bobby".into()])]);
+        assert_eq!(idx.note_info("b/Bob.md").unwrap().aliases, vec!["Robert", "Bobby"]);
+        // As in Obsidian, an alias is not a link target.
+        assert_eq!(idx.resolve("Robert", "A.md"), None);
+        assert!(idx.backlinks("b/Bob.md").is_empty());
+        // Saving the note without the property drops its aliases.
+        idx.put_note(st("b/Bob.md"), "plain".into(), hash_bytes(b"plain"));
+        assert_eq!(idx.aliases().len(), 1);
     }
 }

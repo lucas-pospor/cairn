@@ -1,8 +1,9 @@
 // Templates: insert a note from the template folder at the cursor, with
 // {{title}}, {{date}} and {{time}} filled in. {{date:FORMAT}} and
 // {{time:FORMAT}} take a format of their own (see dates.ts). The template goes
-// in as it is (frontmatter too), as one edit that one undo takes back, and
-// autosave writes it like typing.
+// in as one edit that one undo takes back; its properties (frontmatter) go
+// into the note's properties (see templateEdit in frontmatter.ts). Autosave
+// writes it like typing.
 
 import { displayName } from "../paths";
 import { errorMessage } from "../types";

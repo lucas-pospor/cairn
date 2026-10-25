@@ -207,6 +207,7 @@ pub fn run() {
             commands::save_attachment,
             commands::read_text_file,
             commands::tags,
+            commands::aliases,
             commands::graph,
             commands::note_info,
             commands::open_externally,

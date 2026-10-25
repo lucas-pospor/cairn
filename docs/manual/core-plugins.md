@@ -6,7 +6,7 @@ They are part of the app, so they need no approval on each device, unlike [plugi
 
 ## Templates
 
-On by default. Templates inserts a note from the template folder (`Templates` unless you choose another) at the cursor. In the template, `{{title}}` becomes the name of the note, and `{{date}}` and `{{time}}` become the date and time in the formats set in Settings (`YYYY-MM-DD` and `HH:mm` unless you change them). `{{date:FORMAT}}` and `{{time:FORMAT}}` use a format of their own. The template goes in as it is, frontmatter included, and one undo takes it out again. On a phone, a button in the formatting toolbar inserts a template.
+On by default. Templates inserts a note from the template folder (`Templates` unless you choose another) at the cursor. In the template, `{{title}}` becomes the name of the note, and `{{date}}` and `{{time}}` become the date and time in the formats set in Settings (`YYYY-MM-DD` and `HH:mm` unless you change them). `{{date:FORMAT}}` and `{{time:FORMAT}}` use a format of their own. Properties at the top of a template go into the note's properties: Cairn adds the ones the note lacks and keeps the values the note has. A note without properties gets the template's block at the top. One undo takes the whole template out again. On a phone, a button in the formatting toolbar inserts a template.
 
 ## Daily notes
 

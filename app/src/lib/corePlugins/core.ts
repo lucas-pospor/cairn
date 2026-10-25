@@ -33,7 +33,8 @@ export interface CoreHost {
   canInsert(): boolean;
   /**
    * Put `text` in place of the selection, as one edit that one undo takes back, if `path`
-   * is still the note open for editing. False when it is not.
+   * is still the note open for editing. False when it is not. Properties at the top of
+   * `text` go into the note's properties (see templateEdit in frontmatter.ts).
    */
   insert(path: string, text: string): boolean;
   /** The text of a note. */

@@ -1,6 +1,6 @@
 // Application state: open vault, file list, tabs, panels and dialogs.
 
-import { EditorState } from "@codemirror/state";
+import { EditorState, type TransactionSpec } from "@codemirror/state";
 import { isolateHistory } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
@@ -8,12 +8,13 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { backend, vaultUrl } from "./backend";
 import { LinkIndex } from "./links";
 import { FRONTMATTER_RE, headingsOf } from "./markdown";
+import { templateEdit } from "./frontmatter";
 import { buildTree } from "./tree";
 import { noteExtensions, livePreviewExtension, diskChange, refreshLinks, linkAtCursor, type EditorHooks } from "./editor/setup";
 import { refreshEmbeds } from "./editor/livePreview";
 import { displayName, isImage, isInside, isMarkdown, isSameOrInside, join, parent, rebase, fileName, resolveRelative } from "./paths";
 import { openTarget } from "./opening";
-import { errorMessage, isCoreError, type Change, type FileStat, type LinkKind, type SyncStatus, type VaultInfo } from "./types";
+import { errorMessage, isCoreError, type Change, type FileStat, type LinkKind, type NoteAliases, type SyncStatus, type VaultInfo } from "./types";
 import { FONT_NAMES, settings } from "./settings.svelte";
 import { commands, displayCombo, isMac as macPlatform } from "./commands";
 import { toggleWrap, toggleTask, insertWikilink } from "./editor/format";
@@ -109,6 +110,8 @@ class App {
   linkIndex = $derived(new LinkIndex(this.entries));
   /** All file paths (not folders), for autocomplete. */
   filePaths = $derived(this.entries.filter((e) => e.kind === "file").map((e) => e.path));
+  /** Notes with an `aliases` property, for autocomplete and the quick switcher. */
+  aliases = $state.raw<NoteAliases[]>([]);
   tabs = $state<Tab[]>([]);
   activeId = $state<number | null>(null);
   active = $derived(this.tabs.find((t) => t.id === this.activeId) ?? null);
@@ -191,8 +194,15 @@ class App {
       const v = this.view;
       const tab = this.viewTab;
       if (!v || !tab || tab !== this.active || tab.path !== path || tab.mode === "preview") return false;
+      // Properties merge into the note's, at the main cursor; other text goes in at every cursor.
+      let spec: TransactionSpec = v.state.replaceSelection(text);
+      if (FRONTMATTER_RE.test(text)) {
+        const sel = v.state.selection.main;
+        const edit = templateEdit(v.state.doc.toString(), sel.from, sel.to, text);
+        spec = { changes: edit.changes, selection: { anchor: edit.cursor } };
+      }
       // Its own undo step, also right after typing.
-      v.dispatch({ ...v.state.replaceSelection(text), scrollIntoView: true, userEvent: "input", annotations: isolateHistory.of("full") });
+      v.dispatch({ ...spec, scrollIntoView: true, userEvent: "input", annotations: isolateHistory.of("full") });
       v.focus();
       return true;
     },
@@ -262,6 +272,7 @@ class App {
     return {
       linkIndex: () => this.linkIndex,
       files: () => this.filePaths,
+      aliases: () => this.aliases,
       openLink: (target, subpath, newTab, kind) => this.openLink(target, subpath, newTab, kind),
       openUrl: (url) => this.openUrl(url),
       openImage: (path) => this.openEmbeddedImage(path),
@@ -358,6 +369,8 @@ class App {
       this.sync = null;
       this.syncSetup = null;
       this.entries = info.entries;
+      this.aliases = [];
+      void this.refreshAliases();
       this.expanded.clear();
       this.imageChanges.clear();
       this.imageEpoch++;
@@ -405,6 +418,7 @@ class App {
     this.tabs = [];
     this.activeId = null;
     this.entries = [];
+    this.aliases = [];
     this.settingsDiscarded = false;
     this.heldReset();
     this.recent = await backend.recentVaults();
@@ -568,7 +582,7 @@ class App {
         void this.refreshEntries();
       } else {
         this.view?.dispatch({ effects: refreshEmbeds.of(null) });
-        this.changeSeq++;
+        this.contentChanged();
       }
     }, 60);
   }
@@ -595,6 +609,22 @@ class App {
     return `${vaultUrl(path)}?v=${this.imageEpoch}.${this.imageChanges.get(path) ?? 0}`;
   }
 
+  /** Notes changed on disk: what shows their content refreshes (see changeSeq), and so do the aliases. */
+  private contentChanged() {
+    this.changeSeq++;
+    void this.refreshAliases();
+  }
+
+  private async refreshAliases() {
+    const vault = this.vault;
+    try {
+      const aliases = await backend.aliases();
+      if (this.vault === vault) this.aliases = aliases;
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
   private async refreshEntries() {
     if (!this.vault) return;
     try {
@@ -603,7 +633,7 @@ class App {
       console.warn(e);
     }
     this.view?.dispatch({ effects: [refreshLinks.of(null), refreshEmbeds.of(null)] });
-    this.changeSeq++;
+    this.contentChanged();
     this.saveSession();
   }
 

@@ -577,6 +577,11 @@ pub async fn tags(state: State<'_, AppState>) -> CmdResult<Vec<cairn_core::index
 }
 
 #[tauri::command]
+pub async fn aliases(state: State<'_, AppState>) -> CmdResult<Vec<cairn_core::index::NoteAliases>> {
+    Ok(vault(&state)?.aliases())
+}
+
+#[tauri::command]
 pub async fn graph(state: State<'_, AppState>, include_unresolved: bool) -> CmdResult<cairn_core::index::Graph> {
     Ok(vault(&state)?.graph(include_unresolved))
 }

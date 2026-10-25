@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { keymap, type KeyBinding } from "@codemirror/view";
 import { redo } from "@codemirror/commands";
-import { linkAtCursor, noteExtensions, type EditorHooks } from "./setup";
+import { completionTargets, completionText, linkAtCursor, noteExtensions, type EditorHooks } from "./setup";
+import { LinkIndex } from "../links";
 
 const at = (doc: string, cursor: number) => linkAtCursor(EditorState.create({ doc, selection: { anchor: cursor } }));
 
@@ -39,5 +40,34 @@ describe("redo keys in the editor", () => {
     expect(redoKeys("win")).toEqual(["Mod-y", "Mod-Shift-z"]);
     expect(redoKeys("linux")).toEqual(["Mod-y", "Ctrl-Shift-z"]);
     expect(redoKeys("mac")).toEqual(["Mod-Shift-z"]);
+  });
+});
+
+describe("aliases in the [[ autocomplete", () => {
+  const files = ["People/Bob.md", "Bob.png", "Gone.md"];
+  const aliases = [
+    { path: "People/Bob.md", aliases: ["Robert", "bob", "Uncle [Bob]", "Two\n lines"] },
+    { path: "Old.md", aliases: ["Stale"] },
+  ];
+  const idx = new LinkIndex(files.map((path) => ({ path, kind: "file" as const, size: 0, mtime: 0 })));
+
+  it("offers each alias of a note that is there, matched by the alias only", () => {
+    const targets = completionTargets(files, aliases);
+    expect(targets.filter((t) => t.alias !== undefined)).toEqual([
+      { path: "People/Bob.md", name: "Robert", where: "", alias: "Robert" },
+      { path: "People/Bob.md", name: "Uncle [Bob]", where: "", alias: "Uncle [Bob]" },
+      { path: "People/Bob.md", name: "Two\n lines", where: "", alias: "Two\n lines" },
+    ]);
+    // The same lists give the same objects (typing does not rebuild them).
+    expect(completionTargets(files, aliases)).toBe(targets);
+  });
+
+  it("links to the note with the alias as its text, as Obsidian does", () => {
+    const t = completionTargets(files, aliases);
+    const byName = (n: string) => t.find((x) => x.name === n)!;
+    expect(completionText(idx, byName("Robert"))).toBe("Bob|Robert");
+    expect(completionText(idx, byName("Two\n lines"))).toBe("Bob|Two lines");
+    expect(completionText(idx, byName("Uncle [Bob]"))).toBeNull();
+    expect(completionText(idx, byName("Bob"))).toBe("Bob");
   });
 });

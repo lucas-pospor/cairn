@@ -137,7 +137,15 @@ export interface NoteInfo {
   /** The note has a `---` block that is not valid YAML. */
   frontmatterInvalid: boolean;
   tags: string[];
+  /** Names from the `aliases` (or `alias`) property. */
+  aliases: string[];
   headings: Heading[];
+}
+
+/** A note's other names, from its `aliases` property. */
+export interface NoteAliases {
+  path: string;
+  aliases: string[];
 }
 
 export interface SyncStatus {
