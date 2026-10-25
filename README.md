@@ -168,6 +168,23 @@ docs/images/         screenshots used in the README, the manual and the website
 LICENSE              MIT license
 ```
 
+## Code signing policy
+
+The Windows installers of Cairn are not signed yet. Once code signing through SignPath is set up, they will be signed with a certificate from the SignPath Foundation: free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Only releases built from this repository's source by the GitHub Actions workflow will be signed. The signing request will come from that workflow, and a local build is never signed.
+- Committers and reviewers: [Lucas Pospor](https://github.com/lucas-pospor)
+- Approvers (each release will be approved by hand before it is signed): [Lucas Pospor](https://github.com/lucas-pospor)
+
+### Privacy policy
+
+Cairn does not collect or send telemetry, analytics or crash reports, and it does not check for updates. It makes network connections in only two cases:
+
+- **Sync**, if you set up a sync server. Cairn then talks to the server address you entered, and only to it. What the server sees is described under [What the server can see](docs/manual/sync.md#what-the-server-can-see).
+- **Remote images.** A note that links to an image by an `https://` address makes the window load that image from its host, which then sees your IP address and the request. Cairn loads no other remote content, and plugins have no network access.
+
+Cairn stores your notes, settings and plugin approvals only on your device and in the notebook folder you choose.
+
 ## License
 
 MIT (see [LICENSE](LICENSE)).
