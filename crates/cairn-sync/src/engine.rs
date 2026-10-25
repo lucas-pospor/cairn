@@ -3282,6 +3282,16 @@ impl SyncEngine {
                     }
                     return Ok(());
                 }
+                // Where it comes back here: the server's path with its folders
+                // as they are spelled here. Not moved there, the server's path
+                // as this device spelled it can name a folder that the user
+                // renamed by case in the app since (see `moved`). Written under
+                // that spelling, the file would have the index list the folder
+                // under it too, and the files of the pull after it would be
+                // tracked there (see `folder_here`): their names here would go
+                // up as renames. The folder's rename goes up for this file, as
+                // for the others that were in it.
+                let at = self.local_spelling(&here);
                 // A new file here with the remote content is that version: a
                 // stale state missed the change, or a sync that stopped right
                 // after writing it (into the file renamed here, or under a
@@ -3294,7 +3304,7 @@ impl SyncEngine {
                     .filter(|p| !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == **p))
                     .collect();
                 let found = match same.as_slice() {
-                    s if s.iter().any(|p| **p == here) => Some(here.clone()),
+                    s if s.iter().any(|p| **p == at) => Some(at.clone()),
                     [p] if !rdata.is_empty() => Some(p.to_string()),
                     _ => None,
                 };
@@ -3303,8 +3313,8 @@ impl SyncEngine {
                 // stopped before recording it) and edited since. It is taken
                 // for the remote version, and the edit is pushed.
                 let found = found.or_else(|| {
-                    let free = !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == here);
-                    (rhash == old.hash && created.contains(&here) && free).then(|| here.clone())
+                    let free = !self.state.files.iter().any(|(f, t)| *f != fid && !t.deleted && t.path == at);
+                    (rhash == old.hash && created.contains(&at) && free).then(|| at.clone())
                 });
                 if let Some(p) = found {
                     self.state.files.insert(fid.clone(), remote_tracked(&p, &here));
@@ -3314,11 +3324,11 @@ impl SyncEngine {
                 // Edited or renamed remotely after we deleted it: the edit or
                 // the rename wins, whichever device synced first (see
                 // `Status::Renamed`).
-                let target = if self.taken(&here, None) {
-                    self.refuse_case_twin(&here, None)?;
-                    self.conflict_copy(&here, rdata, created, report)?
+                let target = if self.taken(&at, None) {
+                    self.refuse_case_twin(&at, None)?;
+                    self.conflict_copy(&at, rdata, created, report)?
                 } else {
-                    self.place(&fid, &here, rdata, created, report)?
+                    self.place(&fid, &at, rdata, created, report)?
                 };
                 self.state.files.insert(fid.clone(), remote_tracked(&target, &here));
                 self.save_base(&fid, &target, rdata);

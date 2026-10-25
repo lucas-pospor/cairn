@@ -1636,6 +1636,71 @@ fn a_case_only_folder_rename_made_in_the_app_goes_up_once() {
     assert_eq!(server_spelling(&b, "b.md").as_deref(), Some("drafts/b.md"));
 }
 
+/// A case-only rename of the folder made in the app goes up for the notes
+/// that were in it then, not for a note that another device made there
+/// before the rename and that this device pulls with the sync that pushes
+/// the rename: that one keeps the server's spelling. So a delete of it made
+/// on the other device meanwhile still applies, and the note does not come
+/// back as if this device had renamed it.
+#[test]
+fn a_case_only_folder_rename_made_in_the_app_leaves_a_note_pulled_after_it_alone() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("DRAFTS/a.md", "from a\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    b.write("DRAFTS/n.md", "from b\n");
+    assert_eq!(traffic(&mut b), (0, 1));
+    a.app_mv("DRAFTS", "Drafts");
+    b.rm("DRAFTS/n.md");
+    // a pulls n.md into the folder as it spells it, and pushes the rename of
+    // a.md only.
+    assert_eq!(traffic(&mut a), (1, 1));
+    assert_eq!(server_spelling(&a, "n.md").as_deref(), Some("DRAFTS/n.md"));
+    // b pushes its delete of n.md, which a then applies.
+    assert_eq!(traffic(&mut b), (1, 1));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md"]));
+}
+
+/// As above, after a note in the folder that this device deleted since the
+/// rename comes back in the same pull, as another device edited it (edit
+/// beats delete): it comes back in the folder as this device spells it,
+/// and the notes pulled after it still go there with the server's spelling
+/// kept. Writing it under the spelling of the folder from before the rename
+/// had the index list the folder under that spelling too, so the notes
+/// after it were tracked so and their names here went up as renames, which
+/// beat a delete made meanwhile.
+#[test]
+fn a_note_back_from_a_delete_in_a_folder_renamed_by_case_in_the_app_leaves_the_notes_after_it_alone() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("DRAFTS/a.md", "1\n2\n3\n"), ("DRAFTS/keep.md", "keep\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    sync_rounds(&mut a, &mut b, 2);
+    assert_quiet(&mut [&mut a, &mut b]);
+    b.write("DRAFTS/a.md", "1\n2 b\n3\n");
+    assert_eq!(traffic(&mut b), (0, 1));
+    b.write("DRAFTS/n.md", "from b\n");
+    assert_eq!(traffic(&mut b), (0, 1));
+    a.app_mv("DRAFTS", "Drafts");
+    a.rm("Drafts/a.md");
+    b.rm("DRAFTS/n.md");
+    // a gets a.md back with b's edit and n.md, and pushes the rename of
+    // keep.md and a.md, which was in the folder at the rename; not n.md.
+    assert_eq!(traffic(&mut a), (2, 2));
+    assert_eq!(server_spelling(&a, "n.md").as_deref(), Some("DRAFTS/n.md"));
+    assert_eq!(traffic(&mut b), (2, 1));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b]);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/keep.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a.md", "DRAFTS/keep.md"]));
+    for d in [&a, &b] {
+        assert_eq!(d.read(&format!("{}/a.md", top_folders(d)[0])).as_deref(), Some("1\n2 b\n3\n"), "{}", d.name);
+    }
+}
+
 /// Folders two levels deep, spelled differently at both levels (`Work/DRAFTS`
 /// on one device, `WORK/Drafts` on the other): each device keeps its own
 /// spelling of both, an edit made after that goes up under the server's
