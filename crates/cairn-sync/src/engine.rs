@@ -33,7 +33,11 @@
 //! 1. Scan the vault and compare it with `state.json` to see what changed
 //!    locally since the last sync.
 //! 2. Pull every file head that changed on the server, in batches of about
-//!    64 MB of records, each applied and recorded before the next is read.
+//!    64 MB of records, each applied and recorded before the next is read,
+//!    after the changes that wait as pending from earlier syncs, which are
+//!    tried again in batches of the same size. A change that waits for the
+//!    rest of the pull (see `follow_spelling`) is kept with them and read
+//!    again once every other one went, in such batches too.
 //!    Apply a head where the local copy is untouched; otherwise merge (see
 //!    below). Deletions are applied first in a batch, so the paths they free
 //!    can be taken by the rest (a change held for want of such a path is
@@ -93,7 +97,23 @@
 //!   renamed on disk or pushed for the difference, and the file's uploads
 //!   keep the server's spelling (see `Tracked::server_spelling`). A case-only
 //!   rename of the folder made here still goes up, once. Android shared
-//!   storage renames its folder to the remote spelling instead (FINDING-034).
+//!   storage holds one spelling of a folder and writes nothing into it under
+//!   another: a remote file that comes into the folder under the other
+//!   spelling, new or moved there, has the folder here renamed to that
+//!   spelling first, on this device only: the files in it keep the server's
+//!   spelling, as above, and nothing goes up for the rename, so a device
+//!   that tells case apart keeps its folders as they are. Not while a file
+//!   of the pull in that folder as the remote path spells it is a case twin
+//!   of a file here: that one waits, as above, and so do the others, and
+//!   the folder keeps its name. Nor when the user gave the folder its
+//!   spelling here, in a rename the server does not have yet, or the pull
+//!   renamed it already: then the file goes into it as spelled here, and
+//!   for the user's spelling only, its rename to that goes up (see
+//!   `follow_spelling`). A remote move within the folder that keeps its
+//!   spelling on the server keeps the one here too; one that changes it
+//!   (another device renamed the folder) renames it here first, on this
+//!   device only, as the move would (FINDING-034), unless it took another
+//!   spelling in this pull already (see `follow_rename_there`).
 //! * one file under two names here (a folder linked in twice, a symlink to
 //!   a note) syncs under one of them (see `regroup`). A second copy that an
 //!   older version uploaded under the other name is a duplicate: nothing is
@@ -197,12 +217,16 @@ pub struct Tracked {
     pub server_path: Option<String>,
     /// The server's path at `seq`, when it spells folders otherwise than
     /// this device's spelling of that path (`server_path`, or else `path`)
-    /// does, only in case, and this file system takes both spellings for
-    /// one folder (macOS, Windows): another device that spells a folder
-    /// differently uploaded it (see `local_spelling`). The file stays in the
-    /// folder as it is spelled here, and its uploads keep the server's
-    /// spelling while it stays in that folder (see `upload_path`), so that
-    /// the difference never goes up as a rename.
+    /// does. That is only in case where this file system takes both
+    /// spellings for one folder (macOS, Windows) and another device that
+    /// spells a folder differently uploaded it (see `local_spelling`), or
+    /// where this storage holds one spelling of a folder (Android shared
+    /// storage) and the sync renamed the folder here to another one (see
+    /// `respelled`), which can leave it under a free name ("Drafts (1)",
+    /// see `put_back`). The file stays in the folder as it is spelled here,
+    /// and its uploads keep the server's spelling while it stays in that
+    /// folder (see `upload_path`), so that the difference never goes up as
+    /// a rename.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_spelling: Option<String>,
     /// Set with `server_path` when the name here is one the user gave the
@@ -396,6 +420,87 @@ pub struct SyncEngine {
     /// under a name that differs only in case, with that name (see
     /// `local_spelling`).
     spellings: parking_lot::Mutex<HashMap<String, String>>,
+    /// What the pull being applied knows of folders that this storage has
+    /// under another spelling than remote paths give them (see
+    /// `follow_spelling`).
+    respell: Respell,
+    /// The vault changes of the last sync, if it failed (see
+    /// [`SyncEngine::take_changes`]).
+    unreported: Vec<Change>,
+    /// See [`SyncEngine::records_opened`].
+    opened: std::sync::atomic::AtomicUsize,
+}
+
+/// See `SyncEngine::respell`. Made afresh for each pull.
+#[derive(Default)]
+struct Respell {
+    /// The changes that wait for the rest of the pull, unlisted, as they
+    /// would have a folder here take another spelling, or want the path of
+    /// a file whose change does (see `apply_batch`). They are held as
+    /// pending, and their records are read again when they go.
+    waits: HashSet<String>,
+    /// The remote path of each change held in this pull, by file id
+    /// (`None` for a delete, or a record that cannot be read), so that it
+    /// is not read and decrypted again to know it (see `start_respelling`
+    /// and `next_waits`).
+    held: HashMap<String, Option<String>>,
+    /// Folders may take another spelling now: every other change of the
+    /// pull went, or waits as pending.
+    now: bool,
+    /// The remote paths of the changes of the pull that wait here, which
+    /// are case twins of a file here, as `now` was set.
+    twins: Vec<String>,
+    /// The folders here (in lower case) whose spelling here is one the user
+    /// gave them in a rename that the server does not have yet (see
+    /// `user_spellings`).
+    mine: HashSet<String>,
+    /// The folders here (in lower case) that took another spelling in this
+    /// pull.
+    done: HashSet<String>,
+    /// The folders here (in lower case) that could not take another
+    /// spelling in this pull, with the reason. They are not tried again.
+    failed: HashMap<String, String>,
+}
+
+/// What a remote path asks of the folders on its way that this storage
+/// has under another spelling (see `respelling`).
+struct Respelling {
+    /// The folders to rename, as (path here, new path), top level first,
+    /// each with the ones above it renamed.
+    renames: Vec<(String, String)>,
+    /// The topmost of those folders, as the remote path spells it.
+    top: Option<String>,
+    /// The folders here (in lower case) that a remote move goes through on
+    /// both of its paths, which keep their spelling here (see `respelling`).
+    stays: Vec<String>,
+    /// The remote path with the folders to rename and those that stay
+    /// spelled as here.
+    kept: String,
+    /// The remote path once the folders are renamed: as here for those that
+    /// stay.
+    renamed: String,
+}
+
+/// Which changes `apply_batch` applies.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    /// A batch of the pull, and more of it follows.
+    More,
+    /// The last batch of the pull.
+    Last,
+    /// Changes that waited for every other change of the pull (see
+    /// `Respell::waits`).
+    Waits,
+}
+
+/// Whether `name` is a free name that SafPlugin.kt makes of `of`: "stem
+/// (n).ext" (see `freeName` there). Android shared storage renames a file
+/// or folder by case through such a name.
+fn free_name_of(name: &str, of: &str) -> bool {
+    let dot = of.rfind('.').filter(|&i| i > 0).unwrap_or(of.len());
+    let (stem, ext) = of.split_at(dot);
+    let n = name.strip_prefix(stem).and_then(|r| r.strip_suffix(ext)).and_then(|r| r.strip_prefix(" (")).and_then(|r| r.strip_suffix(')'));
+    n.is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn write_json<T: Serialize>(path: &Path, v: &T) -> Result<(), SyncError> {
@@ -501,6 +606,10 @@ enum Act {
 
 /// The path and content of a remote change (see `open`).
 type Opened = (String, Vec<u8>);
+
+/// What a scan of the vault found (see `SyncEngine::look`): each file with
+/// its content hash, what happened to each tracked file, and the new files.
+type Scanned = (HashMap<String, LocalFile>, HashMap<String, Status>, HashSet<String>);
 
 /// The uploads `ops` in an order that other devices can apply one at a
 /// time, as they get them in the order of the server: one that takes a path
@@ -661,6 +770,12 @@ const MOVED_ON: &str = "a file changed on the server during sync";
 /// a new round would try the same pending change again.
 const SUPERSEDED: &str = "a newer change to this file is on the server and is synced next";
 
+/// A remote change that would have a folder here take another spelling,
+/// or keep its own, before every other change of the pull went or waits
+/// (see `follow_spelling`): it goes after them, held till then (see
+/// `apply_batch`). Nothing was changed for it yet. Never listed.
+const LATER: &str = "this file waits for the rest of the changes from the server";
+
 /// The server does not have the revision asked for: HTTP 404, which
 /// `transport` words as "no such revision (HTTP 404)" when the server says
 /// why, and "HTTP 404" when it does not.
@@ -763,6 +878,9 @@ impl SyncEngine {
             deleting: HashSet::new(),
             linked_waits: HashSet::new(),
             spellings: Default::default(),
+            respell: Respell::default(),
+            unreported: Vec::new(),
+            opened: Default::default(),
         })
     }
 
@@ -794,6 +912,9 @@ impl SyncEngine {
             deleting: HashSet::new(),
             linked_waits: HashSet::new(),
             spellings: Default::default(),
+            respell: Respell::default(),
+            unreported: Vec::new(),
+            opened: Default::default(),
         })
     }
 
@@ -977,6 +1098,14 @@ impl SyncEngine {
     /// Pull in batches of about `bytes` of records instead of [`PULL_BATCH`].
     pub fn set_pull_batch(&mut self, bytes: u64) {
         self.pull_batch = bytes;
+    }
+
+    /// How many records of remote changes this engine has read and
+    /// decrypted since it was made, each with the whole content of the
+    /// file: once for every change a pull applies or tries, and again for
+    /// one that waits for the rest of the pull (see `Respell::waits`).
+    pub fn records_opened(&self) -> usize {
+        self.opened.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn base_path(&self, fid: &str) -> PathBuf {
@@ -1215,8 +1344,9 @@ impl SyncEngine {
         // The file that has a renamed file's name on the server must go
         // first; following that from each file finds the rings. A file under
         // its own server name is in none: the user renamed it back there from
-        // a name the sync chose here, and its upload must still go up, which
-        // brings back a file deleted there.
+        // a name the sync chose here, or a folder here took the server's
+        // spelling again (see `follow_spelling`), and its upload must still
+        // go up, which brings back a file deleted there.
         let by_server: HashMap<&str, &str> = renamed.iter().map(|(f, _, s)| (s.as_str(), f.as_str())).collect();
         let next: HashMap<&str, &str> =
             renamed.iter().filter(|(_, p, s)| p != s).filter_map(|(f, p, _)| Some((f.as_str(), *by_server.get(p.as_str())?))).collect();
@@ -1666,7 +1796,7 @@ impl SyncEngine {
     /// a file applies as any rename does. Where the file system tells the
     /// names apart (Linux), this is `path`; so it is on Android shared
     /// storage, which renames its folder to the other spelling instead
-    /// (FINDING-034).
+    /// (FINDING-034, see `follow_spelling`).
     fn local_spelling(&self, path: &str) -> String {
         let parent = vpath::parent(path);
         if parent.is_empty() || self.vault.fs().refuses_case_twins() {
@@ -1723,6 +1853,577 @@ impl SyncEngine {
         }
         self.spellings.lock().insert(dir.to_string(), twin.clone());
         Some(twin)
+    }
+
+    /// On a file system that holds one spelling of a folder and writes
+    /// nothing into it under another (Android shared storage): the folders
+    /// on the way to remote path `path` that this device has only under a
+    /// name that differs in case, each as a rename to the spelling `path`
+    /// gives it, top level first, and where the file goes if they keep
+    /// their names instead. `None` if there are none, or if a file here
+    /// other than the one moved has `path`'s name in another case: this
+    /// storage could not hold the note next to it in that folder either, so
+    /// the folder keeps its name and the note waits (FINDING-172).
+    ///
+    /// For a remote move of a file here, `from` is where the file is here.
+    /// A folder that both paths go through, alike but for case, keeps its
+    /// spelling here, and the file stays in it as it is spelled here
+    /// (`Respelling::stays`): the remote path spells it as the server did
+    /// before, as the other device did not rename it, or the folder took
+    /// another spelling in this pull already, or this device moved the file
+    /// there too. (A folder that the other device renamed took the new
+    /// spelling here before, see `follow_rename_there`: the storage would
+    /// rename it itself as it moves the file, FINDING-034.)
+    fn respelling(&self, path: &str, from: Option<&str>) -> Option<Respelling> {
+        if !self.vault.fs().refuses_case_twins() {
+            return None;
+        }
+        let names: Vec<&str> = vpath::parent(path).split('/').filter(|n| !n.is_empty()).collect();
+        let shared = from.map_or(0, |at| {
+            let theirs = vpath::parent(at).split('/');
+            theirs.zip(&names).take_while(|(a, b)| a.to_lowercase() == b.to_lowercase()).count()
+        });
+        let mut renames = Vec::new();
+        let mut stays = Vec::new();
+        // `path`'s folders as they are if the folders to rename keep their
+        // names, and once they are renamed.
+        let mut kept: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let mut renamed = kept.clone();
+        let mut top = None;
+        {
+            let idx = self.vault.index();
+            let is_dir = |p: &str| idx.entry(p).is_some_and(|e| e.kind == EntryKind::Dir);
+            // Each folder as it is here now, and as it is once the renames
+            // before it are made.
+            let (mut here, mut after) = (String::new(), String::new());
+            for (i, name) in names.iter().enumerate() {
+                let want = vpath::join(&here, name);
+                let found = if is_dir(&want) {
+                    want
+                } else {
+                    match idx.case_twin(&want, None).filter(|&t| is_dir(t)) {
+                        Some(t) => t.to_string(),
+                        // Not here in any spelling: it is made as `path` spells it.
+                        None => break,
+                    }
+                };
+                let own = vpath::file_name(&found);
+                if own != *name && i >= shared {
+                    renames.push((vpath::join(&after, own), vpath::join(&after, name)));
+                    top.get_or_insert_with(|| names[..=i].join("/"));
+                    kept[i] = own.to_string();
+                    after = vpath::join(&after, name);
+                } else {
+                    if own != *name {
+                        stays.push(found.to_lowercase());
+                        kept[i] = own.to_string();
+                        renamed[i] = own.to_string();
+                    }
+                    after = vpath::join(&after, own);
+                }
+                here = found;
+            }
+        }
+        if top.is_none() && stays.is_empty() {
+            return None;
+        }
+        if self.case_twin(path, from).is_some() {
+            return None;
+        }
+        let name = vpath::file_name(path);
+        let (kept, renamed) = (vpath::join(&kept.join("/"), name), vpath::join(&renamed.join("/"), name));
+        Some(Respelling { renames, top, stays, kept, renamed })
+    }
+
+    /// Before a remote change writes or moves a file to `path` (from `from`
+    /// here, for a move; see `respelling`), on Android shared storage: where
+    /// it goes here, as the folders on the way that this device has only
+    /// under another spelling take the one `path` gives them, or keep
+    /// theirs, and the server's path as this device spells it then (see
+    /// `Tracked::server_path`). The storage holds one spelling of a folder,
+    /// and another device spells it so. Folders that the file's move goes
+    /// through keep their spelling here. Folders to rename wait for every
+    /// other change of the pull: until then this is `LATER` (see
+    /// `apply_batch`). Then, in this order:
+    /// * if a change of the pull that is in such a folder as `path` spells
+    ///   it, waiting here, is a case twin of a file here, nothing is renamed
+    ///   and the change waits, listed: a device that tells case apart has
+    ///   two folders there, which this storage cannot hold as one
+    ///   (FINDING-172);
+    /// * a folder that could not be renamed in this pull is not tried
+    ///   again: the change waits, listed;
+    /// * a folder whose spelling here is one the user gave it, in a rename
+    ///   the server does not have yet, keeps it, and so does one that took
+    ///   another spelling in this pull: the file goes into it as this
+    ///   device spells it. For a folder with the user's spelling, its rename
+    ///   to that goes up with the user's; for the others, the spelling here
+    ///   is this device's own, and the server keeps its spelling of them
+    ///   (see `Tracked::server_spelling`), also below or above a folder
+    ///   that the user renamed;
+    /// * otherwise the folders are renamed here (see `rename_folders`), and
+    ///   the files in them keep the server's spelling: nothing goes up for
+    ///   the rename.
+    #[allow(clippy::too_many_arguments)]
+    fn follow_spelling(
+        &mut self,
+        path: &str,
+        from: Option<&str>,
+        local: &mut HashMap<String, LocalFile>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
+        report: &mut SyncReport,
+    ) -> Result<(String, String), SyncError> {
+        let Some(plan) = self.respelling(path, from) else { return Ok((path.to_string(), path.to_string())) };
+        let mine = plan.stays.iter().chain(plan.renames.iter().map(|(o, _)| o)).any(|f| self.respell.mine.contains(&f.to_lowercase()));
+        // The server's path as this device spells it then: a folder with the
+        // user's spelling here has the remote one, so that the user's rename
+        // goes up for it; the others are spelled as here, so that the server
+        // keeps its spelling of them (see `upload_path`).
+        let server = {
+            let (here, theirs): (Vec<&str>, Vec<&str>) = (vpath::parent(&plan.kept).split('/').collect(), vpath::parent(path).split('/').collect());
+            let names: Vec<&str> =
+                (0..here.len()).map(|i| if self.respell.mine.contains(&here[..=i].join("/").to_lowercase()) { theirs[i] } else { here[i] }).collect();
+            vpath::join(&names.join("/"), vpath::file_name(path))
+        };
+        let Some((here, _)) = plan.renames.first() else {
+            log::info!("sync: {path} goes in as {}, as the folders on its way are spelled here", plan.kept);
+            return Ok((plan.kept, server));
+        };
+        if !self.respell.now {
+            return Err(SyncError::Local(LATER.into()));
+        }
+        if let Some(reason) = self.spelling_refused(&plan) {
+            return Err(SyncError::Local(reason));
+        }
+        if mine || plan.renames.iter().any(|(o, _)| self.respell.done.contains(&o.to_lowercase())) {
+            log::info!("sync: {here} keeps its spelling here; {path} goes in as {}", plan.kept);
+            return Ok((plan.kept, server));
+        }
+        self.rename_folders(&plan.renames, local, status, created, report)?;
+        log::info!("sync: {} takes the spelling {} that another device gives it, on this device", plan.renames[0].0, plan.renames[0].1);
+        Ok((plan.renamed.clone(), plan.renamed))
+    }
+
+    /// Why the folders of `plan` cannot take another spelling in this pull,
+    /// if they cannot: a change of the pull in such a folder, as the remote
+    /// path spells it, is a case twin of a file here, or the rename of one
+    /// failed (see `follow_spelling`).
+    fn spelling_refused(&self, plan: &Respelling) -> Option<String> {
+        let (here, top) = (&plan.renames.first()?.0, plan.top.as_ref()?);
+        if let Some(twin) = self.respell.twins.iter().find(|t| vpath::is_inside(t, top)) {
+            log::info!("sync: {here} keeps its name here: {twin} waits as a case twin");
+            return Some(format!(
+                "the folder {here} on this device keeps its name, which another device spells {top}: {twin} there and a file in {here} have names that differ only in case, which this storage cannot hold side by side. Until one of the two is renamed or deleted, this file does not sync"
+            ));
+        }
+        plan.renames.iter().find_map(|(o, _)| self.respell.failed.get(&o.to_lowercase())).cloned()
+    }
+
+    /// Before a remote change of file `fid` (here, with no delete) applies,
+    /// on a storage that holds one spelling of a folder (Android shared
+    /// storage): if the change moves the file to remote path `rpath`
+    /// through folders that its path here goes through too, alike but for
+    /// case, which `rpath` spells otherwise than the file's path on the
+    /// server did, another device renamed those folders by case. They take
+    /// that spelling here first, on this device only (see `rename_folders`):
+    /// the files in them keep their paths on the server, so nothing goes up
+    /// for the rename, and a device that tells case apart keeps its folders
+    /// as they are. (The storage would rename them itself as it moves the
+    /// file, FINDING-034, and the next scan would take the files in them for
+    /// files the user renamed.) Not a folder that took another spelling in
+    /// this pull already: the file moves within it as it is spelled here
+    /// (see `respelling`). A spelling that the user gave the folder here
+    /// gives way, as a rename made here does to a remote one. A folder that
+    /// could not be renamed in this pull is not tried again: the change
+    /// waits, listed.
+    #[allow(clippy::too_many_arguments)]
+    fn follow_rename_there(
+        &mut self,
+        fid: &str,
+        rpath: &str,
+        deleted: bool,
+        local: &mut HashMap<String, LocalFile>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
+        report: &mut SyncReport,
+    ) -> Result<(), SyncError> {
+        if deleted || !self.vault.fs().refuses_case_twins() {
+            return Ok(());
+        }
+        let Some(t) = self.state.files.get(fid).filter(|t| !t.deleted && t.alias_of.is_none()) else { return Ok(()) };
+        let at = match status.get(fid) {
+            Some(Status::Renamed(to)) => to.as_str(),
+            Some(Status::Unchanged | Status::Modified) | None => t.path.as_str(),
+            _ => return Ok(()),
+        };
+        let renames = self.renamed_there(rpath, at, t.on_server());
+        let Some((from, to)) = renames.first() else { return Ok(()) };
+        if let Some(reason) = renames.iter().find_map(|(o, _)| self.respell.failed.get(&o.to_lowercase())) {
+            return Err(SyncError::Local(reason.clone()));
+        }
+        log::info!("sync: {from} takes the spelling {to} that another device gave it, on this device");
+        self.rename_folders(&renames, local, status, created, report)
+    }
+
+    /// The folders that a remote move from `at` here to remote path `rpath`
+    /// goes through on both paths, alike but for case, which the file's path
+    /// on the server before the move (`server`) went through too, spelled
+    /// otherwise than `rpath` spells them, and which did not take another
+    /// spelling in this pull yet, each as a rename to `rpath`'s spelling
+    /// (see `Respelling::renames`). Not one that the file came to from
+    /// another folder: this device moved it there too, and it keeps its
+    /// spelling (see `respelling`).
+    fn renamed_there(&self, rpath: &str, at: &str, server: &str) -> Vec<(String, String)> {
+        let (a, b, s): (Vec<&str>, Vec<&str>, Vec<&str>) =
+            (vpath::parent(at).split('/').collect(), vpath::parent(rpath).split('/').collect(), vpath::parent(server).split('/').collect());
+        let (mut here, mut after) = (String::new(), String::new());
+        let mut renames = Vec::new();
+        for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+            if x.is_empty() || x.to_lowercase() != y.to_lowercase() {
+                break;
+            }
+            here = vpath::join(&here, x);
+            let was_there = s.len() > i && s[..=i].iter().zip(&b[..=i]).all(|(p, q)| p.to_lowercase() == q.to_lowercase());
+            if x != y && was_there && s[i] != *y && !self.respell.done.contains(&here.to_lowercase()) {
+                renames.push((vpath::join(&after, x), vpath::join(&after, y)));
+                after = vpath::join(&after, y);
+            } else {
+                after = vpath::join(&after, x);
+            }
+        }
+        renames
+    }
+
+    /// The folders here (in lower case) whose spelling here is one the user
+    /// gave them, in a rename that the server does not have yet: a file
+    /// here was renamed into such a folder (in the app, or found by the
+    /// scan, `status`) from a path that spells it otherwise, only in case.
+    /// Only on a storage that holds one spelling of a folder (see
+    /// `follow_spelling`).
+    fn user_spellings(&self, status: &HashMap<String, Status>) -> HashSet<String> {
+        let mut mine = HashSet::new();
+        if !self.vault.fs().refuses_case_twins() {
+            return mine;
+        }
+        for (fid, t) in self.state.files.iter().filter(|(_, t)| !t.deleted && t.alias_of.is_none()) {
+            // Where the file was here before the rename, and where it is.
+            let (was, to) = match status.get(fid) {
+                Some(Status::Renamed(to)) => (t.path.as_str(), to.as_str()),
+                _ if t.renamed && t.server_path.is_some() => (t.server_here(), t.path.as_str()),
+                _ => continue,
+            };
+            let (a, b): (Vec<&str>, Vec<&str>) = (vpath::parent(was).split('/').collect(), vpath::parent(to).split('/').collect());
+            for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+                if x.is_empty() || x.to_lowercase() != y.to_lowercase() {
+                    break;
+                }
+                if x != y {
+                    mine.insert(b[..=i].join("/").to_lowercase());
+                }
+            }
+        }
+        mine
+    }
+
+    /// Note, for the rest of the pull, which of its changes are case twins
+    /// of a file here (see `follow_spelling`): every other change of the
+    /// pull went, or waits as pending. Each is known by the path noted as
+    /// it was held (`Respell::held`); one held before this pull and not
+    /// tried in it is read from its record, once.
+    fn start_respelling(&mut self, report: &mut SyncReport) {
+        // A move earlier in the pull may have renamed a folder here by case
+        // (FINDING-034), which the index then has under both spellings. What
+        // follows looks there for the folders and their files as they are on
+        // disk: the vault is listed again first.
+        let stale = {
+            let idx = self.vault.index();
+            let mut folders = HashSet::new();
+            idx.entries().any(|e| e.kind == EntryKind::Dir && !folders.insert(e.path.to_lowercase()))
+        };
+        if stale {
+            match self.vault.rescan() {
+                Ok(c) => report.changes.extend(c),
+                Err(e) => log::warn!("sync: cannot list the notebook again: {e}"),
+            }
+        }
+        let mut twins = Vec::new();
+        for (f, seq) in &self.state.pending {
+            let path = match self.respell.held.get(f) {
+                Some(p) => p.clone(),
+                None => self.held(f, *seq).filter(|h| !h.deleted).and_then(|h| self.open(&h).ok()).map(|(p, _)| p),
+            };
+            let Some(p) = path else { continue };
+            let own = self.state.files.get(f).filter(|t| !t.deleted).map(|t| t.path.as_str());
+            if self.case_twin(&p, own).is_some() {
+                twins.push(p);
+            }
+        }
+        self.respell.twins = twins;
+        self.respell.now = true;
+    }
+
+    /// Rename the folders of `renames` (see `Respelling`), top level first,
+    /// on this device only, and track the files in them under the new names
+    /// (see `respelled`). If one cannot be renamed, the ones renamed before
+    /// it get their names back, and it is not tried again in this pull: the
+    /// change waits, listed. Android shared storage renames a folder by case
+    /// through a free name ("Drafts (1)", see SafPlugin.kt), and can stop on
+    /// the way: a folder found elsewhere is renamed back if it can be (see
+    /// `put_back`), and otherwise its files are tracked where it is, as for
+    /// a folder renamed, so that the next scan does not take them for files
+    /// the user renamed, and nothing goes up for it. So are those of a
+    /// folder that cannot get its name back. The next sync tries again to
+    /// give a folder left under a free name its name (see
+    /// `put_back_free_names`).
+    fn rename_folders(
+        &mut self,
+        renames: &[(String, String)],
+        local: &mut HashMap<String, LocalFile>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
+        report: &mut SyncReport,
+    ) -> Result<(), SyncError> {
+        // The path of the deepest one, with each one's name as it was and
+        // as it is now.
+        let depth: Vec<usize> = renames.iter().map(|(o, _)| o.split('/').count()).collect();
+        let mut was: Vec<String> = renames[renames.len() - 1].0.split('/').map(str::to_string).collect();
+        for ((o, _), d) in renames.iter().zip(&depth) {
+            was[d - 1] = vpath::file_name(o).to_string();
+        }
+        let mut now = was.clone();
+        let mut failed = None;
+        let mut renamed = 0;
+        for ((_, n), &d) in renames.iter().zip(&depth) {
+            let at = now[..d].join("/");
+            let to = vpath::join(vpath::parent(&at), vpath::file_name(n));
+            match self.vault.rename(&at, &to) {
+                Ok(c) => {
+                    report.changes.extend(c);
+                    now[d - 1] = vpath::file_name(n).to_string();
+                    renamed += 1;
+                }
+                Err(e) => {
+                    log::warn!("sync: cannot rename {at} to {to}: {e}");
+                    now[d - 1] = self.put_back(vpath::parent(&at), &was[d - 1], vpath::file_name(n), report);
+                    failed = Some((at, to, e));
+                    break;
+                }
+            }
+        }
+        if failed.is_some() {
+            for &d in depth[..renamed].iter().rev() {
+                let at = now[..d].join("/");
+                let back = vpath::join(vpath::parent(&at), &was[d - 1]);
+                match self.vault.rename(&at, &back) {
+                    Ok(c) => {
+                        report.changes.extend(c);
+                        now[d - 1] = was[d - 1].clone();
+                    }
+                    Err(e) => {
+                        log::warn!("sync: cannot rename {at} back to {back}: {e}");
+                        now[d - 1] = self.put_back(vpath::parent(&at), &was[d - 1], vpath::file_name(&at), report);
+                    }
+                }
+            }
+        }
+        let moved: Vec<(String, String)> = depth.iter().map(|&d| (was[..d].join("/"), now[..d].join("/"))).collect();
+        if moved.iter().any(|(a, b)| a != b) {
+            self.respelled(&moved, local, status, created, report);
+            // Saved at once, as for a file moved aside (see `set_aside`).
+            self.save_state()?;
+        }
+        let Some((at, to, e)) = failed else {
+            self.respell.done.extend(moved.into_iter().map(|(a, _)| a.to_lowercase()));
+            return Ok(());
+        };
+        let reason = format!("another device spells the folder {at} as {to}, which this storage cannot hold next to it. Renaming {at} to {to} failed: {e}");
+        self.respell.failed.insert(at.to_lowercase(), reason.clone());
+        Err(SyncError::Local(reason))
+    }
+
+    /// After a rename of folder `home` in folder `parent` to `other`, or
+    /// back, failed: the name the folder has now. Android shared storage
+    /// renames a folder by case through a free name ("Drafts (1)", see
+    /// SafPlugin.kt), and can stop on the way, or fail to rename it back. So
+    /// `parent` is listed again, and a folder found under another name than
+    /// `home` (the other spelling, or such a free name that was not there
+    /// before) is renamed back to it if it can be. If the folder is found
+    /// nowhere, it is taken to be at `home`.
+    fn put_back(&self, parent: &str, home: &str, other: &str, report: &mut SyncReport) -> String {
+        let folders = || -> Vec<String> {
+            let idx = self.vault.index();
+            let under = idx.entries_under(parent);
+            under.into_iter().filter(|e| e.kind == EntryKind::Dir && vpath::parent(&e.path) == parent).map(|e| vpath::file_name(&e.path).to_string()).collect()
+        };
+        let before: HashSet<String> = folders().into_iter().collect();
+        let look = |report: &mut SyncReport| -> Option<String> {
+            let listed = if parent.is_empty() { self.vault.rescan() } else { self.vault.rescan_paths(&[parent.to_string()]) };
+            match listed {
+                Ok(c) => report.changes.extend(c),
+                Err(e) => {
+                    log::warn!("sync: cannot list the folder {parent:?}: {e}");
+                    return None;
+                }
+            }
+            let now = folders();
+            if now.iter().any(|n| n == home) {
+                return Some(home.to_string());
+            }
+            let lower = home.to_lowercase();
+            let found = now.iter().find(|n| n.to_lowercase() == lower);
+            found.or_else(|| now.iter().find(|n| !before.contains(*n) && (free_name_of(n, home) || free_name_of(n, other)))).cloned()
+        };
+        let Some(at) = look(report) else { return home.to_string() };
+        if at == home {
+            return at;
+        }
+        let (from, to) = (vpath::join(parent, &at), vpath::join(parent, home));
+        match self.vault.rename(&from, &to) {
+            Ok(c) => {
+                report.changes.extend(c);
+                home.to_string()
+            }
+            Err(e) => {
+                log::warn!("sync: cannot rename {from} back to {to}: {e}");
+                look(report).unwrap_or(at)
+            }
+        }
+    }
+
+    /// Track the files in the folders of `moved` (each one's path before,
+    /// and its path now, top level first) under the paths they have now,
+    /// in the state and in what the scan found (`local`, `status`,
+    /// `created`), as a scan would find them: nothing changed but the
+    /// spelling of those folders. Every spelling of such a folder counts:
+    /// this storage holds one, and a move may have renamed it since the scan
+    /// (FINDING-034). The rename is this device's own: each file keeps its
+    /// path on the server, as its `Tracked::server_spelling` where that is
+    /// spelled otherwise now, so nothing goes up for the rename, as for a
+    /// folder that a desktop spells otherwise (see `local_spelling`), and a
+    /// device that tells case apart keeps its folders as they are. A rename
+    /// of the file that has not gone up yet (`Tracked::server_path`), by the
+    /// user or by the sync, still goes up, in the server's spelling of the
+    /// folder (see `upload_path`). A file deleted on the server moves along
+    /// too, so that one made again at its name here revives it under its
+    /// path on the server (see `round`). If the index of the vault still
+    /// has such a folder under another spelling, the vault is listed again.
+    fn respelled(
+        &mut self,
+        moved: &[(String, String)],
+        local: &mut HashMap<String, LocalFile>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
+        report: &mut SyncReport,
+    ) {
+        // Each folder renamed, in lower case as it was, with its depth and its
+        // name now. A path in it gets that name at that depth, and keeps its
+        // spelling of the folders above: a tracked path can spell them as
+        // they were before the user renamed one, which still goes up.
+        let folders: Vec<(String, usize, &str, &str)> = moved
+            .iter()
+            .filter(|(a, b)| a != b)
+            .map(|(a, b)| (a.to_lowercase(), a.split('/').count(), vpath::file_name(b), b.as_str()))
+            .collect();
+        let map = |p: &str| -> Option<String> {
+            let lower = p.to_lowercase();
+            let mut names: Vec<&str> = p.split('/').collect();
+            let mut inside = false;
+            for (a, depth, name, _) in &folders {
+                if vpath::is_inside(&lower, a) {
+                    names[depth - 1] = name;
+                    inside = true;
+                }
+            }
+            inside.then(|| names.join("/"))
+        };
+        for t in self.state.files.values_mut() {
+            let Some(path) = map(&t.path) else { continue };
+            let server = t.on_server().to_string();
+            // As this device spells it now, and no rename once it is the
+            // file's own name again, but for one the user made: it goes up
+            // still, as one that won over a delete must.
+            let spelled = t.server_path.take().map(|sp| map(&sp).unwrap_or(sp));
+            t.server_path = spelled.filter(|sp| *sp != path || t.renamed);
+            t.renamed &= t.server_path.is_some();
+            t.path = path;
+            t.server_spelling = (server != t.server_here()).then_some(server);
+        }
+        let paths: Vec<String> = local.keys().filter(|p| map(p).is_some()).cloned().collect();
+        for p in paths {
+            if let (Some(lf), Some(to)) = (local.remove(&p), map(&p)) {
+                local.insert(to, lf);
+            }
+        }
+        *created = std::mem::take(created).into_iter().map(|p| map(&p).unwrap_or(p)).collect();
+        for s in status.values_mut() {
+            if let Status::Renamed(to) = s
+                && let Some(p) = map(to)
+            {
+                *to = p;
+            }
+        }
+        self.renamed_here = std::mem::take(&mut self.renamed_here).into_iter().map(|p| map(&p).unwrap_or(p)).collect();
+        self.kept = std::mem::take(&mut self.kept).into_iter().map(|(p, k)| (map(&p).unwrap_or(p), map(&k).unwrap_or(k))).collect();
+        let stale = {
+            let idx = self.vault.index();
+            idx.entries().any(|e| {
+                let lower = e.path.to_lowercase();
+                folders.iter().any(|(a, _, _, now)| vpath::is_same_or_inside(&lower, a) && !vpath::is_same_or_inside(&e.path, now))
+            })
+        };
+        if stale {
+            match self.vault.rescan() {
+                Ok(c) => report.changes.extend(c),
+                Err(e) => log::warn!("sync: cannot list the notebook again: {e}"),
+            }
+        }
+    }
+
+    /// Give each folder here that a rename by the sync left under a free
+    /// name ("Drafts (1)", see `rename_folders`) the name the server has
+    /// for it, before the scan, on a storage that renames a folder by case
+    /// through such a name. Its files are tracked there, with the server's
+    /// spelling of their paths (see `respelled`), which is how such a folder
+    /// is found. One that cannot be renamed now keeps its name, and the
+    /// next sync tries again; nothing goes up for it meanwhile.
+    fn put_back_free_names(&mut self, report: &mut SyncReport) -> Result<(), SyncError> {
+        if !self.vault.fs().refuses_case_twins() {
+            return Ok(());
+        }
+        let mut tried: HashSet<String> = HashSet::new();
+        while let Some((at, name)) = self.free_name_left(&tried) {
+            tried.insert(at.clone());
+            let to = vpath::join(vpath::parent(&at), &name);
+            match self.vault.rename(&at, &to) {
+                Ok(c) => {
+                    log::info!("sync: {at} gets its name {to} back");
+                    report.changes.extend(c);
+                    let (mut local, mut status, mut created) = (HashMap::new(), HashMap::new(), HashSet::new());
+                    self.respelled(&[(at, to)], &mut local, &mut status, &mut created, report);
+                    self.save_state()?;
+                }
+                Err(e) => log::warn!("sync: cannot rename {at} back to {to}: {e}"),
+            }
+        }
+        Ok(())
+    }
+
+    /// The topmost folder here, not in `tried`, that has a tracked file in
+    /// it under a free name of the folder's name on the server (see
+    /// `put_back_free_names`), with that name.
+    fn free_name_left(&self, tried: &HashSet<String>) -> Option<(String, String)> {
+        let mut found: Option<(String, String)> = None;
+        for t in self.state.files.values().filter(|t| !t.deleted) {
+            let Some(server) = &t.server_spelling else { continue };
+            let (a, b): (Vec<&str>, Vec<&str>) = (vpath::parent(t.server_here()).split('/').collect(), vpath::parent(server).split('/').collect());
+            let Some(i) = a.iter().zip(&b).position(|(x, y)| x.to_lowercase() != y.to_lowercase()) else { continue };
+            let at = a[..=i].join("/");
+            let deeper = found.as_ref().is_some_and(|(f, _)| f.split('/').count() <= i + 1);
+            if free_name_of(&a[i].to_lowercase(), &b[i].to_lowercase()) && vpath::is_inside(&t.path, &at) && !tried.contains(&at) && !deeper {
+                found = Some((at, b[i].to_string()));
+            }
+        }
+        found
     }
 
     /// Whether writing or moving a remote file to `path` would replace
@@ -2300,16 +3001,26 @@ impl SyncEngine {
         // One sync at a time per state folder, each from the state the last
         // one saved.
         let _lock = lock_dir(&self.dir)?;
+        self.unreported.clear();
         self.refresh()?;
         let mut report = SyncReport::default();
+        match self.rounds(&mut report) {
+            Ok(()) => Ok(report),
+            Err(e) => {
+                self.unreported = report.changes;
+                Err(e)
+            }
+        }
+    }
+
+    /// The rounds of `sync`.
+    fn rounds(&mut self, report: &mut SyncReport) -> Result<(), SyncError> {
         self.check_server()?;
+        self.put_back_free_names(report)?;
         for round in 1..=MAX_ROUNDS {
             report.rounds = round;
-            match self.round(&mut report) {
-                Ok(true) => {
-                    self.save_state()?;
-                    return Ok(report);
-                }
+            match self.round(report) {
+                Ok(true) => return self.save_state(),
                 Ok(false) => {
                     self.save_state()?;
                     continue;
@@ -2327,6 +3038,15 @@ impl SyncEngine {
             }
         }
         Err(SyncError::Server("the server kept changing during sync; will retry later".into()))
+    }
+
+    /// The vault changes that the last sync made before it failed, for the
+    /// UI, as `SyncReport::changes` has them for one that did not: a folder
+    /// here may have taken another spelling (see `follow_spelling`), and
+    /// notes open in it must follow. Empty after a sync that did not fail,
+    /// and once taken.
+    pub fn take_changes(&mut self) -> Vec<Change> {
+        std::mem::take(&mut self.unreported)
     }
 
     /// The server must have every change this device has seen. One with
@@ -2350,6 +3070,7 @@ impl SyncEngine {
 
     /// Decrypt a head and check its path.
     fn open(&self, head: &RemoteHead) -> Result<Opened, SyncError> {
+        self.opened.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let blob = unb64(&head.blob).ok_or_else(|| SyncError::Server("bad blob encoding".into()))?;
         let payload = FilePayload::decode(&self.key.decrypt(&head.file_id, &blob)?)?;
         let path = vpath::normalize(&payload.path).map_err(|_| SyncError::Server(format!("unsafe path {:?}", payload.path)))?;
@@ -2475,13 +3196,18 @@ impl SyncEngine {
 
         // ----- pull -----
         // The feed comes in batches (see PULL_BATCH), each applied and
-        // recorded before the next is read. Changes that wait as pending are
-        // retried with the first one.
+        // recorded before the next is read. Changes that wait as pending from
+        // earlier syncs are tried again first, in batches of about the same
+        // size, the first of them with the first batch of the feed.
         let mut cursor = self.state.last_seq;
         let (mut heads, mut more) = self.read_batch(&mut cursor)?;
-        let mut retry: Vec<(String, u64)> = self.state.pending.iter().map(|(f, s)| (f.clone(), *s)).collect();
+        let mut backlog: Vec<(String, u64)> = self.state.pending.iter().map(|(f, s)| (f.clone(), *s)).collect();
+        backlog.sort_by_key(|(_, s)| *s);
+        let mut backlog: VecDeque<(String, u64)> = backlog.into();
+        let mut retry: Vec<(String, u64)> = Vec::new();
         self.linked_waits.clear();
         self.spellings.lock().clear();
+        self.respell = Respell { mine: self.user_spellings(&status), ..Respell::default() };
         let mut rebuild = fresh && !created.is_empty();
         let mut failed = HashMap::new();
         // The files that this pull has changed or tried to (and those relink
@@ -2489,17 +3215,17 @@ impl SyncEngine {
         let mut touched: HashSet<String> = HashSet::new();
         loop {
             let held = self.state.pending.clone();
-            let batch = self.with_pending(heads, &retry, report)?;
+            let newer: HashSet<String> = heads.iter().map(|h| h.file_id.clone()).collect();
+            let mut again = self.reload_all(&retry, &newer, report)?;
+            again.extend(self.next_backlog(&mut backlog, &newer, report)?);
+            let last = !more && backlog.is_empty();
+            let batch = Self::with_pending(heads, again);
             // One of them comes again: its head moved while the feed was
             // read, or a change of it that waits (pending or held) was tried
             // first. Its newer change is applied to the vault as it is now,
             // as in a new round: the vault is scanned again.
             if batch.iter().any(|h| touched.contains(&h.file_id) && !self.applied(h)) {
-                let (l, unreadable) = self.scan(report)?;
-                let (mut s, c) = self.classify(&l, &unreadable);
-                let mut c: HashSet<String> = c.into_iter().collect();
-                self.regroup(&l, &mut s, &mut c, report);
-                (local, status, created) = (l, s, c);
+                (local, status, created) = self.look(report)?;
             }
             // A lost state is rebuilt from the whole feed: what is not in
             // this batch is read ahead for it (and read again to apply it).
@@ -2515,24 +3241,51 @@ impl SyncEngine {
             // earlier of two identical uploads is not applied when the kept
             // copy is in this batch too (see `keep_retired_copies`).
             self.keep_retired_copies(&batch, &status)?;
+            let fresh: HashSet<String> = batch.iter().map(|h| h.file_id.clone()).filter(|f| !touched.contains(f)).collect();
             touched.extend(batch.iter().map(|h| h.file_id.clone()));
-            self.apply_batch(batch, more, &mut local, &status, &created, &mut failed, report)?;
+            let pass = if last { Pass::Last } else { Pass::More };
+            self.apply_batch(batch, pass, &mut local, &mut status, &mut created, &mut failed, report)?;
+            // A change that waits for every other one was not tried yet (see
+            // `apply_batch`): what the scan found of its file is still true.
+            touched.retain(|f| !fresh.contains(f) || !self.respell.waits.contains(f));
             self.state.last_seq = cursor;
             self.save_state()?;
-            if !more {
+            if last {
                 break;
+            }
+            if backlog.is_empty() {
+                (heads, more) = self.read_batch(&mut cursor)?;
+            } else {
+                heads = Vec::new();
             }
             // Deletions go first only within a batch: a change held in this
             // one may need a path that a deletion in the next one frees. It
-            // is tried once more with the next batch.
+            // is tried once more with the next batch. One that waits for every
+            // other change of the pull is tried after them, below.
             retry = self
                 .state
                 .pending
                 .iter()
-                .filter(|(f, s)| held.get(*f) != Some(*s) || self.linked_waits.contains(*f))
+                .filter(|(f, s)| (held.get(*f) != Some(*s) && !self.respell.waits.contains(*f)) || self.linked_waits.contains(*f))
                 .map(|(f, s)| (f.clone(), *s))
                 .collect();
-            (heads, more) = self.read_batch(&mut cursor)?;
+        }
+        // The changes that wait for every other one of the pull (see
+        // `follow_spelling`), read again from their records in batches of
+        // about the same size, in the order of the server.
+        if !self.respell.waits.is_empty() {
+            self.start_respelling(report);
+            let mut todo: Vec<(String, u64)> = self.respell.waits.iter().filter_map(|f| Some((f.clone(), *self.state.pending.get(f)?))).collect();
+            todo.sort_by_key(|(_, s)| *s);
+            let mut todo: VecDeque<(String, u64)> = todo.into();
+            while let Some(batch) = self.next_waits(&mut todo, &mut failed, report)? {
+                if batch.iter().any(|h| touched.contains(&h.file_id) && !self.applied(h)) {
+                    (local, status, created) = self.look(report)?;
+                }
+                touched.extend(batch.iter().map(|h| h.file_id.clone()));
+                self.apply_batch(Self::with_pending(Vec::new(), batch), Pass::Waits, &mut local, &mut status, &mut created, &mut failed, report)?;
+                self.save_state()?;
+            }
         }
 
         // ----- push -----
@@ -2711,43 +3464,138 @@ impl SyncEngine {
         }
     }
 
-    /// A batch of heads with the pending changes `retry` (file id, seq), in
-    /// the order to apply them.
-    fn with_pending(&mut self, mut heads: Vec<RemoteHead>, retry: &[(String, u64)], report: &mut SyncReport) -> Result<Vec<RemoteHead>, SyncError> {
-        // Retry what could not be applied before, unless the file has a
-        // newer head by now (in this batch; one in a later batch is applied
-        // after it). The file id is the blob's associated data, so a server
-        // cannot pass off another file's revision here.
-        let newer: HashSet<&str> = heads.iter().map(|h| h.file_id.as_str()).collect();
-        let mut again = Vec::new();
-        let mut gone = Vec::new();
-        for &(ref fid, seq) in retry.iter().filter(|(f, _)| !newer.contains(f.as_str())) {
-            if let Some(head) = self.held(fid, seq) {
-                again.push(head);
+    /// The record of the pending change of `fid` at `seq`, to try it again:
+    /// kept with it (see `hold`), or else fetched from the server again. The
+    /// file id is the blob's associated data, so a server cannot pass off
+    /// another file's revision here. `None` if the server cannot serve it
+    /// (for example after a restore from an older backup): as with a head
+    /// that does not decrypt, a file this device has stays on hold, listed;
+    /// one it does not have is given up once the server says the revision
+    /// is gone, and retried after any other error.
+    fn reload(&mut self, fid: &str, seq: u64, report: &mut SyncReport) -> Result<Option<RemoteHead>, SyncError> {
+        if let Some(head) = self.held(fid, seq) {
+            return Ok(Some(head));
+        }
+        match self.transport.revision(&self.settings.vault_id, seq) {
+            Ok(r) => Ok(Some(RemoteHead { file_id: fid.to_string(), seq, parent_seq: None, device: String::new(), deleted: r.deleted, blob: r.blob })),
+            Err(e @ (SyncError::Network(_) | SyncError::Unauthorized)) => Err(e),
+            Err(e) => {
+                log::warn!("sync: cannot fetch revision {seq} of file {fid}: {e}");
+                let tracked = self.state.files.get(fid).map(|t| t.path.clone());
+                let lost = is_gone(&e);
+                report.skip(tracked.as_deref().unwrap_or(""), if lost { "the server no longer has this change".into() } else { reason(&e) });
+                if tracked.is_none() && lost {
+                    self.unhold(fid);
+                }
+                Ok(None)
+            }
+        }
+    }
+
+    /// The pending changes `retry` (file id, seq) to try again with a batch
+    /// of the pull, read again, but those of files with a head in the batch
+    /// (`newer`): a head in a later batch is applied after them.
+    fn reload_all(&mut self, retry: &[(String, u64)], newer: &HashSet<String>, report: &mut SyncReport) -> Result<Vec<RemoteHead>, SyncError> {
+        let mut heads = Vec::new();
+        for (fid, seq) in retry.iter().filter(|(f, _)| !newer.contains(f)) {
+            heads.extend(self.reload(fid, *seq, report)?);
+        }
+        Ok(heads)
+    }
+
+    /// The next of the pending changes from earlier syncs (`backlog`, file
+    /// id and seq, in the order of the server), read again to try them with
+    /// a batch of the pull: about `pull_batch` bytes of records, so that a
+    /// large backlog is not read all at once. One that a head in the batch
+    /// (`newer`) or a batch before replaced is left out.
+    fn next_backlog(&mut self, backlog: &mut VecDeque<(String, u64)>, newer: &HashSet<String>, report: &mut SyncReport) -> Result<Vec<RemoteHead>, SyncError> {
+        let mut heads = Vec::new();
+        let mut size = 0;
+        while size < self.pull_batch
+            && let Some((fid, seq)) = backlog.pop_front()
+        {
+            if newer.contains(&fid) || self.state.pending.get(&fid) != Some(&seq) {
                 continue;
             }
-            match self.transport.revision(&self.settings.vault_id, seq) {
-                Ok(r) => again.push(RemoteHead { file_id: fid.clone(), seq, parent_seq: None, device: String::new(), deleted: r.deleted, blob: r.blob }),
-                Err(e @ (SyncError::Network(_) | SyncError::Unauthorized)) => return Err(e),
-                Err(e) => {
-                    // The server cannot serve it (for example after a restore
-                    // from an older backup). As with a head that does not
-                    // decrypt, a file this device has stays on hold; one it
-                    // does not have is given up once the server says the
-                    // revision is gone, and retried after any other error.
-                    log::warn!("sync: cannot fetch revision {seq} of file {fid}: {e}");
-                    let tracked = self.state.files.get(fid).map(|t| t.path.as_str());
-                    let lost = is_gone(&e);
-                    report.skip(tracked.unwrap_or(""), if lost { "the server no longer has this change".into() } else { reason(&e) });
-                    if tracked.is_none() && lost {
-                        gone.push(fid.clone());
-                    }
-                }
+            if let Some(head) = self.reload(&fid, seq, report)? {
+                size += head.blob.len() as u64;
+                heads.push(head);
             }
         }
-        for fid in gone {
-            self.unhold(&fid);
+        Ok(heads)
+    }
+
+    /// The next batch of the changes that wait for every other change of the
+    /// pull (see `Respell::waits`), from `todo` (file id and seq, in the
+    /// order of the server): about `pull_batch` bytes of their records, read
+    /// again now, and the changes of `todo` whose files they want the paths
+    /// of (see `blocker`), so that those can move away first. A new file
+    /// whose path would have a folder here take another spelling that it
+    /// cannot take in this pull (see `spelling_refused`) waits on, listed,
+    /// without its record being read again. `None` once `todo` is empty.
+    fn next_waits(&mut self, todo: &mut VecDeque<(String, u64)>, failed: &mut HashMap<String, Skipped>, report: &mut SyncReport) -> Result<Option<Vec<RemoteHead>>, SyncError> {
+        let mut batch: Vec<(String, u64)> = Vec::new();
+        let mut size = 0;
+        while size < self.pull_batch
+            && let Some((fid, seq)) = todo.pop_front()
+        {
+            if let Some(s) = self.refused_wait(&fid) {
+                report.skip(&s.path, s.reason.clone());
+                failed.insert(fid, s);
+                continue;
+            }
+            size += self.held_path(&fid).and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len());
+            batch.push((fid, seq));
         }
+        loop {
+            let rest: HashSet<String> = todo.iter().map(|(f, _)| f.clone()).collect();
+            let wanted: HashSet<String> =
+                batch.iter().filter_map(|(f, _)| self.blocker(f, self.respell.held.get(f)?.as_deref()?, &rest)).collect();
+            if wanted.is_empty() {
+                break;
+            }
+            let (with, rest): (Vec<_>, Vec<_>) = std::mem::take(todo).into_iter().partition(|(f, _)| wanted.contains(f));
+            batch.extend(with);
+            *todo = rest.into();
+        }
+        if batch.is_empty() {
+            return Ok(None);
+        }
+        let mut heads = Vec::new();
+        for (fid, seq) in batch {
+            heads.extend(self.reload(&fid, seq, report)?);
+        }
+        Ok(Some(heads))
+    }
+
+    /// Why the change of `fid` that waits for every other change of the pull
+    /// waits on, listed, if it brings a file that is new here into a folder
+    /// that this device has under another spelling, which cannot take that
+    /// one in this pull (see `spelling_refused`). Known from the path noted
+    /// as the change was held, without its record.
+    fn refused_wait(&self, fid: &str) -> Option<Skipped> {
+        if self.state.files.get(fid).is_some_and(|t| !t.deleted) {
+            return None;
+        }
+        let path = self.respell.held.get(fid)?.as_deref()?;
+        let plan = self.respelling(path, None)?;
+        let reason = self.spelling_refused(&plan)?;
+        Some(Skipped { path: path.to_string(), reason })
+    }
+
+    /// The vault as a scan finds it now (see `scan`, `classify` and
+    /// `regroup`).
+    fn look(&mut self, report: &mut SyncReport) -> Result<Scanned, SyncError> {
+        let (local, unreadable) = self.scan(report)?;
+        let (mut status, created) = self.classify(&local, &unreadable);
+        let mut created: HashSet<String> = created.into_iter().collect();
+        self.regroup(&local, &mut status, &mut created, report);
+        Ok((local, status, created))
+    }
+
+    /// A batch of heads with the pending changes tried again with it
+    /// (`again`), in the order to apply them.
+    fn with_pending(mut heads: Vec<RemoteHead>, mut again: Vec<RemoteHead>) -> Vec<RemoteHead> {
         again.sort_by_key(|h| h.seq);
         heads.splice(0..0, again);
         // A file shows up twice if its head moved while the feed was paged;
@@ -2762,7 +3610,7 @@ impl SyncEngine {
         }
         heads.retain(|h| newest[&h.file_id] == h.seq);
         heads.sort_by_key(|h| !h.deleted);
-        Ok(heads)
+        heads
     }
 
     /// Whether this device has a head's revision of the file, or a newer
@@ -2775,15 +3623,24 @@ impl SyncEngine {
 
     /// Apply a batch of heads from `with_pending`. `failed` has the reason
     /// in `report` for each file whose change could not be applied in an
-    /// earlier batch, to take back if it is applied now.
+    /// earlier batch, to take back if it is applied now. `local`, `status`
+    /// and `created` are those of a scan of the vault, as the changes made
+    /// since leave them (see `respelled`).
+    ///
+    /// A change that would have a folder here take another spelling, or
+    /// keep its own (see `follow_spelling`), waits for every other change of
+    /// the pull, held, and so does one that wants the path of a file whose
+    /// change waits so (`Respell::waits`): a case twin among the others
+    /// keeps the folder's name. They go in a pass of their own (`Pass::Waits`)
+    /// once every other change of the pull went or waits as pending.
     #[allow(clippy::too_many_arguments)]
     fn apply_batch(
         &mut self,
         heads: Vec<RemoteHead>,
-        more: bool,
+        pass: Pass,
         local: &mut HashMap<String, LocalFile>,
-        status: &HashMap<String, Status>,
-        created: &HashSet<String>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
         failed: &mut HashMap<String, Skipped>,
         report: &mut SyncReport,
     ) -> Result<(), SyncError> {
@@ -2797,6 +3654,8 @@ impl SyncEngine {
         // as they are.
         let mut ahead: HashSet<String> = heads.iter().map(|h| h.file_id.clone()).collect();
         self.deleting = heads.iter().filter(|h| h.deleted).map(|h| h.file_id.clone()).collect();
+        self.respell.now = pass == Pass::Waits;
+        let more = pass == Pass::More;
         let mut queue: VecDeque<(RemoteHead, Option<Opened>)> = heads.into_iter().map(|h| (h, None)).collect();
         let mut waiting: Vec<(RemoteHead, Opened)> = Vec::new();
         let mut deferred: HashSet<String> = HashSet::new();
@@ -2816,6 +3675,9 @@ impl SyncEngine {
                 continue;
             };
             let fid = head.file_id.clone();
+            // Its change waits for the rest of the pull again below, if it
+            // still has to.
+            self.respell.waits.remove(&fid);
             if self.applied(&head) {
                 self.unhold(&fid);
                 ahead.remove(&fid);
@@ -2833,6 +3695,7 @@ impl SyncEngine {
                     // it does not have is simply not pulled.
                     if tracked_path.is_some() {
                         self.hold(&head);
+                        self.respell.held.insert(fid.clone(), None);
                     } else {
                         self.unhold(&fid);
                     }
@@ -2852,6 +3715,7 @@ impl SyncEngine {
                 let linked = tracked.is_none() && self.vault.fs().via_link(&path);
                 if linked && more && !self.vault.fs().leads_outside(&path) {
                     self.hold(&head);
+                    self.respell.held.insert(fid.clone(), Some(path));
                     ahead.remove(&fid);
                     self.linked_waits.insert(fid);
                     continue;
@@ -2862,12 +3726,19 @@ impl SyncEngine {
                     continue;
                 }
             }
+            if pass != Pass::Waits && !head.deleted && !self.respell.waits.is_empty() && self.blocker(&fid, &path, &self.respell.waits).is_some() {
+                self.hold(&head);
+                self.respell.held.insert(fid.clone(), Some(path));
+                self.respell.waits.insert(fid.clone());
+                ahead.remove(&fid);
+                continue;
+            }
             if wait && !head.deleted && self.blocker(&fid, &path, &ahead).is_some() {
                 waiting.push((head, (path, data)));
                 continue;
             }
             ahead.remove(&fid);
-            went = true;
+            let went_before = std::mem::replace(&mut went, true);
             let conflicts = report.conflicts.len();
             match self.apply_remote(&head, &path, &data, local, status, created, report) {
                 Ok(()) => {
@@ -2881,6 +3752,14 @@ impl SyncEngine {
                     self.unhold(&fid);
                     report.pulled += 1;
                 }
+                Err(SyncError::Local(m)) if m == LATER => {
+                    // Nothing was changed for it (see `follow_spelling`). Its
+                    // record is read again when it goes.
+                    went = went_before;
+                    self.hold(&head);
+                    self.respell.held.insert(fid.clone(), Some(path));
+                    self.respell.waits.insert(fid);
+                }
                 Err(e) if is_race(&e) => {
                     // The file does not have the content the scan found: the
                     // next round hashes it again, rather than trust a cached
@@ -2893,6 +3772,7 @@ impl SyncEngine {
                 Err(e) => {
                     log::warn!("sync: cannot apply {path}: {e}");
                     report.conflicts.truncate(conflicts);
+                    self.respell.held.insert(fid.clone(), (!head.deleted).then(|| path.clone()));
                     let s = Skipped { path, reason: reason(&e) };
                     report.skip(&s.path, s.reason.clone());
                     failed.insert(fid, s);
@@ -2983,8 +3863,8 @@ impl SyncEngine {
         rpath: &str,
         rdata: &[u8],
         local: &mut HashMap<String, LocalFile>,
-        status: &HashMap<String, Status>,
-        created: &HashSet<String>,
+        status: &mut HashMap<String, Status>,
+        created: &mut HashSet<String>,
         report: &mut SyncReport,
     ) -> Result<(), SyncError> {
         let fid = head.file_id.clone();
@@ -3006,6 +3886,10 @@ impl SyncEngine {
             delete_with_note: false,
             detached: false,
         };
+        // A folder that another device renamed by case, which this storage
+        // holds in one spelling, takes the new one here first (see
+        // `follow_rename_there`): what follows sees the file there.
+        self.follow_rename_there(&fid, rpath, head.deleted, local, status, created, report)?;
         let old = self.state.files.get(&fid).cloned();
         let st = old.as_ref().filter(|t| !t.deleted).map(|_| status.get(&fid).cloned().unwrap_or(Status::Unchanged));
 
@@ -3062,20 +3946,25 @@ impl SyncEngine {
                 self.save_base(&fid, here, rdata);
                 return Ok(());
             }
+            // Where it goes here: a folder of it that this storage has
+            // under another spelling takes this one first, or keeps its own
+            // (see `follow_spelling`), which is then the server's here.
+            let (at, here) = self.follow_spelling(here, None, local, status, created, report)?;
+            let (at, here) = (at.as_str(), here.as_str());
             // Whether the path is free is decided with the vault as it is now,
             // not as scanned: a change earlier in this pull may have moved a
             // file away from it.
-            let free = match local.get(here) {
-                _ if !self.taken(here, None) => true,
+            let free = match local.get(at) {
+                _ if !self.taken(at, None) => true,
                 Some(lf)
                     if lf.hash == rhash
-                        && created.contains(here)
-                        && !self.state.files.values().any(|t| !t.deleted && t.path == here) =>
+                        && created.contains(at)
+                        && !self.state.files.values().any(|t| !t.deleted && t.path == at) =>
                 {
                     // Same file created on both sides (and not taken for
                     // another file in this pull): adopt it.
-                    self.state.files.insert(fid.clone(), remote_tracked(here, here));
-                    self.save_base(&fid, here, rdata);
+                    self.state.files.insert(fid.clone(), remote_tracked(at, here));
+                    self.save_base(&fid, at, rdata);
                     return Ok(());
                 }
                 _ => {
@@ -3084,13 +3973,15 @@ impl SyncEngine {
                     // rename is pushed. Android shared storage renames ours
                     // instead, and pushes nothing: the phone does not rename
                     // a note on every device (FINDING-172). Not a file in a
-                    // folder whose name differs in case, as that would rename
-                    // the folder and all of its files (FINDING-034): the
-                    // remote file waits below, as a case twin. (Elsewhere
-                    // `here` has the folders spelled as here already: only
-                    // the file names differ.)
-                    if !local.contains_key(here)
-                        && let Some(p) = self.case_twin(here, None)
+                    // folder whose name differs in case: a case twin keeps
+                    // the folder's name here (see `respelling`), and moving
+                    // the file to the remote spelling would rename the folder
+                    // with all of its files on every device (FINDING-034),
+                    // so the remote file waits below, as a case twin.
+                    // (Elsewhere `here` has the folders spelled as here
+                    // already: only the file names differ.)
+                    if !local.contains_key(at)
+                        && let Some(p) = self.case_twin(at, None)
                         && created.contains(&p)
                         && local.get(&p).is_some_and(|lf| lf.hash == rhash)
                         && !self.state.files.values().any(|t| !t.deleted && t.path == p)
@@ -3100,16 +3991,16 @@ impl SyncEngine {
                             self.save_base(&fid, &p, rdata);
                             return Ok(());
                         }
-                        if vpath::parent(&p) == vpath::parent(here) {
+                        if vpath::parent(&p) == vpath::parent(at) {
                             // If the rename fails, the change waits, listed.
-                            self.rename(&p, here, report)?;
+                            self.rename(&p, at, report)?;
                             // The scan's view of the file goes with it, so
                             // that no later change in this pull takes it.
                             if let Some(lf) = local.remove(&p) {
-                                local.insert(here.to_string(), lf);
+                                local.insert(at.to_string(), lf);
                             }
-                            self.state.files.insert(fid.clone(), remote_tracked(here, here));
-                            self.save_base(&fid, here, rdata);
+                            self.state.files.insert(fid.clone(), remote_tracked(at, here));
+                            self.save_base(&fid, at, rdata);
                             return Ok(());
                         }
                     }
@@ -3123,13 +4014,13 @@ impl SyncEngine {
             // same content, they are one file (see `retire`). A case twin on
             // a file system that refuses it waits instead.
             if !free {
-                self.refuse_case_twin(here, None)?;
+                self.refuse_case_twin(at, None)?;
             }
-            if !free && self.retire(head, here, rpath, rdata, status)? {
+            if !free && self.retire(head, at, rpath, rdata, status)? {
                 return Ok(());
             }
-            let free = free || self.make_way(here, &fid, local, status, report)?;
-            let target = if free { self.place(&fid, here, rdata, created, report)? } else { self.conflict_copy(here, rdata, created, report)? };
+            let free = free || self.make_way(at, &fid, local, status, report)?;
+            let target = if free { self.place(&fid, at, rdata, created, report)? } else { self.conflict_copy(at, rdata, created, report)? };
             self.state.files.insert(fid.clone(), remote_tracked(&target, here));
             self.save_base(&fid, &target, rdata);
             return Ok(());
@@ -3220,18 +4111,25 @@ impl SyncEngine {
                     }
                     return Ok(());
                 }
-                let mut path = old.path.clone();
+                let (mut path, mut here) = (old.path.clone(), here);
                 if here != old.path {
-                    let target = if self.taken(&here, Some(&old.path)) {
-                        self.refuse_case_twin(&here, Some(&old.path))?;
-                        let c = self.conflict_path(&here)?;
-                        report.conflicts.push(c.clone());
-                        c
-                    } else {
-                        here.clone()
-                    };
-                    self.rename(&old.path, &target, report)?;
-                    path = target;
+                    // A folder of it that this storage has under another
+                    // spelling takes this one first, or keeps its own, which
+                    // is then the server's here.
+                    let (at, spelled) = self.follow_spelling(&here, Some(&old.path), local, status, created, report)?;
+                    here = spelled;
+                    if at != old.path {
+                        let target = if self.taken(&at, Some(&old.path)) {
+                            self.refuse_case_twin(&at, Some(&old.path))?;
+                            let c = self.conflict_path(&at)?;
+                            report.conflicts.push(c.clone());
+                            c
+                        } else {
+                            at
+                        };
+                        self.rename(&old.path, &target, report)?;
+                        path = target;
+                    }
                 }
                 if rhash != old.hash {
                     self.write(&path, rdata, Some(&old.hash), report)?;
@@ -3256,9 +4154,11 @@ impl SyncEngine {
                     return Ok(());
                 }
                 let mut path = old.path.clone();
-                if here != old.path && !self.taken(&here, Some(&old.path)) {
-                    self.rename(&old.path, &here, report)?;
-                    path = here.clone();
+                let (at, here) =
+                    if here != old.path { self.follow_spelling(&here, Some(&old.path), local, status, created, report)? } else { (here.clone(), here) };
+                if at != old.path && !self.taken(&at, Some(&old.path)) {
+                    self.rename(&old.path, &at, report)?;
+                    path = at.clone();
                     // If the merge below fails, the change stays pending: the
                     // edited file must still be known under its new name, or
                     // it would be pushed as a new file.
@@ -3266,11 +4166,11 @@ impl SyncEngine {
                         t.path = path.clone();
                         t.server_path = Some(old.path.clone());
                     }
-                } else if here != old.path {
+                } else if at != old.path {
                     // A name this storage cannot hold here waits, with the
                     // edit: pushing the old name would undo the rename on
                     // every device (FINDING-172).
-                    self.refuse_case_twin(&here, Some(&old.path))?;
+                    self.refuse_case_twin(&at, Some(&old.path))?;
                 }
                 let lf_hash = local.get(&old.path).map(|l| l.hash.clone()).unwrap_or_default();
                 if rhash != lf_hash {
@@ -3340,6 +4240,8 @@ impl SyncEngine {
                 // Edited or renamed remotely after we deleted it: the edit or
                 // the rename wins, whichever device synced first (see
                 // `Status::Renamed`).
+                let (at, here) = self.follow_spelling(&here, None, local, status, created, report)?;
+                let at = self.local_spelling(&at);
                 let target = if self.taken(&at, None) {
                     self.refuse_case_twin(&at, None)?;
                     self.conflict_copy(&at, rdata, created, report)?
@@ -3361,6 +4263,12 @@ impl SyncEngine {
                     self.state.files.insert(fid.clone(), t);
                     return Ok(());
                 }
+                // Rename before writing: if the write fails, the unchanged
+                // content still shows where the file went, and it is not
+                // taken for a new file.
+                let mut path = to.clone();
+                let (at, here) =
+                    if moved && here != to { self.follow_spelling(&here, Some(&to), local, status, created, report)? } else { (here.clone(), here) };
                 // Tracked where it is now; if that is not the server's path,
                 // the rename is pushed, and until then a name the user gave
                 // it stays theirs (`renamed`): a later remote delete does not
@@ -3369,21 +4277,17 @@ impl SyncEngine {
                     let t = remote_tracked(path, &here);
                     Tracked { renamed: mine && t.server_path.is_some(), ..t }
                 };
-                // Rename before writing: if the write fails, the unchanged
-                // content still shows where the file went, and it is not
-                // taken for a new file.
-                let mut path = to.clone();
-                if moved && here != to && !self.taken(&here, Some(&to)) {
+                if moved && at != to && !self.taken(&at, Some(&to)) {
                     // Both renamed: the remote name wins.
-                    self.rename(&to, &here, report)?;
-                    path = here.clone();
-                } else if moved && here != to && !mine {
+                    self.rename(&to, &at, report)?;
+                    path = at;
+                } else if moved && at != to && !mine {
                     // The name here is one the sync chose: it is not pushed
                     // over a remote name this storage cannot hold here, which
                     // waits instead (FINDING-172). One the user gave the file
                     // here is kept and pushed, as when another file has the
                     // remote name.
-                    self.refuse_case_twin(&here, Some(&to))?;
+                    self.refuse_case_twin(&at, Some(&to))?;
                 }
                 // A case-only rename on a file system that ignores case is
                 // recognised even when the file was edited too; then the

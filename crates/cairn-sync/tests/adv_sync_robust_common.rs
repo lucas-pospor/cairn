@@ -739,6 +739,14 @@ impl VaultFs for CaseInsensitiveFs {
 /// another entry in the same folder, because it cannot hold both. It also
 /// refuses a name with a character FAT forbids, with the reason SafFs gives
 /// (the path, then SafPlugin's message).
+///
+/// Unlike SafPlugin.kt, it writes and moves a file into a folder whose name
+/// matches the one asked for only ignoring case, and it does not rename the
+/// folders that a move's two paths spell otherwise (renameSharedFolders). So
+/// the tests that use it do not show how the phone deals with a folder that
+/// another device spells otherwise; `SharedStorageFs` in
+/// adv_sync_semantics_common.rs models that, and the tests with it in
+/// adv_sync_semantics.rs and adv_sync_phone_fuzz.rs check it.
 pub struct SafLikeFs {
     root: PathBuf,
     inner: CaseInsensitiveFs,

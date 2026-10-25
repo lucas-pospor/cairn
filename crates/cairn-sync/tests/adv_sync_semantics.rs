@@ -12,9 +12,11 @@
 mod common;
 
 use std::fs;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use cairn_core::{Change, EntryKind};
 use cairn_sync::engine::{SyncEngine, Tracked};
 use common::*;
 use parking_lot::Mutex;
@@ -545,7 +547,6 @@ fn rename_in_app_vs_delete_ends_as_a_rename_outside_the_app() {
         assert_eq!(outcomes[0], outcomes[1], "laptop_first={laptop_first}: in the app vs outside");
     }
 }
-
 
 /// A note under a name the sync chose here, a conflict copy name whose
 /// rename has not gone up yet, which the user renames back to the note's
@@ -1889,7 +1890,6 @@ fn a_folder_case_rename_is_not_lost_to_an_edit_from_a_device_that_spells_the_fol
     }
 }
 
-
 /// Notes that a device which tells case apart (Linux) deletes in `Notes`
 /// while a case-insensitive PC that spells the folder `notes` edits them:
 /// the edits beat the deletes, and the notes come back in `Notes`, under
@@ -2037,17 +2037,178 @@ fn edits_from_two_spellings_of_a_folder_cost_a_phone_on_shared_storage_no_upload
     assert_eq!(top_folders(&phone), strings(&["DRAFTS"]));
 }
 
+/// A phone on Android shared storage (SafPlugin.kt, as `SharedStorageFs`).
+fn shared_storage_phone(srv: &Server, files: &[(&str, &str)]) -> Device {
+    Device::with_fs(srv, "phone", files, SharedStorageFs::new)
+}
+
 /// A new note goes up in the spelling of the device that made it. A phone
-/// on Android shared storage whose folder has the other spelling does not
-/// store it, and lists it as not synced, as it does any file from another
-/// device in a folder whose name differs only in case from its own
-/// (FINDING-031, FINDING-172). It uploads nothing for it.
+/// on Android shared storage, which holds one spelling of a folder and whose
+/// folder has the other one, renames its folder to the note's spelling
+/// first, on the phone only, and stores the note: its other note in the
+/// folder keeps its spelling on the server, and nothing goes up. Then all
+/// go quiet, and each PC keeps its own spelling.
 #[test]
-fn a_new_note_in_a_folder_that_a_phone_on_shared_storage_spells_otherwise_is_listed_there() {
+fn a_new_note_in_a_folder_that_a_phone_on_shared_storage_spells_otherwise_renames_the_folder_there() {
     let srv = server();
     let mut a = ci(&srv, "win-a", &[("Drafts/n.md", "n\n")]);
     let mut b = ci(&srv, "win-b", &[]);
-    let mut phone = Device::with_fs(&srv, "phone", &[], SharedStorageFs::new);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    assert_eq!(phone.paths(), strings(&["DRAFTS/n.md"]));
+    a.write("Drafts/new.md", "new on a\n");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut b), (1, 0));
+    assert_eq!(b.read("DRAFTS/new.md").as_deref(), Some("new on a\n"));
+    assert_eq!(traffic(&mut phone), (1, 0), "the phone stores the note and uploads nothing for its folder");
+    assert_eq!(phone.paths(), strings(&["Drafts/n.md", "Drafts/new.md"]));
+    assert_eq!(server_spelling(&phone, "n.md").as_deref(), Some("DRAFTS/n.md"));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(a.paths(), strings(&["Drafts/n.md", "Drafts/new.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/n.md", "DRAFTS/new.md"]));
+    let want = pairs(&[("n.md", "n\n"), ("new.md", "new on a\n")]);
+    for d in [&a, &b, &phone] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+}
+
+/// A Windows PC and a phone on Android shared storage that each made a
+/// folder before their first sync, spelled differently (`Drafts` on the PC,
+/// `DRAFTS` on the phone): in either order of their first syncs, the phone
+/// takes the PC's spelling, both have every note, and the two go quiet. The
+/// server keeps each note in the spelling it first went up in: the phone's
+/// note goes up in the PC's spelling when the phone syncs second, and keeps
+/// its own when the phone syncs first, as the phone's rename of its folder
+/// stays on the phone.
+#[test]
+fn a_pc_and_a_phone_on_shared_storage_that_spell_a_folder_differently_settle_on_the_pc_spelling() {
+    for pc_first in [true, false] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "from a\n")]);
+        let mut phone = shared_storage_phone(&srv, &[("DRAFTS/p.md", "from the phone\n")]);
+        if pc_first {
+            assert_eq!(traffic(&mut a), (0, 1));
+            // The phone renames its folder, stores a.md and uploads p.md, new, in the PC's spelling.
+            assert_eq!(traffic(&mut phone), (1, 1));
+            assert_eq!(traffic(&mut a), (1, 0));
+        } else {
+            assert_eq!(traffic(&mut phone), (0, 1));
+            assert_eq!(traffic(&mut a), (1, 1));
+            // The phone renames its folder and stores a.md, and uploads nothing.
+            assert_eq!(traffic(&mut phone), (1, 0));
+        }
+        assert_quiet(&mut [&mut a, &mut phone]);
+        for d in [&a, &phone] {
+            assert_eq!(d.paths(), strings(&["Drafts/a.md", "Drafts/p.md"]), "pc first {pc_first}: {}", d.name);
+            assert_eq!(notes(d), pairs(&[("a.md", "from a\n"), ("p.md", "from the phone\n")]), "pc first {pc_first}: {}", d.name);
+        }
+        let p_on_server = (!pc_first).then(|| "DRAFTS/p.md".to_string());
+        assert_eq!(server_spelling(&a, "p.md"), p_on_server, "pc first {pc_first}");
+        assert_eq!(server_spelling(&phone, "p.md"), p_on_server, "pc first {pc_first}");
+    }
+}
+
+/// Two Windows PCs that spell a folder differently, and a phone on Android
+/// shared storage, which can hold only one of the spellings: a new note from
+/// the PC whose spelling the phone does not have makes the phone rename its
+/// folder, on the phone only. It uploads nothing for that, and the PCs get
+/// nothing, so all go quiet after each new note, and nothing is lost. Edits
+/// keep the server's spelling and cost the phone no upload either.
+#[test]
+fn a_phone_on_shared_storage_follows_new_notes_from_two_pcs_that_spell_a_folder_differently() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/n0.md", "n0\n"), ("Drafts/n1.md", "n1\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut a), (0, 2));
+    assert_eq!(traffic(&mut b), (2, 0));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    b.mv("Drafts", "DRAFTS");
+    assert_eq!(traffic(&mut b), (0, 2));
+    assert_eq!(traffic(&mut a), (2, 0));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    assert_eq!(top_folders(&phone), strings(&["DRAFTS"]));
+    let mut want = pairs(&[("n0.md", "n0\n"), ("n1.md", "n1\n")]);
+    for (round, (pc, folder)) in [("a", "Drafts"), ("b", "DRAFTS"), ("a", "Drafts"), ("b", "DRAFTS")].into_iter().enumerate() {
+        let (name, text) = (format!("new{round}.md"), format!("new {round}, made on {pc}\n"));
+        let (maker, other) = if pc == "a" { (&mut a, &mut b) } else { (&mut b, &mut a) };
+        maker.write(&format!("{folder}/{name}"), &text);
+        assert_eq!(traffic(maker), (0, 1), "round {round}");
+        assert_eq!(traffic(other), (1, 0), "round {round}");
+        assert_eq!(traffic(&mut phone), (1, 0), "round {round}: the phone uploads nothing for its folder");
+        assert_eq!(top_folders(&phone), strings(&[folder]), "round {round}: the phone takes the spelling of the new note");
+        assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+        want.push((name, text));
+        want.sort();
+        for d in [&a, &b, &phone] {
+            assert_eq!(notes(d), want, "round {round}: {}", d.name);
+        }
+        assert_eq!(top_folders(&a), strings(&["Drafts"]), "round {round}");
+        assert_eq!(top_folders(&b), strings(&["DRAFTS"]), "round {round}");
+    }
+    // Every note keeps the spelling it went up in.
+    for (name, on_server) in [("n0.md", "DRAFTS/n0.md"), ("new0.md", "Drafts/new0.md"), ("new1.md", "DRAFTS/new1.md"), ("new2.md", "Drafts/new2.md")] {
+        let here = format!("DRAFTS/{name}");
+        assert_eq!(server_spelling(&phone, name), (here != on_server).then(|| on_server.to_string()), "{name}");
+    }
+    a.write("Drafts/n0.md", "n0, edited on a\n");
+    b.write("DRAFTS/n1.md", "n1, edited on b\n");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut b), (1, 1));
+    assert_eq!(traffic(&mut phone), (2, 0), "edits cost the phone no upload");
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(phone.read("DRAFTS/n0.md").as_deref(), Some("n0, edited on a\n"));
+    assert_eq!(phone.read("DRAFTS/n1.md").as_deref(), Some("n1, edited on b\n"));
+}
+
+/// A note moved on a PC into a folder that a phone on Android shared storage
+/// spells otherwise: the phone renames its folder to the PC's spelling, on
+/// the phone only, and moves the note there, as it does for a new note.
+#[test]
+fn a_note_moved_into_a_folder_that_a_phone_on_shared_storage_spells_otherwise_renames_the_folder_there() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/n.md", "n\n"), ("Inbox/x.md", "x\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    assert_eq!(phone.paths(), strings(&["DRAFTS/n.md", "Inbox/x.md"]));
+    a.mv("Inbox/x.md", "Drafts/x.md");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut b), (1, 0));
+    assert_eq!(traffic(&mut phone), (1, 0), "the phone moves x.md and uploads nothing for its folder");
+    assert_eq!(phone.paths(), strings(&["Drafts/n.md", "Drafts/x.md"]));
+    assert_eq!(top_folders(&phone), strings(&["Drafts"]));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(b.paths(), strings(&["DRAFTS/n.md", "DRAFTS/x.md"]));
+    let want = pairs(&[("n.md", "n\n"), ("x.md", "x\n")]);
+    for d in [&a, &b, &phone] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+}
+
+/// A note deleted on a PC while a phone on Android shared storage renames
+/// its folder to another spelling in its pull: nothing goes up for the
+/// rename, so the delete applies on the phone in its next sync, and the
+/// note does not come back.
+#[test]
+fn a_delete_made_while_a_phone_on_shared_storage_renames_its_folder_still_applies() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/n0.md", "n0\n"), ("Drafts/n1.md", "n1\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
     for d in [&mut a, &mut b, &mut phone] {
         traffic(d);
     }
@@ -2057,14 +2218,855 @@ fn a_new_note_in_a_folder_that_a_phone_on_shared_storage_spells_otherwise_is_lis
     }
     a.write("Drafts/new.md", "new on a\n");
     assert_eq!(traffic(&mut a), (0, 1));
-    assert_eq!(traffic(&mut b), (1, 0));
-    assert_eq!(b.read("DRAFTS/new.md").as_deref(), Some("new on a\n"));
+    b.rm("DRAFTS/n1.md");
+    let b = Arc::new(Mutex::new(b));
+    let other = b.clone();
+    // b deletes n1.md once the phone has read the changes to pull.
+    *phone.hooks.after_changes.lock() = Some(Box::new(move || assert_eq!(traffic(&mut other.lock()), (1, 1))));
+    assert_eq!(traffic(&mut phone), (1, 0));
+    let mut b = Arc::try_unwrap(b).ok().expect("the hook ran").into_inner();
+    assert_eq!(phone.paths(), strings(&["Drafts/n0.md", "Drafts/n1.md", "Drafts/new.md"]));
+    assert_eq!(traffic(&mut phone), (1, 0));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(phone.paths(), strings(&["Drafts/n0.md", "Drafts/new.md"]));
+    assert_eq!(a.paths(), strings(&["Drafts/n0.md", "Drafts/new.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/n0.md", "DRAFTS/new.md"]));
+}
+
+/// A note edited on a phone on Android shared storage and deleted on a PC,
+/// in the pull that has the phone's folder take another spelling: the edit
+/// beats the delete, and the note comes back on every device, with its id,
+/// so its history goes on, and in the server's spelling of its folder.
+#[test]
+fn an_edit_on_a_phone_on_shared_storage_beats_a_delete_and_keeps_its_id_when_the_folder_takes_another_spelling() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/m.md", "m\n"), ("Drafts/n.md", "n\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    let id_of = |d: &Device, name: &str| -> Vec<String> {
+        d.engine.state().files.iter().filter(|(_, t)| !t.deleted && t.path.ends_with(name)).map(|(f, _)| f.clone()).collect()
+    };
+    let id = id_of(&phone, "/n.md");
+    phone.write("DRAFTS/n.md", "n, edited on the phone\n");
+    b.rm("DRAFTS/n.md");
+    assert_eq!(traffic(&mut b), (0, 1));
+    a.write("Drafts/new.md", "new on a\n");
+    assert_eq!(traffic(&mut a), (1, 1));
+    assert_eq!(traffic(&mut phone), (2, 1), "the phone uploads n.md again");
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_eq!(traffic(&mut b), (2, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(phone.paths(), strings(&["Drafts/m.md", "Drafts/n.md", "Drafts/new.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/m.md", "DRAFTS/n.md", "DRAFTS/new.md"]));
+    assert_eq!(server_spelling(&a, "n.md").as_deref(), Some("DRAFTS/n.md"));
+    for d in [&a, &b, &phone] {
+        assert_eq!(id_of(d, "/n.md"), id, "{}", d.name);
+        assert_eq!(d.files().into_iter().find(|(p, _)| p.ends_with("/n.md")).map(|f| f.1).as_deref(), Some("n, edited on the phone\n"), "{}", d.name);
+    }
+}
+
+/// A phone on Android shared storage whose user renamed a folder by case,
+/// outside the app or in it, while a PC deleted a note in it and made
+/// another one there: the new note does not have the folder take the PC's
+/// spelling again, which would undo the user's rename. It goes into the
+/// folder as the phone spells it, and its rename to that goes up with the
+/// user's. The rename wins over the delete, as any rename does, so the PC
+/// gets the note back, under the phone's spelling on the server.
+#[test]
+fn a_case_only_folder_rename_on_a_phone_on_shared_storage_is_kept_when_a_new_note_comes_in_the_old_spelling() {
+    for in_app in [false, true] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Drafts/m.md", "m\n"), ("Drafts/n.md", "n\n")]);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        assert_eq!(traffic(&mut a), (0, 2));
+        assert_eq!(traffic(&mut phone), (2, 0));
+        if in_app {
+            phone.app_mv("Drafts", "DRAFTS");
+        } else {
+            phone.mv("Drafts", "DRAFTS");
+        }
+        a.rm("Drafts/n.md");
+        a.write("Drafts/new.md", "new on a\n");
+        assert_eq!(traffic(&mut a), (0, 2));
+        assert_eq!(traffic(&mut phone), (2, 3), "in app {in_app}: the phone uploads three renames, n.md's on top of its delete");
+        assert_eq!(phone.paths(), strings(&["DRAFTS/m.md", "DRAFTS/n.md", "DRAFTS/new.md"]), "in app {in_app}");
+        assert_eq!(traffic(&mut a), (3, 0), "in app {in_app}");
+        assert_quiet(&mut [&mut a, &mut phone]);
+        assert_eq!(a.paths(), strings(&["Drafts/m.md", "Drafts/n.md", "Drafts/new.md"]), "in app {in_app}");
+        let want = pairs(&[("m.md", "m\n"), ("n.md", "n\n"), ("new.md", "new on a\n")]);
+        for d in [&a, &phone] {
+            assert_eq!(notes(d), want, "in app {in_app}: {}", d.name);
+        }
+        for name in ["m.md", "n.md", "new.md"] {
+            assert_eq!(server_spelling(&a, name), Some(format!("DRAFTS/{name}")), "in app {in_app}");
+        }
+    }
+}
+
+/// As above, a level deeper, where the phone spells the folder inside the
+/// one the user renamed otherwise than the server does only because it took
+/// another device's spelling, on the phone only: the new note goes up with
+/// the user's spelling of the folder they renamed and the server's spelling
+/// of the folder inside it. Going up with the phone's spelling of both, it
+/// moved the note into a folder of its own on a device that tells case
+/// apart.
+#[test]
+fn a_case_only_folder_rename_on_a_phone_on_shared_storage_goes_up_for_that_folder_only_when_a_new_note_comes_in() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Work/NOTES/x.md", "x\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut a), (0, 1));
+    // b makes the folder inside in another spelling before it has x.md.
+    b.write("Work/notes/y.md", "y\n");
+    assert_eq!(traffic(&mut b), (1, 1));
+    // The phone's folder inside takes b's spelling, on the phone only.
+    assert_eq!(traffic(&mut phone), (2, 0));
+    assert_eq!(phone.paths(), strings(&["Work/notes/x.md", "Work/notes/y.md"]));
+    phone.app_mv("Work", "work");
+    a.write("Work/NOTES/z.md", "z\n");
+    assert_eq!(traffic(&mut a), (1, 1));
+    traffic(&mut phone);
+    assert_eq!(phone.paths(), strings(&["work/notes/x.md", "work/notes/y.md", "work/notes/z.md"]));
+    traffic(&mut a);
+    traffic(&mut b);
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    let mut linux = Device::new(&srv, "linux", &[]);
+    traffic(&mut linux);
+    assert_eq!(linux.paths(), strings(&["work/NOTES/x.md", "work/NOTES/z.md", "work/notes/y.md"]));
+}
+
+/// The same when, in that pull, moves from a PC that renamed the folder by
+/// case rename the phone's folder first (FINDING-034), and a new note from
+/// another PC comes in a third spelling: every spelling of the folder is the
+/// one folder on the phone. It keeps the spelling that the moves gave it,
+/// as the user's rename of the note kept against the delete has not gone up
+/// yet: that note goes up in it, and so does the new note's rename. Both
+/// ways round, as the phone looks for the folder by its spelling on disk.
+#[test]
+fn a_note_kept_against_a_delete_goes_up_when_moves_and_a_new_note_come_into_its_folder_on_a_phone_on_shared_storage() {
+    for (mine, theirs) in [("drafts", "DRAFTS"), ("DRAFTS", "drafts")] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Drafts/n.md", "n\n"), ("Drafts/w.md", "w\n"), ("Drafts/x.md", "x\n")]);
+        let mut b = ci(&srv, "win-b", &[]);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        for d in [&mut a, &mut b, &mut phone] {
+            traffic(d);
+        }
+        phone.mv("Drafts", mine);
+        a.rm("Drafts/n.md");
+        assert_eq!(traffic(&mut a), (0, 1));
+        assert_eq!(traffic(&mut b), (1, 0));
+        b.mv("Drafts", theirs);
+        assert_eq!(traffic(&mut b), (0, 2));
+        a.write("Drafts/new.md", "new on a\n");
+        assert_eq!(traffic(&mut a), (2, 1));
+        assert_eq!(traffic(&mut phone), (4, 2), "{mine}: the phone uploads n.md again and the rename of new.md");
+        assert_eq!(top_folders(&phone), strings(&[theirs]), "{mine}");
+        assert_eq!(traffic(&mut a), (2, 0), "{mine}");
+        assert_eq!(traffic(&mut b), (2, 0), "{mine}");
+        assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+        // b moved its copy of n.md to the trash for the delete; it has it back.
+        let want = pairs(&[("n.md", "n\n"), ("new.md", "new on a\n"), ("w.md", "w\n"), ("x.md", "x\n")]);
+        for d in [&a, &b, &phone] {
+            let mut live: Vec<(String, String)> = d.files().into_iter().map(|(p, t)| (p.rsplit('/').next().unwrap().to_string(), t)).collect();
+            live.sort();
+            assert_eq!(live, want, "{mine}: {}", d.name);
+        }
+        assert_eq!(a.paths(), strings(&["Drafts/n.md", "Drafts/new.md", "Drafts/w.md", "Drafts/x.md"]), "{mine}");
+        let there: Vec<String> = ["n.md", "new.md", "w.md", "x.md"].iter().map(|n| format!("{theirs}/{n}")).collect();
+        assert_eq!(b.paths(), there, "{mine}");
+        assert_eq!(phone.paths(), there, "{mine}");
+    }
+}
+
+/// Edits made on a phone on Android shared storage before its folder takes
+/// another spelling go up with the renames: one to a note that a PC edited
+/// too, merged in the same pull, and one to a note that only the phone
+/// edited. The note that brings the other spelling comes first on the
+/// server: the phone takes it after the rest of the pull, also when it
+/// pulls one record per batch, where it waits for the last one.
+#[test]
+fn edits_made_on_a_phone_on_shared_storage_before_its_folder_takes_another_spelling_go_up() {
+    for one_by_one in [false, true] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Drafts/n0.md", "1\n2\n3\n"), ("Drafts/n1.md", "n1\n")]);
+        let mut b = ci(&srv, "win-b", &[]);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        if one_by_one {
+            phone.pull_one_by_one();
+        }
+        for d in [&mut a, &mut b, &mut phone] {
+            traffic(d);
+        }
+        b.mv("Drafts", "DRAFTS");
+        for d in [&mut b, &mut a, &mut phone] {
+            traffic(d);
+        }
+        phone.write("DRAFTS/n0.md", "1\n2\n3 phone\n");
+        phone.write("DRAFTS/n1.md", "n1, edited on the phone\n");
+        a.write("Drafts/n0.md", "1 a\n2\n3\n");
+        a.write("Drafts/a.md", "new on a\n");
+        assert_eq!(traffic(&mut a), (0, 2));
+        assert_eq!(traffic(&mut phone), (2, 2), "one by one {one_by_one}");
+        assert_eq!(phone.paths(), strings(&["Drafts/a.md", "Drafts/n0.md", "Drafts/n1.md"]), "one by one {one_by_one}");
+        assert_eq!(traffic(&mut a), (2, 0), "one by one {one_by_one}");
+        assert_eq!(traffic(&mut b), (3, 0), "one by one {one_by_one}");
+        assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+        let want = pairs(&[("a.md", "new on a\n"), ("n0.md", "1 a\n2\n3 phone\n"), ("n1.md", "n1, edited on the phone\n")]);
+        for d in [&a, &b, &phone] {
+            assert_eq!(notes(d), want, "one by one {one_by_one}: {}", d.name);
+        }
+    }
+}
+
+/// Folders two levels deep that a phone on Android shared storage spells
+/// otherwise at both levels (`WORK/DRAFTS` against a PC's `Work/Drafts`):
+/// in either order of the first syncs, the phone renames both, top level
+/// first, on the phone only, and its note in the top folder goes along.
+#[test]
+fn nested_folders_that_a_phone_on_shared_storage_spells_otherwise_take_the_pc_spelling() {
+    for pc_first in [true, false] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Work/Drafts/a.md", "from a\n")]);
+        let mut phone = shared_storage_phone(&srv, &[("WORK/DRAFTS/p.md", "p\n"), ("WORK/top.md", "top\n")]);
+        if pc_first {
+            assert_eq!(traffic(&mut a), (0, 1));
+            assert_eq!(traffic(&mut phone), (1, 2));
+            assert_eq!(traffic(&mut a), (2, 0));
+        } else {
+            assert_eq!(traffic(&mut phone), (0, 2));
+            assert_eq!(traffic(&mut a), (2, 1));
+            assert_eq!(traffic(&mut phone), (1, 0));
+        }
+        assert_quiet(&mut [&mut a, &mut phone]);
+        for d in [&a, &phone] {
+            assert_eq!(d.paths(), strings(&["Work/Drafts/a.md", "Work/Drafts/p.md", "Work/top.md"]), "pc first {pc_first}: {}", d.name);
+            assert_eq!(notes(d), pairs(&[("a.md", "from a\n"), ("p.md", "p\n"), ("top.md", "top\n")]), "pc first {pc_first}: {}", d.name);
+        }
+        let (p, top) = if pc_first { (None, None) } else { (Some("WORK/DRAFTS/p.md".to_string()), Some("WORK/top.md".to_string())) };
+        assert_eq!((server_spelling(&a, "p.md"), server_spelling(&a, "top.md")), (p.clone(), top.clone()), "pc first {pc_first}");
+        assert_eq!((server_spelling(&phone, "p.md"), server_spelling(&phone, "top.md")), (p, top), "pc first {pc_first}");
+    }
+}
+
+/// A note that a phone on Android shared storage cannot hold next to one of
+/// its own, as their names differ only in case, keeps FINDING-172's
+/// behaviour when the phone spells their folder otherwise too: the phone
+/// does not rename the folder for it, nor for another new note that the
+/// server has in that spelling, lists both and uploads nothing for them.
+/// Once the user renames the phone's note, the folder takes the other
+/// spelling and both notes come in.
+#[test]
+fn a_case_twin_keeps_the_name_of_a_folder_that_a_phone_on_shared_storage_spells_otherwise() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n"), ("Drafts/note.md", "from a\n")]);
+    let mut phone = shared_storage_phone(&srv, &[("DRAFTS/Note.md", "from the phone\n")]);
+    assert_eq!(traffic(&mut a), (0, 2));
     for round in 0..2 {
         let r = phone.sync();
-        assert_eq!(r.pushed, 0, "round {round}");
-        assert!(r.skipped.iter().any(|s| s.path == "Drafts/new.md"), "round {round}: {:?}", r.skipped);
-        assert_eq!(phone.paths(), strings(&["DRAFTS/n.md"]), "round {round}");
+        // In the first round the phone uploads its own note.
+        assert_eq!((r.pulled, r.pushed), (0, 1 - round), "round {round}");
+        assert!(r.conflicts.is_empty(), "round {round}: {:?}", r.conflicts);
+        let mut listed: Vec<&str> = r.skipped.iter().map(|s| s.path.as_str()).collect();
+        listed.sort();
+        assert_eq!(listed, ["Drafts/a.md", "Drafts/note.md"], "round {round}: {:?}", r.skipped);
+        assert!(r.skipped.iter().any(|s| s.path == "Drafts/note.md" && s.reason.contains("differ only in case")), "round {round}: {:?}", r.skipped);
+        assert!(r.skipped.iter().any(|s| s.path == "Drafts/a.md" && s.reason.contains("Drafts/note.md")), "round {round}: {:?}", r.skipped);
+        assert_eq!(phone.paths(), strings(&["DRAFTS/Note.md"]), "round {round}");
     }
+    phone.mv("DRAFTS/Note.md", "DRAFTS/Phone note.md");
+    assert_eq!(traffic(&mut phone), (2, 1));
+    assert_eq!(phone.paths(), strings(&["Drafts/Phone note.md", "Drafts/a.md", "Drafts/note.md"]));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut phone]);
+    let want = pairs(&[("Phone note.md", "from the phone\n"), ("a.md", "a\n"), ("note.md", "from a\n")]);
+    assert_eq!(notes(&a), want);
+    assert_eq!(notes(&phone), want);
+}
+
+/// A device whose file system tells case apart can have two folders whose
+/// names differ only in case, here each with a note `same.md`. A phone on
+/// Android shared storage holds one of the folders. The other one holds a
+/// case twin of a note in it, so the phone does not take that folder for
+/// its own and rename it, which would merge the two on the desktop: it lists
+/// the notes of the other folder, and the desktop keeps both folders as they
+/// are (as e2e/android/adv_saf_paths.test.mjs checks on a phone). So also
+/// when the phone pulls one record per batch, as a large notebook comes in
+/// batches: the twin comes after another note of its folder.
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn folders_that_a_case_sensitive_device_keeps_apart_are_not_merged_by_a_phone_on_shared_storage() {
+    for one_by_one in [false, true] {
+        let srv = server();
+        let files = [("Seed.md", "seed\n"), ("Notes/a.md", "A\n"), ("Notes/same.md", "upper\n"), ("notes/b.md", "B\n"), ("notes/same.md", "lower\n")];
+        let mut l = Device::new(&srv, "linux", &files);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        if one_by_one {
+            phone.pull_one_by_one();
+        }
+        assert_eq!(traffic(&mut l), (0, 5));
+        for round in 0..2 {
+            let at = format!("one by one {one_by_one}, round {round}");
+            let r = phone.sync();
+            assert_eq!((r.pulled, r.pushed), (if round == 0 { 3 } else { 0 }, 0), "{at}");
+            assert!(r.conflicts.is_empty(), "{at}: {:?}", r.conflicts);
+            let mut listed: Vec<&str> = r.skipped.iter().map(|s| s.path.as_str()).collect();
+            listed.sort();
+            assert_eq!(listed, ["notes/b.md", "notes/same.md"], "{at}: {:?}", r.skipped);
+            assert!(r.skipped.iter().any(|s| s.path == "notes/b.md" && s.reason.contains("notes/same.md")), "{at}: {:?}", r.skipped);
+            assert_eq!(phone.paths(), strings(&["Notes/a.md", "Notes/same.md", "Seed.md"]), "{at}");
+            assert_eq!(phone.read("Notes/same.md").as_deref(), Some("upper\n"), "{at}");
+            assert_eq!(traffic(&mut l), (0, 0), "{at}");
+        }
+        let mut want: Vec<(String, String)> = files.iter().map(|(p, c)| (p.to_string(), c.to_string())).collect();
+        want.sort();
+        assert_eq!(l.files(), want, "one by one {one_by_one}");
+    }
+}
+
+/// The same when the desktop made the notes of the other folder in one sync
+/// and edited the note whose name the twin has in a later one, before the
+/// phone's next sync: in the phone's pull the twin waits for that edit, as
+/// it wants the edited note's name, and still keeps the phone from merging
+/// the folders.
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn a_case_twin_that_waits_in_the_pull_still_keeps_folders_apart_on_a_phone_on_shared_storage() {
+    let srv = server();
+    let mut l = Device::new(&srv, "linux", &[("Seed.md", "seed\n"), ("Notes/a.md", "A\n"), ("Notes/same.md", "upper\n")]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut l), (0, 3));
+    assert_eq!(traffic(&mut phone), (3, 0));
+    l.write("notes/b.md", "B\n");
+    l.write("notes/same.md", "lower\n");
+    assert_eq!(traffic(&mut l), (0, 2));
+    l.write("Notes/same.md", "upper, edited\n");
+    assert_eq!(traffic(&mut l), (0, 1));
+    for round in 0..2 {
+        let r = phone.sync();
+        assert_eq!((r.pulled, r.pushed), (if round == 0 { 1 } else { 0 }, 0), "round {round}");
+        assert!(r.conflicts.is_empty(), "round {round}: {:?}", r.conflicts);
+        let mut listed: Vec<&str> = r.skipped.iter().map(|s| s.path.as_str()).collect();
+        listed.sort();
+        assert_eq!(listed, ["notes/b.md", "notes/same.md"], "round {round}: {:?}", r.skipped);
+        assert!(r.skipped.iter().any(|s| s.path == "notes/b.md" && s.reason.contains("notes/same.md")), "round {round}: {:?}", r.skipped);
+        assert_eq!(phone.paths(), strings(&["Notes/a.md", "Notes/same.md", "Seed.md"]), "round {round}");
+        assert_eq!(phone.read("Notes/same.md").as_deref(), Some("upper, edited\n"), "round {round}");
+        assert_eq!(traffic(&mut l), (0, 0), "round {round}");
+    }
+    let want = [("Notes/a.md", "A\n"), ("Notes/same.md", "upper, edited\n"), ("Seed.md", "seed\n"), ("notes/b.md", "B\n"), ("notes/same.md", "lower\n")];
+    assert_eq!(l.files(), want.map(|(p, c)| (p.to_string(), c.to_string())));
+}
+
+/// A device whose file system tells case apart (Linux) can have two
+/// folders whose names differ only in case and no note name in common,
+/// here `Notes/a.md` and `notes/b.md`. A phone on Android shared storage
+/// holds them as one folder, which takes the spelling of the note it stores
+/// last, on the phone only: nothing goes up for it, so the desktop keeps its
+/// folders as they are, also when it makes another note in the first one
+/// and the phone's folder takes that spelling again. An edit on the phone
+/// goes up where the desktop has the note.
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn folders_that_a_case_sensitive_device_keeps_apart_without_a_case_twin_stay_apart_with_a_phone_on_shared_storage() {
+    let srv = server();
+    let files = [("Notes/a.md", "A\n"), ("notes/b.md", "B\n")];
+    let mut l = Device::new(&srv, "linux", &files);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut l), (0, 2));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    assert_eq!(top_folders(&phone), strings(&["notes"]));
+    assert_eq!(traffic(&mut l), (0, 0));
+    assert_eq!(l.files(), pairs(&files));
+    l.write("Notes/c.md", "C\n");
+    assert_eq!(traffic(&mut l), (0, 1));
+    assert_eq!(traffic(&mut phone), (1, 0));
+    assert_eq!(top_folders(&phone), strings(&["Notes"]));
+    assert_quiet(&mut [&mut l, &mut phone]);
+    assert_eq!(l.files(), pairs(&[("Notes/a.md", "A\n"), ("Notes/c.md", "C\n"), ("notes/b.md", "B\n")]));
+    assert_eq!(phone.paths(), strings(&["Notes/a.md", "Notes/b.md", "Notes/c.md"]));
+    phone.write("Notes/b.md", "B, edited on the phone\n");
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut l), (1, 0));
+    assert_quiet(&mut [&mut l, &mut phone]);
+    assert_eq!(l.files(), pairs(&[("Notes/a.md", "A\n"), ("Notes/c.md", "C\n"), ("notes/b.md", "B, edited on the phone\n")]));
+}
+
+/// Notes that wait on a phone on Android shared storage, listed, for a
+/// case twin in their folder (a device that tells case apart has two
+/// folders whose names differ only in case, with a note of the same name in
+/// each) have their records read and decrypted once in each sync, as they
+/// are tried again: why they wait on is known from their paths.
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn notes_that_wait_for_a_case_twin_on_a_phone_on_shared_storage_are_read_once_per_sync() {
+    let srv = server();
+    let mut files: Vec<(String, String)> = vec![("Notes/a.md".into(), "A\n".into()), ("Notes/same.md".into(), "upper\n".into()), ("notes/same.md".into(), "lower\n".into())];
+    files.extend((0..6).map(|i| (format!("notes/b{i}.md"), format!("b{i}\n"))));
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let mut l = Device::new(&srv, "linux", &files);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut l), (0, 9));
+    for round in 0..3 {
+        let before = phone.engine.records_opened();
+        let r = phone.sync();
+        let opened = phone.engine.records_opened() - before;
+        assert_eq!((r.pulled, r.pushed, r.skipped.len()), (if round == 0 { 2 } else { 0 }, 0, 7), "round {round}: {:?}", r.skipped);
+        // All nine come in once in the first sync, then the seven that wait.
+        assert_eq!(opened, if round == 0 { 9 } else { 7 }, "round {round}");
+        assert_eq!(phone.paths(), strings(&["Notes/a.md", "Notes/same.md"]), "round {round}");
+    }
+    assert_eq!(traffic(&mut l), (0, 0));
+}
+
+/// A case-only rename of a folder on a phone on Android shared storage, in
+/// the app or outside it, while a PC renames a note in that folder and
+/// deletes another one. The PC's rename keeps the server's spelling of the
+/// folder, so the phone moves the note within the folder as the user spells
+/// it, rather than have the move rename the folder back (FINDING-034), and
+/// the note's rename to that spelling goes up with the user's. The user's
+/// rename of the deleted note wins over the delete, as any rename does, so
+/// the PC gets it back.
+#[test]
+fn a_case_only_folder_rename_on_a_phone_on_shared_storage_is_kept_when_a_pc_renames_a_note_in_it() {
+    for in_app in [false, true] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n"), ("Drafts/c.md", "c\n"), ("Drafts/d.md", "d\n")]);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        assert_eq!(traffic(&mut a), (0, 3));
+        assert_eq!(traffic(&mut phone), (3, 0));
+        if in_app {
+            phone.app_mv("Drafts", "DRAFTS");
+        } else {
+            phone.mv("Drafts", "DRAFTS");
+        }
+        a.mv("Drafts/a.md", "Drafts/b.md");
+        a.rm("Drafts/c.md");
+        assert_eq!(traffic(&mut a), (0, 2));
+        assert_eq!(traffic(&mut phone), (2, 3), "in app {in_app}: the phone uploads its renames of b.md, c.md and d.md");
+        assert_eq!(top_folders(&phone), strings(&["DRAFTS"]), "in app {in_app}");
+        assert_eq!(phone.paths(), strings(&["DRAFTS/b.md", "DRAFTS/c.md", "DRAFTS/d.md"]), "in app {in_app}");
+        assert_eq!(traffic(&mut a), (3, 0), "in app {in_app}");
+        assert_quiet(&mut [&mut a, &mut phone]);
+        assert_eq!(a.paths(), strings(&["Drafts/b.md", "Drafts/c.md", "Drafts/d.md"]), "in app {in_app}");
+        let want = pairs(&[("b.md", "a\n"), ("c.md", "c\n"), ("d.md", "d\n")]);
+        for d in [&a, &phone] {
+            assert_eq!(notes(d), want, "in app {in_app}: {}", d.name);
+        }
+        for name in ["b.md", "c.md", "d.md"] {
+            assert_eq!(server_spelling(&a, name), Some(format!("DRAFTS/{name}")), "in app {in_app}");
+        }
+    }
+}
+
+/// A case-only rename of a folder on a phone on Android shared storage,
+/// not uploaded yet, while the pull has a folder inside it take another
+/// spelling, on the phone only, to follow a note from another device: the
+/// user's rename still goes up, for that folder only.
+#[test]
+fn a_case_only_folder_rename_on_a_phone_on_shared_storage_goes_up_when_a_folder_in_it_takes_another_spelling() {
+    for in_app in [false, true] {
+        let srv = server();
+        let mut a = ci(&srv, "win-a", &[("work/Notes/n.md", "n\n")]);
+        let mut phone = shared_storage_phone(&srv, &[]);
+        assert_eq!(traffic(&mut a), (0, 1));
+        assert_eq!(traffic(&mut phone), (1, 0));
+        let mut b = ci(&srv, "win-b", &[("WORK/NOTES/b.md", "b\n")]);
+        assert_eq!(traffic(&mut b), (1, 1));
+        if in_app {
+            phone.app_mv("work", "WORK");
+        } else {
+            phone.mv("work", "WORK");
+        }
+        assert_eq!(traffic(&mut phone), (1, 1), "in app {in_app}: the phone uploads its rename of n.md");
+        assert_eq!(phone.paths(), strings(&["WORK/NOTES/b.md", "WORK/NOTES/n.md"]), "in app {in_app}");
+        assert_eq!(traffic(&mut a), (2, 0), "in app {in_app}");
+        assert_eq!(traffic(&mut b), (1, 0), "in app {in_app}");
+        assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+        assert_eq!(a.paths(), strings(&["work/Notes/b.md", "work/Notes/n.md"]), "in app {in_app}");
+        assert_eq!(server_spelling(&a, "n.md").as_deref(), Some("WORK/Notes/n.md"), "in app {in_app}");
+    }
+}
+
+/// A note that a device that tells case apart moves into a third spelling
+/// of a folder (`Notes/a.md` to `NOTES/a.md`, a folder of its own there):
+/// a phone on Android shared storage, which holds all spellings as one
+/// folder, renames that folder to the new spelling on the phone only, as
+/// the move would (FINDING-034). The other notes in it keep their paths on
+/// the server, so the desktop keeps them where they are.
+#[cfg(target_os = "linux")] // The desktop needs a file system that tells case apart.
+#[test]
+fn a_note_moved_into_a_third_spelling_of_a_folder_renames_it_on_a_phone_on_shared_storage_only() {
+    let srv = server();
+    let mut l = Device::new(&srv, "linux", &[("Notes/a.md", "A\n"), ("Notes/c.md", "C\n")]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    assert_eq!(traffic(&mut l), (0, 2));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    l.mv("Notes/a.md", "NOTES/a.md");
+    assert_eq!(traffic(&mut l), (0, 1));
+    assert_eq!(traffic(&mut phone), (1, 0), "the phone uploads nothing for its folder");
+    assert_eq!(top_folders(&phone), strings(&["NOTES"]));
+    assert_eq!(phone.paths(), strings(&["NOTES/a.md", "NOTES/c.md"]));
+    assert_quiet(&mut [&mut l, &mut phone]);
+    assert_eq!(l.files(), pairs(&[("NOTES/a.md", "A\n"), ("Notes/c.md", "C\n")]));
+}
+
+/// A folder that a phone on Android shared storage cannot rename (here one
+/// in a folder it may not write in) leaves the phone as it was: the folder
+/// renamed before it gets its name back, the new note waits, listed, and
+/// nothing goes up. Once the folder can be renamed, the note comes in.
+#[cfg(unix)] // Made read-only with Unix mode bits.
+#[test]
+fn a_folder_that_a_phone_on_shared_storage_cannot_rename_keeps_its_name_and_the_note_waits() {
+    use std::os::unix::fs::PermissionsExt;
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Work/Drafts/a.md", "from a\n")]);
+    let mut phone = shared_storage_phone(&srv, &[("WORK/DRAFTS/p.md", "p\n")]);
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 1));
+    // WORK itself can be renamed, but not DRAFTS in it.
+    let locked = phone.root.join("WORK");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+    if fs::write(locked.join("probe"), "").is_ok() {
+        fs::remove_file(locked.join("probe")).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("running as root; permission test not meaningful");
+        return;
+    }
+    // The folder is made writable again before any assertion can stop the
+    // test, so that its temporary folder goes away.
+    let rounds = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        (0..2)
+            .map(|_| {
+                let r = phone.sync();
+                let listed: Vec<String> = r.skipped.iter().map(|s| s.path.clone()).collect();
+                (r.pulled, r.pushed, listed, phone.paths(), top_folders(&phone))
+            })
+            .collect::<Vec<_>>()
+    }));
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    let rounds = rounds.unwrap_or_else(|e| std::panic::resume_unwind(e));
+    for (round, r) in rounds.into_iter().enumerate() {
+        assert_eq!(r, (0, 0, strings(&["Work/Drafts/a.md"]), strings(&["WORK/DRAFTS/p.md"]), strings(&["WORK"])), "round {round}");
+    }
+    assert_eq!(traffic(&mut phone), (1, 0));
+    assert_quiet(&mut [&mut a, &mut phone]);
+    assert_eq!(phone.paths(), strings(&["Work/Drafts/a.md", "Work/Drafts/p.md"]));
+    assert_eq!(notes(&phone), notes(&a));
+}
+
+/// A phone on Android shared storage whose renames fail as `probe` says,
+/// and which counts its listings there.
+fn probed_phone(srv: &Server, files: &[(&str, &str)], probe: &Arc<StorageProbe>) -> Device {
+    let probe = probe.clone();
+    Device::with_fs(srv, "phone", files, move |root| SharedStorageFs::probed(root, probe))
+}
+
+/// The path, server path and `renamed` of the live note named `name` in the
+/// sync state saved in `state_dir`.
+fn saved(state_dir: &std::path::Path, name: &str) -> (String, Option<String>, bool) {
+    let state: serde_json::Value = serde_json::from_slice(&fs::read(state_dir.join("state.json")).unwrap()).unwrap();
+    let found: Vec<&serde_json::Value> = state["files"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter(|t| t["deleted"] == false && t["path"].as_str().unwrap().rsplit('/').next() == Some(name))
+        .collect();
+    assert_eq!(found.len(), 1, "{name} in {state}");
+    let t = found[0];
+    (t["path"].as_str().unwrap().to_string(), t["server_path"].as_str().map(str::to_string), t["renamed"].as_bool().unwrap_or(false))
+}
+
+/// A folder that a phone on Android shared storage fails to rename is not
+/// tried again in that sync: the other notes that would have it take the
+/// spelling wait too, listed with the reason, rather than each trying the
+/// rename again. The next sync tries once more.
+#[test]
+fn a_folder_that_a_phone_on_shared_storage_fails_to_rename_is_tried_once_per_sync() {
+    let srv = server();
+    let faults = Arc::new(StorageProbe::default());
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n"), ("Drafts/b.md", "b\n")]);
+    let mut phone = probed_phone(&srv, &[("DRAFTS/p.md", "p\n")], &faults);
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 2));
+    // The first try fails; a second one would not.
+    faults.add("Drafts", RenameFault::Fail);
+    let r = phone.sync();
+    assert_eq!((r.pulled, r.pushed), (0, 0));
+    let mut listed: Vec<&str> = r.skipped.iter().map(|s| s.path.as_str()).collect();
+    listed.sort();
+    assert_eq!(listed, ["Drafts/a.md", "Drafts/b.md"], "{:?}", r.skipped);
+    assert!(r.skipped.iter().all(|s| s.reason.contains("Renaming DRAFTS to Drafts failed")), "{:?}", r.skipped);
+    assert_eq!(faults.left(), 0);
+    assert_eq!(phone.paths(), strings(&["DRAFTS/p.md"]));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    assert_eq!(phone.paths(), strings(&["Drafts/a.md", "Drafts/b.md", "Drafts/p.md"]));
+    assert_quiet(&mut [&mut a, &mut phone]);
+}
+
+/// Android shared storage renames a folder by case through a free name
+/// ("Drafts (1)", see SafPlugin.kt). A rename that stops there, which the
+/// storage fails to undo, is undone by the sync: the folder gets its name
+/// back, nothing goes up, and the note waits, listed, until the next sync.
+#[test]
+fn a_folder_rename_that_stops_halfway_on_a_phone_on_shared_storage_is_undone() {
+    let srv = server();
+    let faults = Arc::new(StorageProbe::default());
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n")]);
+    let mut phone = probed_phone(&srv, &[("DRAFTS/p.md", "p\n")], &faults);
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 1));
+    faults.add("Drafts", RenameFault::StopHalfway);
+    let r = phone.sync();
+    assert_eq!((r.pulled, r.pushed), (0, 0));
+    assert_eq!(r.skipped.iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), ["Drafts/a.md"], "{:?}", r.skipped);
+    assert_eq!(faults.left(), 0);
+    assert_eq!(top_folders(&phone), strings(&["DRAFTS"]));
+    assert_eq!(phone.paths(), strings(&["DRAFTS/p.md"]));
+    assert_eq!(saved(&phone.state_dir, "p.md"), ("DRAFTS/p.md".into(), None, false));
+    assert_eq!(traffic(&mut phone), (1, 0));
+    assert_quiet(&mut [&mut a, &mut phone]);
+    assert_eq!(phone.paths(), strings(&["Drafts/a.md", "Drafts/p.md"]));
+}
+
+/// When the folder cannot get its name back either, its notes are tracked
+/// where they are, under the free name, but nothing goes up for it: the PC
+/// keeps its paths, and an edit made meanwhile goes up in the server's
+/// spelling. The next sync gives the folder its name on the server back
+/// before anything else, then has it take the PC's spelling as the note
+/// that waited comes in, all on the phone only.
+#[test]
+fn a_folder_left_halfway_renamed_on_a_phone_on_shared_storage_never_goes_up_and_gets_its_name_back() {
+    let srv = server();
+    let faults = Arc::new(StorageProbe::default());
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n")]);
+    let mut phone = probed_phone(&srv, &[("DRAFTS/p.md", "p\n"), ("DRAFTS/q.md", "q\n")], &faults);
+    assert_eq!(traffic(&mut phone), (0, 2));
+    assert_eq!(traffic(&mut a), (2, 1));
+    faults.add("Drafts", RenameFault::StopHalfway);
+    faults.add("DRAFTS", RenameFault::Fail);
+    let r = phone.sync();
+    assert_eq!((r.pulled, r.pushed), (0, 0));
+    assert_eq!(r.skipped.iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), ["Drafts/a.md"], "{:?}", r.skipped);
+    assert_eq!(faults.left(), 0);
+    assert_eq!(phone.paths(), strings(&["Drafts (1)/p.md", "Drafts (1)/q.md"]));
+    assert_eq!(saved(&phone.state_dir, "p.md"), ("Drafts (1)/p.md".into(), None, false));
+    assert_eq!(server_spelling(&phone, "p.md").as_deref(), Some("DRAFTS/p.md"));
+    assert_eq!(traffic(&mut a), (0, 0));
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/p.md", "Drafts/q.md"]));
+    // An edit made under the free name goes up under the server's name.
+    phone.write("Drafts (1)/q.md", "q, edited on the phone\n");
+    let r = phone.sync();
+    assert!(r.skipped.is_empty() && r.conflicts.is_empty(), "{r:?}");
+    assert_eq!((r.pulled, r.pushed), (1, 1));
+    assert_eq!(phone.paths(), strings(&["Drafts/a.md", "Drafts/p.md", "Drafts/q.md"]));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut phone]);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/p.md", "Drafts/q.md"]));
+    assert_eq!(a.read("Drafts/q.md").as_deref(), Some("q, edited on the phone\n"));
+    for name in ["p.md", "q.md"] {
+        assert_eq!(server_spelling(&a, name), Some(format!("DRAFTS/{name}")), "{name}");
+    }
+    assert!(phone.trash_text().is_empty() && a.trash_text().is_empty());
+}
+
+/// The same when a folder further down cannot be renamed, and the folder
+/// above it, renamed already, cannot get its name back: the notes in it
+/// are tracked where they are, nothing goes up for them, a delete from
+/// another device still applies to them, and the next sync renames the
+/// folder further down once it can.
+#[test]
+fn a_folder_that_cannot_get_its_name_back_on_a_phone_on_shared_storage_is_tracked_where_it_is() {
+    let srv = server();
+    let faults = Arc::new(StorageProbe::default());
+    let mut a = ci(&srv, "win-a", &[("Work/Drafts/a.md", "a\n")]);
+    let mut phone = probed_phone(&srv, &[("WORK/DRAFTS/p.md", "p\n"), ("WORK/top.md", "top\n")], &faults);
+    assert_eq!(traffic(&mut phone), (0, 2));
+    assert_eq!(traffic(&mut a), (2, 1));
+    // WORK takes the spelling Work, Work/DRAFTS cannot, and Work cannot get
+    // its name back.
+    faults.add("Work/Drafts", RenameFault::Fail);
+    faults.add("WORK", RenameFault::Fail);
+    faults.add("WORK", RenameFault::Fail);
+    let r = phone.sync();
+    assert_eq!((r.pulled, r.pushed), (0, 0));
+    assert_eq!(r.skipped.iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), ["Work/Drafts/a.md"], "{:?}", r.skipped);
+    assert_eq!(faults.left(), 0);
+    assert_eq!(phone.paths(), strings(&["Work/DRAFTS/p.md", "Work/top.md"]));
+    assert_eq!(saved(&phone.state_dir, "top.md"), ("Work/top.md".into(), None, false));
+    assert_eq!(saved(&phone.state_dir, "p.md"), ("Work/DRAFTS/p.md".into(), None, false));
+    assert_eq!(server_spelling(&phone, "top.md").as_deref(), Some("WORK/top.md"));
+    assert_eq!(traffic(&mut a), (0, 0));
+    a.rm("Work/top.md");
+    assert_eq!(traffic(&mut a), (0, 1));
+    assert_eq!(traffic(&mut phone), (2, 0));
+    assert_eq!(phone.paths(), strings(&["Work/Drafts/a.md", "Work/Drafts/p.md"]));
+    assert!(phone.trash_text().contains("top\n"), "{:?}", phone.trash_text());
+    assert_quiet(&mut [&mut a, &mut phone]);
+    assert_eq!(a.paths(), strings(&["Work/Drafts/a.md", "Work/Drafts/p.md"]));
+}
+
+/// New notes from two PCs that spell a folder differently, in one pull of a
+/// phone on Android shared storage that spells it in a third way: the
+/// folder takes a spelling once, that of the first of them on the server,
+/// on the phone only, and the note in the other spelling goes into it as
+/// the phone spells it then. Nothing goes up, and all go quiet.
+#[test]
+fn notes_in_two_spellings_of_a_folder_in_one_pull_rename_it_once_on_a_phone_on_shared_storage() {
+    let srv = server();
+    let mut phone = shared_storage_phone(&srv, &[("drafts/p.md", "p\n")]);
+    let mut a = ci(&srv, "win-a", &[("Drafts/a1.md", "a1\n")]);
+    let mut b = ci(&srv, "win-b", &[("DRAFTS/b1.md", "b1\n")]);
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 1));
+    assert_eq!(traffic(&mut b), (2, 1));
+    let r = phone.sync();
+    assert!(r.conflicts.is_empty() && r.skipped.is_empty(), "{r:?}");
+    assert_eq!((r.pulled, r.pushed), (2, 0), "the phone uploads nothing for its folder");
+    let renamed: Vec<&Change> = r.changes.iter().filter(|c| matches!(c, Change::Renamed { entry, .. } if entry.kind == EntryKind::Dir)).collect();
+    assert_eq!(renamed.len(), 1, "{renamed:?}");
+    assert_eq!(phone.paths(), strings(&["Drafts/a1.md", "Drafts/b1.md", "Drafts/p.md"]));
+    assert_eq!(server_spelling(&phone, "b1.md").as_deref(), Some("DRAFTS/b1.md"));
+    assert_eq!(server_spelling(&phone, "p.md").as_deref(), Some("drafts/p.md"));
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    assert_eq!(a.paths(), strings(&["Drafts/a1.md", "Drafts/b1.md", "Drafts/p.md"]));
+    assert_eq!(b.paths(), strings(&["DRAFTS/a1.md", "DRAFTS/b1.md", "DRAFTS/p.md"]));
+}
+
+/// Notes that a phone on Android shared storage edited, or renamed, in a
+/// folder that takes another spelling in a pull, which the same pull moves
+/// into another folder that it renames too: the phone finds them under the
+/// folder's new spelling, moves them, keeps its edit merged with the other
+/// device's, and gives way to the other device's name.
+#[test]
+fn notes_changed_on_a_phone_on_shared_storage_move_on_after_their_folder_takes_another_spelling() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/x.md", "1\n2\n3\n"), ("Drafts/y.md", "y1\ny2\ny3\n"), ("Inbox/i.md", "i\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    b.mv("Inbox", "INBOX");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    assert_eq!(phone.paths(), strings(&["DRAFTS/x.md", "DRAFTS/y.md", "INBOX/i.md"]));
+    phone.write("DRAFTS/x.md", "1\n2\n3 phone\n");
+    phone.mv("DRAFTS/y.md", "DRAFTS/z.md");
+    a.write("Drafts/new.md", "new on a\n");
+    a.app_mv("Drafts/x.md", "Inbox/x.md");
+    a.write("Inbox/x.md", "1 a\n2\n3\n");
+    a.app_mv("Drafts/y.md", "Inbox/y.md");
+    a.write("Inbox/y.md", "y1 a\ny2\ny3\n");
+    assert_eq!(traffic(&mut a), (0, 3));
+    assert_eq!(traffic(&mut phone), (3, 1), "the phone uploads the merged x.md");
+    assert_eq!(phone.paths(), strings(&["Drafts/new.md", "Inbox/i.md", "Inbox/x.md", "Inbox/y.md"]));
+    assert_eq!(phone.read("Inbox/x.md").as_deref(), Some("1 a\n2\n3 phone\n"));
+    assert_eq!(phone.read("Inbox/y.md").as_deref(), Some("y1 a\ny2\ny3\n"));
+    assert_eq!(traffic(&mut a), (1, 0));
+    traffic(&mut b);
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+    let want = pairs(&[("i.md", "i\n"), ("new.md", "new on a\n"), ("x.md", "1 a\n2\n3 phone\n"), ("y.md", "y1 a\ny2\ny3\n")]);
+    for d in [&a, &b, &phone] {
+        assert_eq!(notes(d), want, "{}", d.name);
+    }
+}
+
+/// A phone on Android shared storage whose folders take the spellings that
+/// another device gives them lists the notebook for the scans of its sync
+/// only, as any sync does: the files in those folders are tracked under
+/// their new names as they are renamed, not found by listing it again. So
+/// also when it pulls one record per batch, where the new notes that have
+/// the folders take those spellings wait for every other change of the
+/// pull: nothing was changed for them before.
+#[test]
+fn folders_taking_other_spellings_on_a_phone_on_shared_storage_do_not_list_the_notebook_again() {
+    for one_by_one in [false, true] {
+        let srv = server();
+        let probe = Arc::new(StorageProbe::default());
+        let mut phone = probed_phone(&srv, &[("DRAFTS/p.md", "p\n"), ("INBOX/q.md", "q\n")], &probe);
+        let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n"), ("Inbox/i.md", "i\n")]);
+        assert_eq!(traffic(&mut phone), (0, 2));
+        assert_eq!(traffic(&mut a), (2, 2));
+        if one_by_one {
+            phone.pull_one_by_one();
+        }
+        probe.listings.store(0, Ordering::SeqCst);
+        assert_eq!(traffic(&mut phone), (2, 0), "one by one {one_by_one}");
+        assert_eq!(phone.paths(), strings(&["Drafts/a.md", "Drafts/p.md", "Inbox/i.md", "Inbox/q.md"]), "one by one {one_by_one}");
+        assert_eq!(probe.listings.load(Ordering::SeqCst), 2, "one by one {one_by_one}: one listing for the pull and one for the push");
+        assert_quiet(&mut [&mut a, &mut phone]);
+    }
+}
+
+/// A note moved into a folder that a phone on Android shared storage spells
+/// otherwise, and a new note at the name it had, which the phone pulls one
+/// record per batch: the moved note waits for every other change of the
+/// pull, as it has the folder take another spelling, and the new note,
+/// which wants its name, waits for it too, rather than take a conflict copy
+/// name.
+#[test]
+fn a_note_that_wants_the_name_of_one_moving_into_a_folder_spelled_otherwise_waits_for_it_on_a_phone_on_shared_storage() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/n.md", "n\n"), ("Inbox/x.md", "x\n"), ("zz.md", "z\n")]);
+    let mut b = ci(&srv, "win-b", &[]);
+    let mut phone = shared_storage_phone(&srv, &[]);
+    for d in [&mut a, &mut b, &mut phone] {
+        traffic(d);
+    }
+    b.mv("Drafts", "DRAFTS");
+    for d in [&mut b, &mut a, &mut phone] {
+        traffic(d);
+    }
+    assert_eq!(phone.paths(), strings(&["DRAFTS/n.md", "Inbox/x.md", "zz.md"]));
+    phone.pull_one_by_one();
+    a.app_mv("Inbox/x.md", "Drafts/x.md");
+    a.write("Inbox/x.md", "a new x\n");
+    a.write("zz.md", "z, edited\n");
+    assert_eq!(traffic(&mut a), (0, 3));
+    assert_eq!(traffic(&mut phone), (3, 0), "the phone uploads nothing for its folder");
+    assert_eq!(phone.paths(), strings(&["Drafts/n.md", "Drafts/x.md", "Inbox/x.md", "zz.md"]));
+    assert_eq!(phone.read("Inbox/x.md").as_deref(), Some("a new x\n"));
+    assert_eq!(phone.read("Drafts/x.md").as_deref(), Some("x\n"));
+    traffic(&mut a);
+    traffic(&mut b);
+    assert_quiet(&mut [&mut a, &mut b, &mut phone]);
+}
+
+/// A sync that fails after a phone on Android shared storage renamed its
+/// folder (here as it uploads a new note) still hands the folder's rename
+/// to the app (`SyncEngine::take_changes`), so that notes open in that
+/// folder follow it, as after a sync that did not fail.
+#[test]
+fn a_failed_sync_hands_the_folder_rename_of_a_phone_on_shared_storage_to_the_app() {
+    let srv = server();
+    let mut a = ci(&srv, "win-a", &[("Drafts/a.md", "a\n")]);
+    let mut phone = shared_storage_phone(&srv, &[("DRAFTS/p.md", "p\n")]);
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert_eq!(traffic(&mut a), (1, 1));
+    phone.write("DRAFTS/q.md", "q\n");
+    phone.hooks.fail_puts.store(1, Ordering::SeqCst);
+    assert!(phone.try_sync().is_err());
+    let changes = phone.engine.take_changes();
+    assert!(changes.iter().any(|c| matches!(c, Change::Renamed { from, entry } if from == "DRAFTS" && entry.path == "Drafts")), "{changes:?}");
+    assert!(phone.engine.take_changes().is_empty());
+    assert_eq!(traffic(&mut phone), (0, 1));
+    assert!(phone.engine.take_changes().is_empty());
+    assert_eq!(traffic(&mut a), (1, 0));
+    assert_quiet(&mut [&mut a, &mut phone]);
+    assert_eq!(a.paths(), strings(&["Drafts/a.md", "Drafts/p.md", "Drafts/q.md"]));
 }
 
 /// Put `d`'s sync state back as an older version left it: a file whose

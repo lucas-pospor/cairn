@@ -2894,8 +2894,10 @@ fn a_note_the_phone_cannot_rename_to_the_name_it_has_elsewhere_is_kept_as_its_ow
 
 /// A note the phone has in a folder whose name differs only in case is not
 /// taken for the desktop's note: the phone would have to rename the folder,
-/// and with it every note in it, on every device (FINDING-034). The desktop's
-/// note is listed as not synced, as any note in that folder is, and the
+/// and with it every note in it, on every device (FINDING-034). It is a case
+/// twin of the desktop's note, and that is what keeps the phone's folder
+/// from taking the desktop's spelling, as another note from that folder
+/// would have it do: the desktop's note is listed as not synced, and the
 /// phone's goes up as a note of its own; the desktop keeps its names.
 #[cfg_attr(not(target_os = "linux"), ignore = "case twins need a case-sensitive file system")]
 #[test]

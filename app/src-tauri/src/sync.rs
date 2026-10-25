@@ -1,8 +1,8 @@
 //! Runs sync for the open vault in a background thread and reports status
-//! to the UI (`sync-status` events). Vault changes made by sync are emitted
-//! as `sync-changed` so open notes and the tree update. Both events name
-//! the vault they are for: a sync still finishes after the user switched
-//! to another vault.
+//! to the UI (`sync-status` events). Vault changes made by sync, also by a
+//! sync that failed later, are emitted as `sync-changed` so open notes and
+//! the tree update. Both events name the vault they are for: a sync still
+//! finishes after the user switched to another vault.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -235,6 +235,13 @@ impl SyncManager {
             }
         }
         let result = result.map_err(|e| self.explain(e));
+        // A sync that failed may have changed the vault before it did (a
+        // folder that took another spelling on Android shared storage): open
+        // notes follow those changes too.
+        let failed_changes = match (&result, engine.as_mut()) {
+            (Err(_), Some(e)) => e.take_changes(),
+            _ => Vec::new(),
+        };
         {
             let mut inner = self.inner.lock();
             // Turned off while syncing: the status says so already.
@@ -276,10 +283,9 @@ impl SyncManager {
                 inner.engine = engine;
             }
         }
-        if let Ok(r) = &result
-            && !r.changes.is_empty()
-        {
-            self.emit("sync-changed", SyncChanges { root: &self.root, changes: &r.changes });
+        let changes = result.as_ref().map_or(failed_changes.as_slice(), |r| r.changes.as_slice());
+        if !changes.is_empty() {
+            self.emit("sync-changed", SyncChanges { root: &self.root, changes });
         }
         self.emit_status();
         self.status()

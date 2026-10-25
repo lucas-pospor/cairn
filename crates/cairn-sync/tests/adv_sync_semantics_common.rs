@@ -11,7 +11,8 @@
 //!   shared storage refuse (`"*:<>?\|`, trailing dot or space).
 //! * `SharedStorageFs`: a `VaultFs` that behaves like Android shared storage
 //!   through SafPlugin.kt (case-insensitive, refuses case twins and folders
-//!   spelled otherwise, renames the folders a move spells otherwise).
+//!   spelled otherwise, renames the folders a move spells otherwise), with
+//!   faults for its renames and a count of its listings (`StorageProbe`).
 #![allow(dead_code)]
 
 use std::fs;
@@ -72,6 +73,8 @@ pub struct Hooks {
     pub page: AtomicUsize,
     /// This many of the next history requests fail (HTTP 500).
     pub fail_history: AtomicUsize,
+    /// This many of the next uploads fail, as if the network went away.
+    pub fail_puts: AtomicUsize,
 }
 
 pub struct Hooked {
@@ -98,10 +101,14 @@ impl Transport for Hooked {
         }
         r
     }
+    #[allow(deprecated)] // As in `history`.
     fn put(&self, v: &str, f: &str, r: &PutRevision) -> Result<PutOutcome, SyncError> {
         let h = self.hooks.before_put.lock().take();
         if let Some(h) = h {
             h();
+        }
+        if self.hooks.fail_puts.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
+            return Err(SyncError::Network("injected: the network went away".into()));
         }
         let out = self.inner.put(v, f, r)?;
         self.hooks.puts.fetch_add(1, Ordering::SeqCst);
@@ -479,17 +486,82 @@ impl VaultFs for CaseInsensitiveFs {
 /// moves a file into a folder whose name differs only in case from the one
 /// asked for, and first renames the folders that a move's two paths both go
 /// through but spell differently, to the new spelling (renameSharedFolders,
-/// FINDING-034).
+/// FINDING-034). Its renames succeed, unless a test gives them faults.
 pub struct SharedStorageFs {
     inner: StdFs,
     root: PathBuf,
+    probe: Arc<StorageProbe>,
+}
+
+/// How a rename on a `SharedStorageFs` fails (see `StorageProbe`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenameFault {
+    /// It fails before anything is renamed.
+    Fail,
+    /// A rename by case only goes through a free name ("Drafts (1)"), as
+    /// SafPlugin.kt's renameCase does, and fails at the second step, and so
+    /// does renaming it back: the entry stays under the free name.
+    StopHalfway,
+}
+
+/// Faults for the renames of a `SharedStorageFs`, each one used once, by
+/// the next rename to its target as Cairn asks for it; and how many times
+/// it listed the whole notebook.
+#[derive(Default)]
+pub struct StorageProbe {
+    faults: Mutex<Vec<(String, RenameFault)>>,
+    pub listings: AtomicUsize,
+}
+
+impl StorageProbe {
+    /// The next rename to `to` fails as `fault` says.
+    pub fn add(&self, to: &str, fault: RenameFault) {
+        self.faults.lock().push((to.to_string(), fault));
+    }
+
+    /// How many faults are still to be used.
+    pub fn left(&self) -> usize {
+        self.faults.lock().len()
+    }
+
+    /// Drop the faults that are still to be used.
+    pub fn clear(&self) {
+        self.faults.lock().clear();
+    }
+
+    fn take(&self, to: &str) -> Option<RenameFault> {
+        let mut faults = self.faults.lock();
+        let i = faults.iter().position(|(t, _)| t == to)?;
+        Some(faults.remove(i).1)
+    }
 }
 
 impl SharedStorageFs {
     // Passed to Device::with_fs, which takes the file system as a trait object.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(root: &Path) -> Arc<dyn VaultFs> {
-        Arc::new(SharedStorageFs { inner: StdFs::new(root, TrashMode::Vault).unwrap(), root: root.to_path_buf() })
+        Self::probed(root, Arc::default())
+    }
+
+    /// One whose renames fail as `probe` says, and which counts its
+    /// listings there.
+    pub fn probed(root: &Path, probe: Arc<StorageProbe>) -> Arc<dyn VaultFs> {
+        Arc::new(SharedStorageFs { inner: StdFs::new(root, TrashMode::Vault).unwrap(), root: root.to_path_buf(), probe })
+    }
+
+    /// The first of `name`, "stem (1).ext", "stem (2).ext" and so on that no
+    /// entry in folder `dir` (on disk) has, ignoring case, as SafPlugin.kt's
+    /// freeName picks it.
+    fn free_name(&self, dir: &str, name: &str) -> String {
+        let taken: Vec<String> = self.names(dir).iter().map(|n| n.to_lowercase()).collect();
+        let dot = name.rfind('.').filter(|&i| i > 0).unwrap_or(name.len());
+        let mut candidate = name.to_string();
+        let mut n = 1;
+        while taken.contains(&candidate.to_lowercase()) {
+            candidate = format!("{} ({n}){}", &name[..dot], &name[dot..]);
+            n += 1;
+        }
+        candidate
     }
 
     /// The names in folder `dir`, a path on disk.
@@ -541,6 +613,9 @@ impl SharedStorageFs {
 
 impl VaultFs for SharedStorageFs {
     fn list(&self, dir: &str) -> cairn_core::Result<Vec<FileStat>> {
+        if dir.is_empty() {
+            self.probe.listings.fetch_add(1, Ordering::SeqCst);
+        }
         let (real, _) = self.find(dir).ok_or_else(|| CoreError::NotFound(dir.to_string()))?;
         self.inner.list(&real)
     }
@@ -580,6 +655,10 @@ impl VaultFs for SharedStorageFs {
         Ok(())
     }
     fn rename(&self, from: &str, to: &str) -> cairn_core::Result<()> {
+        let fault = self.probe.take(to);
+        if fault == Some(RenameFault::Fail) {
+            return Err(CoreError::Io(format!("{to}: injected failure")));
+        }
         let (first, _) = self.find(from).ok_or_else(|| CoreError::NotFound(from.to_string()))?;
         // `to` may find this same entry (a case-only rename); any other is in the way.
         if self.find(to).is_some_and(|(taken, _)| taken != first) {
@@ -599,6 +678,13 @@ impl VaultFs for SharedStorageFs {
             let target = cairn_core::path::join(&dir, cairn_core::path::file_name(to));
             if target == first {
                 return Ok(());
+            }
+            let (parent, name) = (cairn_core::path::parent(&first), cairn_core::path::file_name(&first));
+            let by_case = parent == dir && name.to_lowercase() == cairn_core::path::file_name(to).to_lowercase();
+            if fault == Some(RenameFault::StopHalfway) && by_case {
+                let via = cairn_core::path::join(parent, &self.free_name(parent, cairn_core::path::file_name(to)));
+                self.inner.rename(&first, &via)?;
+                return Err(CoreError::Io(format!("{to}: injected failure after renaming {first} to {via}")));
             }
             self.inner.rename(&first, &target)
         });
