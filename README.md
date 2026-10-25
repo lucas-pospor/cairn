@@ -112,6 +112,34 @@ Without `CAIRN_FUZZ_SEEDS`, that is 8 or 30 runs, depending on the test. After a
 CAIRN_FUZZ_SEEDS=200 cargo test -p cairn-sync
 ```
 
+Some of these tests start the sync server as a separate process, so build it first:
+
+```bash
+cargo build -p cairn-server
+```
+
+`adv_sync_phone_fuzz.rs` syncs two Windows PCs, a phone on Android shared storage and a Linux desktop that spell folders differently, in random order. `CAIRN_PHONE_FUZZ_SEEDS` and `CAIRN_PHONE_FUZZ_STEPS` set how many runs it makes and how many steps each run has (4 and 80 without them); the top of the file lists its other settings. After a change to how sync handles folder spellings, run more:
+
+```bash
+CAIRN_PHONE_FUZZ_SEEDS=3000 CAIRN_PHONE_FUZZ_STEPS=200 CAIRN_PHONE_FUZZ_THREADS=8 cargo test -p cairn-sync --test adv_sync_phone_fuzz
+```
+
+`scripts/adv-sync-sem-fuzz.sh` runs the randomized three-device test over many seeds, with syncs one after another (`seq`) or overlapping (`overlap`), and lists the seeds that fail. The top of the script describes its arguments:
+
+```bash
+scripts/adv-sync-sem-fuzz.sh overlap 1000
+```
+
+Two more sync checks in `scripts/` run the server binary and the `sync_dir` example (`cargo build -p cairn-sync --example sync_dir`) as two devices. `adv-sync-robust-kill.py` kills the sync client with SIGKILL at random moments, and the server too with `--kill-server`, then checks that both devices end up with the same notes and that no line written was lost. `adv-fs-sync-repro.sh` replays three file-level defects that sync would spread (FINDING-011, FINDING-012, FINDING-049) and prints "held up" for each one that stays fixed:
+
+```bash
+scripts/adv-sync-robust-kill.py --iterations 80 --kill-server
+```
+
+```bash
+scripts/adv-fs-sync-repro.sh
+```
+
 Android end-to-end tests run on an emulator or phone through adb (they clear the app's data). The test files share the device, so run them one at a time, from the repository root after `. scripts/android-env.sh`:
 
 ```bash
@@ -124,6 +152,12 @@ The emulator's memory use grows over long runs. `scripts/adv-android-run-all.sh`
 
 ```bash
 scripts/adv-android-run-all.sh e2e/android/adv_saf.test.mjs
+```
+
+`scripts/adv-android-watchdog.sh` kills the emulator when its memory use, or the machine's free memory, crosses a limit: with `-gpu swiftshader_indirect`, its GPU emulation was seen growing to 18 GB during long runs. Pass it the emulator's process ID, for example after starting the emulator in the background:
+
+```bash
+emulator -avd cairn-test -no-window -no-audio & scripts/adv-android-watchdog.sh $!
 ```
 
 `e2e/android/local_network.test.mjs` checks the Nearby devices permission (see [Sync on the local network](docs/manual/android.md#sync-on-the-local-network)). It needs an emulator with Android 17 (API 37) and skips on older ones. With an AVD named `cairn-test-37` made from the `system-images;android-37.0;google_apis;x86_64` image:
